@@ -7,6 +7,14 @@ Codex / MCP client
   -> src/tmwd-hub.mjs
   -> extension/background.js
   -> Chrome/Edge tab
+
+Codex / MCP client
+  -> src/js-reverse-server.mjs
+  -> src/tmwd-runtime.mjs
+  -> src/tmwd-hub.mjs
+  -> extension/background.js
+  -> Chrome/Edge tab
+  -> window.__TMWD_JS_REVERSE__ runtime hooks
 ```
 
 Fallback paths:
@@ -23,4 +31,20 @@ native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
 3. Keep extension source vendored and reproducible.
 4. Keep runtime artifacts under `~/.tmwd-browser-mcp`.
 5. Keep deterministic contracts separate from live browser gates.
+6. Keep GenericAgent provenance explicit in `UPSTREAM.lock.json`.
+7. Keep JS reverse MCP capabilities TMWD-backed and hook-first; debugger/callframe
+   workflows must stay explicit instead of silently pretending support.
+8. Keep JS reverse docs and mounted skill content synchronized by script.
+9. Keep the hub optionally managed by user-level launchd, not a hidden global service.
 
+## Maintenance boundaries
+
+- `extension/` is source-controlled and mirrors GenericAgent's extension except
+  install-local `config.js`.
+- `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` is the Chrome/Edge unpacked
+  extension install target.
+- `~/.tmwd-browser-mcp/runtime/` is runtime state and logs.
+- `runtime/js-reverse/` is ignored local evidence, reports, and rebuild bundles
+  produced by `src/js-reverse-server.mjs`.
+- `~/Library/LaunchAgents/com.gaoqian.tmwd-browser-mcp.plist` is optional
+  user-level autostart state created by `npm run launchd:install`.

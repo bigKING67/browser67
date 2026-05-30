@@ -16,6 +16,9 @@
 - 修改核心 MCP/Hub/扩展代码后至少运行：
   - `npm run check`
   - `npm run check:live:doctor`
+- 修改 JS reverse MCP、逆向 runtime 或逆向契约后至少运行：
+  - `npm run check:js-reverse-mcp`
+  - `npm run check:js-reverse-live`
 - 修改 live gate / doctor schema 后运行：
   - `npm run check:doctor-schema`
 - 修改扩展后运行：
@@ -26,7 +29,10 @@
 - 同步 GenericAgent 上游扩展后运行：
   - `npm run extension:sync`
   - `npm run extension:check`
+  - `npm run upstream:lock`
   - `npm run check`
+- 常规提交前优先运行：
+  - `npm run verify`
 
 ## 目录职责
 
@@ -36,6 +42,7 @@
 - `scripts/`：安装、同步、配置辅助脚本。
 - `docs/`：TMWD、JS reverse、Codex 集成文档。
 - `skills/`：可挂载到 Codex/agents 的 skill 内容。
+- `UPSTREAM.lock.json`：GenericAgent 上游 commit 和扩展文件 hash 的可审计锁定。
 
 ## 安全与隐私
 

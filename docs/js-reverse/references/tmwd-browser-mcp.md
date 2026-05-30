@@ -11,7 +11,15 @@ Use `tmwd_browser` when the task needs:
 - HttpOnly cookie evidence through the bridge command
 - CDP bridge commands against the real browser tab
 - background tab screenshots or DOM/CDP actions
-- pre-reverse sampling before switching to JSReverser-MCP / remote CDP
+- generic real-browser automation before switching to reverse-specific tooling
+
+Use `js-reverse` when the task needs:
+
+- signature-chain tracing
+- script search and code collection
+- fetch/xhr/websocket/eval/timer/cookie/function hooks
+- runtime evidence recording
+- local Node rebuild bundle export
 
 Default arguments:
 
@@ -31,15 +39,14 @@ Default arguments:
 {"cmd":"batch","commands":[{"cmd":"tabs"},{"cmd":"cookies"}]}
 ```
 
-## Boundary with JSReverser-MCP
+## Boundary with js-reverse MCP and remote CDP
 
-- TMWD is for real-browser state, cookies, page-visible runtime evidence, and CDP bridge operations.
-- JSReverser-MCP / remote CDP is for Network initiator, Debugger, Script source, preload hooks, AST/VMP, and rebuild bundles.
-- If remote CDP opens a separate profile, do not assume it has the user's logged-in cookies. First sample with TMWD, then decide whether to log in to debug Chrome or port non-sensitive evidence.
+- `tmwd_browser` is for real-browser state, cookies, page-visible runtime evidence, and CDP bridge operations.
+- `js-reverse` is for observe-first reverse workflows on the same TMWD-backed real browser: scripts, performance resources, runtime hooks, evidence, and rebuild bundles.
+- Persistent `Debugger.pause`, callframe stepping, and breakpoint state are intentionally explicit remote CDP/debug-browser work. If remote CDP opens a separate profile, do not assume it has the user's logged-in cookies. First sample with TMWD, then decide whether to log in to debug Chrome or port non-sensitive evidence.
 
 ## File upload strategy
 
 - In-memory synthetic file: DataTransfer API can be enough.
 - Real local file path: use CDP `DOM.setFileInputFiles`, preferably in the same batch that discovers the input node.
 - Native file chooser / isTrusted blocks: use `browser_native_input` dry-run first, then execute only when the task requires it.
-

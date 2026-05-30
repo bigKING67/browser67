@@ -15,6 +15,12 @@ for Codex, grobot, and JS reverse workflows.
   - `browser_diff`
   - `browser_tab_ops`
   - `browser_native_input`
+- JS reverse MCP server:
+  - `check_browser_health`
+  - `list_scripts` / `search_in_scripts`
+  - `list_network_requests` / `get_request_initiator`
+  - `create_hook` / `inject_hook` / `get_hook_data`
+  - `record_reverse_evidence` / `export_rebuild_bundle`
 - Local TMWD hub:
   - WebSocket endpoint: `ws://127.0.0.1:18765`
   - HTTP link endpoint: `http://127.0.0.1:18766/link`
@@ -58,6 +64,19 @@ Default extension target:
 ~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/
 ```
 
+For manual Chrome extension loading from this repository, prepare the
+project-local runtime copy:
+
+```bash
+npm run setup:local-extension
+```
+
+Then load exactly this directory, not its parent:
+
+```text
+/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/runtime/chrome-extension/tmwd_cdp_bridge/
+```
+
 Then open `chrome://extensions`, enable Developer Mode, and load that directory
 as an unpacked extension. After every extension source update, reload the
 extension and refresh old target tabs so content scripts are reinjected.
@@ -88,16 +107,37 @@ Codex config should point directly at:
 /Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/server.mjs
 ```
 
+Run the TMWD-backed JS reverse MCP server with:
+
+```bash
+npm run js-reverse:server
+```
+
+Codex `js-reverse` config should point directly at:
+
+```text
+/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/js-reverse-server.mjs
+```
+
 ## Quality gates
 
 ```bash
+npm run verify
+npm run check:syntax
 npm run check
 npm run check:live:doctor
+npm run check:js-reverse-mcp
+npm run check:js-reverse-live
 ```
 
 `npm run check` runs deterministic MCP/schema/hub-control contracts. `check:live:*`
 uses the current local browser environment and can fail when the extension or hub
 is not connected.
+
+`npm run verify` is the local full gate for maintenance changes. It checks
+GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
+all `.mjs` syntax, deterministic contracts, live doctor readiness, JS reverse
+live readiness, and npm audit.
 
 ## Source alignment
 
@@ -114,8 +154,10 @@ extension, including `tabs.create` and `contentSettings` bridge commands.
 To check or resync against the local GenericAgent checkout:
 
 ```bash
+npm run upstream:check
 npm run extension:check
 npm run extension:sync
+npm run upstream:lock
 ```
 
 Default upstream path:
@@ -127,6 +169,36 @@ Default upstream path:
 `extension/config.js` is intentionally not committed. `npm run setup` writes an
 install-local `config.js` with a per-install TID into
 `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/`.
+
+`UPSTREAM.lock.json` records the exact GenericAgent commit and extension file
+hashes used by this project. After intentionally updating GenericAgent and
+running `npm run extension:sync`, refresh the lock with `npm run upstream:lock`.
+
+## User-level launchd service
+
+Install TMWD hub as a user LaunchAgent:
+
+```bash
+npm run launchd:install
+```
+
+This writes:
+
+```text
+~/Library/LaunchAgents/com.gaoqian.tmwd-browser-mcp.plist
+```
+
+and runs the hub from:
+
+```text
+/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/tmwd-hub.mjs
+```
+
+Uninstall:
+
+```bash
+npm run launchd:uninstall
+```
 
 ## Runtime paths
 

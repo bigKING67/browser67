@@ -1,6 +1,6 @@
 ---
 name: tmwd-browser-mcp
-description: Use for TMWD real-browser automation through tmwd_browser MCP: logged-in Chrome/Edge pages, current tabs, cookies/session-aware page inspection, CDP bridge commands, background tab actions, native fallback planning, and JS reverse browser sampling. Prefer this over generic browser tools when the task needs the user's current browser state and TMWD is configured.
+description: Use for TMWD real-browser automation through tmwd_browser MCP: logged-in Chrome/Edge pages, current tabs, cookies/session-aware page inspection, CDP bridge commands, background tab actions, and native fallback planning. For signature-chain tracing, script search, network/WS sampling, hooks, and rebuild bundles, hand off to the js-reverse MCP/skill backed by this same TMWD runtime.
 ---
 
 # TMWD Browser MCP
@@ -17,6 +17,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 4. Use `browser_execute_js` for JS, bridge commands, CDP batch, cookies, and controlled navigation.
 5. Use `browser_tab_ops` for list/switch/current/session selection.
 6. Use `browser_native_input` only when browser-side automation is blocked.
+7. Use `js-reverse` MCP for reverse-specific observe/capture/rebuild work instead
+   of overloading the generic `tmwd_browser` tools.
 
 ## Bridge command examples
 
@@ -32,6 +34,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 ## Routing rules
 
 - Use TMWD for the user's current browser, logged-in pages, cookies, and visible tab state.
+- Use `js-reverse` for signatures, anti-bot parameters, hook sampling, and local
+  rebuild bundles; it uses this same TMWD transport by default.
 - Use `remote_cdp` only when the user explicitly wants a debug Chrome/CI/JS reverse protocol path.
 - Do not silently fallback from TMWD login-state tasks to remote CDP.
 - For localhost/file previews that do not need profile state, use in-app Browser instead.

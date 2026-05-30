@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "name": "lsdefine/GenericAgent",
+    "remote": "https://github.com/lsdefine/GenericAgent.git",
+    "commit": "071fb6e7904d78fc1f8a6b40c34f5414000c89f7",
+    "extension_source": "assets/tmwd_cdp_bridge",
+    "ignored_files": [
+      "config.js"
+    ]
+  },
+  "files": [
+    {
+      "path": "background.js",
+      "sha256": "4e109f37596f82fdd8d560b1cd9b5465e388d606398c6e725ca1741774125d4e"
+    },
+    {
+      "path": "content.js",
+      "sha256": "5b9679d01d09c8f76bf2e00986c9fbf473bd4d635b22bbe76f645b3ffc923a01"
+    },
+    {
+      "path": "disable_dialogs.js",
+      "sha256": "ce1893be5064b2670d60eb79f6ead03907cab5c123c947afa5752f202fe0d900"
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "55bcb68b75c7b7b09fa941e7cba74d20fca4001835cdea57ca85abc15a1c9834"
+    },
+    {
+      "path": "popup.html",
+      "sha256": "5d85260b3e8a820b5add8c6d067904bcbbade8a0090444ee604f9dd72bce9513"
+    },
+    {
+      "path": "popup.js",
+      "sha256": "289ef3b64713226e5c815df0bbbb05a66ebf1704b36c5e85df4e769493af3146"
+    }
+  ]
+}
