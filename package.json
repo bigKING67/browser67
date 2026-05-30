@@ -1,0 +1,39 @@
+{
+  "name": "tmwd-browser-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone TMWD browser MCP server for real Chrome/Edge profile automation, CDP bridge workflows, native fallback, and JS reverse workflows.",
+  "type": "module",
+  "bin": {
+    "tmwd-browser-mcp": "./bin/tmwd-browser-mcp.mjs",
+    "tmwd-browser": "./bin/tmwd-browser-mcp.mjs"
+  },
+  "scripts": {
+    "server": "node src/server.mjs",
+    "setup": "node scripts/setup-extension.mjs",
+    "doctor": "node contracts/browser-structured-mcp-live-gate.mjs --doctor-only --tmwd-mode tmwd --disable-event-log",
+    "doctor:json": "node contracts/browser-structured-mcp-live-gate.mjs --doctor-only --tmwd-mode tmwd --disable-event-log --json",
+    "hub": "node src/tmwd-hub.mjs",
+    "hub:start": "node src/tmwd-hub-control.mjs start",
+    "hub:status": "node src/tmwd-hub-control.mjs status",
+    "hub:stop": "node src/tmwd-hub-control.mjs stop",
+    "native:doctor": "node src/native-deps-setup.mjs",
+    "native:setup": "node src/native-deps-setup.mjs --install --yes",
+    "extension:sync": "node scripts/sync-genericagent-extension.mjs",
+    "extension:check": "node scripts/sync-genericagent-extension.mjs --check",
+    "check": "npm run check:mcp && npm run check:hub-control && npm run check:doctor-schema",
+    "check:mcp": "node contracts/browser-structured-mcp-contract.mjs",
+    "check:hub-control": "node contracts/browser-structured-mcp-hub-control-contract.mjs",
+    "check:doctor-schema": "node contracts/browser-doctor-json-schema-contract.mjs",
+    "check:live": "node contracts/browser-structured-mcp-live-gate.mjs --tmwd-mode tmwd --tmwd-transport auto --disable-event-log",
+    "check:live:doctor": "node contracts/browser-structured-mcp-live-gate.mjs --doctor-only --tmwd-mode tmwd --tmwd-transport auto --disable-event-log",
+    "list:files": "find . -path ./node_modules -prune -o -type f -print | sort"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

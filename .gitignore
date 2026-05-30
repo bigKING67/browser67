@@ -1,0 +1,10 @@
+node_modules/
+npm-debug.log*
+
+# Runtime state belongs under ~/.tmwd-browser-mcp and should not be committed.
+.tmwd-browser-mcp/
+runtime/
+
+# Source keeps a non-secret example only. setup-extension writes config.js into
+# the installed unpacked-extension directory.
+extension/config.js

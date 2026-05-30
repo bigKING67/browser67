@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmwd-browser-mcp.local/schemas/browser-doctor.schema.json",
+  "title": "tmwd-browser-mcp doctor JSON output",
+  "description": "Machine-readable output contract for `tmwd-browser-mcp doctor --json`.",
+  "type": "object",
+  "required": [
+    "ok",
+    "stage",
+    "doctor",
+    "ensure_tmwd_hub",
+    "session_wait",
+    "event_log"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "doctor_only",
+        "doctor_blocked",
+        "live_failed",
+        "live_passed"
+      ]
+    },
+    "doctor": {
+      "type": "object",
+      "required": [
+        "ok",
+        "mode",
+        "transport",
+        "allow_empty_tabs",
+        "readiness",
+        "checks",
+        "suggestions"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "tmwd",
+            "remote_cdp",
+            "cdp"
+          ]
+        },
+        "transport": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ws",
+            "link"
+          ]
+        },
+        "allow_empty_tabs": {
+          "type": "boolean"
+        },
+        "readiness": {
+          "type": "object",
+          "required": [
+            "ready",
+            "reason",
+            "path"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "ready": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string",
+              "enum": [
+                "tmwd_ws",
+                "tmwd_link",
+                "cdp",
+                "none"
+              ]
+            }
+          }
+        },
+        "checks": {
+          "type": "object",
+          "required": [
+            "tmwd_ws_tcp",
+            "tmwd_link_tcp",
+            "cdp_tcp",
+            "tmwd_link_http",
+            "tmwd_ws_api",
+            "cdp_http",
+            "cdp_targets"
+          ],
+          "additionalProperties": true,
+          "properties": {
+            "tmwd_ws_tcp": {
+              "$ref": "#/$defs/tcp_check"
+            },
+            "tmwd_link_tcp": {
+              "$ref": "#/$defs/tcp_check"
+            },
+            "cdp_tcp": {
+              "$ref": "#/$defs/tcp_check"
+            },
+            "tmwd_ws_api": {
+              "$ref": "#/$defs/api_check"
+            },
+            "tmwd_link_http": {
+              "$ref": "#/$defs/api_check"
+            },
+            "cdp_http": {
+              "$ref": "#/$defs/api_check"
+            },
+            "cdp_targets": {
+              "$ref": "#/$defs/api_check"
+            }
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ensure_tmwd_hub": {
+      "$ref": "#/$defs/ensure_tmwd_hub"
+    },
+    "session_wait": {
+      "$ref": "#/$defs/session_wait"
+    },
+    "event_log": {
+      "$ref": "#/$defs/event_log"
+    }
+  },
+  "$defs": {
+    "tcp_check": {
+      "type": "object",
+      "required": [
+        "endpoint",
+        "reachable",
+        "latency_ms",
+        "detail"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "reachable": {
+          "type": "boolean"
+        },
+        "latency_ms": {
+          "type": "integer"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "api_check": {
+      "type": "object",
+      "required": [
+        "endpoint",
+        "ok",
+        "latency_ms",
+        "detail"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "latency_ms": {
+          "type": "integer"
+        },
+        "tab_count": {
+          "type": "integer"
+        },
+        "session_count": {
+          "type": "integer"
+        },
+        "page_count": {
+          "type": "integer"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "ensure_tmwd_hub": {
+      "type": "object",
+      "required": [
+        "attempted",
+        "enabled",
+        "reason"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "session_wait": {
+      "type": "object",
+      "required": [
+        "attempted",
+        "wait_ms",
+        "reason"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "wait_ms": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "event_log": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
