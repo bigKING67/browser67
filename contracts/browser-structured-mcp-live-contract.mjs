@@ -239,6 +239,16 @@ function firstJsonContent(result) {
     if (item?.type === "json" && typeof item.json === "object" && item.json !== null) {
       return item.json;
     }
+    if (item?.type === "text" && typeof item.text === "string") {
+      try {
+        const parsed = JSON.parse(item.text);
+        if (typeof parsed === "object" && parsed !== null) {
+          return parsed;
+        }
+      } catch {
+        // Ignore non-JSON text content.
+      }
+    }
   }
   return null;
 }
@@ -297,6 +307,10 @@ async function run() {
     assert.equal(names.includes("browser_scan"), true);
     assert.equal(names.includes("browser_execute_js"), true);
     assert.equal(names.includes("browser_tab_ops"), true);
+    assert.equal(names.includes("browser_file_ops"), true);
+    assert.equal(names.includes("browser_download_ops"), true);
+    assert.equal(names.includes("browser_tab_lifecycle"), true);
+    assert.equal(names.includes("browser_clipboard_ops"), true);
 
     const commonArgs = {
       tmwd_mode: cli.tmwd_mode,
@@ -340,7 +354,7 @@ async function run() {
           no_monitor: true,
           native_auto_fallback: true,
           native_auto_fallback_policy: "balanced",
-          script: "return ({ title: document.title, href: location.href, cookie: document.cookie });",
+          script: "let cookie = ''; try { cookie = document.cookie; } catch {} return ({ title: document.title, href: location.href, cookie });",
           ...(cli.target_url_contains
             ? { target_url_contains: cli.target_url_contains }
             : {}),

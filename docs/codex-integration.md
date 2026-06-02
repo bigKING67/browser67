@@ -31,6 +31,18 @@ approval_mode = "approve"
 [mcp_servers.tmwd_browser.tools.browser_native_input]
 approval_mode = "approve"
 
+[mcp_servers.tmwd_browser.tools.browser_file_ops]
+approval_mode = "approve"
+
+[mcp_servers.tmwd_browser.tools.browser_download_ops]
+approval_mode = "approve"
+
+[mcp_servers.tmwd_browser.tools.browser_tab_lifecycle]
+approval_mode = "approve"
+
+[mcp_servers.tmwd_browser.tools.browser_clipboard_ops]
+approval_mode = "approve"
+
 [mcp_servers.js-reverse]
 command = "node"
 args = ["/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/js-reverse-server.mjs"]
@@ -65,12 +77,23 @@ approval_mode = "approve"
 
 ## Tool routing
 
-- `tmwd_browser`: primary path for high-frequency real browser tasks, logged-in pages, cookies, CDP bridge, background tabs, and batch actions.
+- `tmwd_browser`: primary path for real browser tasks, logged-in pages, existing tabs, cookies, CDP bridge, background tabs, batch actions, downloads/uploads, file chooser planning, clipboard write/paste wrappers, and managed tab lifecycle.
 - `js-reverse`: primary path for signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context.
-- `open_browser_use`: keep installed as a secondary official Chrome automation path for handoff/deliverable tab lifecycle, downloads/uploads, file chooser/clipboard helpers, and OBU-specific diagnostics.
 - in-app Browser: localhost/file previews without Chrome profile state.
 - Computer Use: desktop UI and pure visual pointer/keyboard actions.
 - `remote_cdp`: explicit debug Chrome/CI/JS reverse protocol work, not ordinary login-state tasks.
+
+Validate the explicit remote CDP path with `npm run check:remote-cdp`. The gate
+launches an isolated headless Chrome profile and local fixture page, then runs
+doctor + live checks against that temporary `remote_cdp` endpoint. Set
+`CHROME_BIN=/path/to/chrome` when Chrome is not installed in a default location.
+
+## Wrapper tools
+
+- `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
+- `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
+- `browser_tab_lifecycle`: `create_managed`, `mark_keep`, `list_managed`, `close_unkept`. `close_unkept` only closes tabs created by this wrapper and ignores unmanaged user tabs.
+- `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
 ## JS reverse boundary
 

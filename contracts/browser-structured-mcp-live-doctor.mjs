@@ -14,6 +14,37 @@ function isRemoteCdpMode(mode) {
   return mode === "remote_cdp" || mode === "cdp";
 }
 
+function isTmwdReadyPath(readiness) {
+  return readiness?.ready === true
+    && (readiness.path === "tmwd_ws" || readiness.path === "tmwd_link");
+}
+
+function isCdpReadyPath(readiness) {
+  return readiness?.ready === true && readiness.path === "cdp";
+}
+
+function buildSuggestions(cli, readiness) {
+  const suggestions = [
+    "For TMWD path, run: npm run hub:start",
+    "Install or enable the TMWD browser extension, then keep a Chrome/Edge tab open.",
+  ];
+  if (isRemoteCdpMode(cli.tmwd_mode)) {
+    return [
+      "For remote-debugging CDP path, launch Chrome with --remote-debugging-port=9222",
+      "Use --allow-empty-tabs when checking connectivity only (without active tabs/sessions).",
+      "Then run live contract: npm run check:live",
+    ];
+  }
+  if (cli.tmwd_mode === "auto" && !isTmwdReadyPath(readiness) && !isCdpReadyPath(readiness)) {
+    suggestions.push("For remote-debugging CDP path, launch Chrome with --remote-debugging-port=9222");
+  }
+  suggestions.push(
+    "Use --allow-empty-tabs when checking connectivity only (without active tabs/sessions).",
+    "Then run live contract: npm run check:live",
+  );
+  return suggestions;
+}
+
 function parseArgs(argv) {
   const parsed = {
     timeout_ms: 1_500,
@@ -470,12 +501,7 @@ async function run() {
     allow_empty_tabs: cli.allow_empty_tabs,
     readiness,
     checks,
-    suggestions: [
-      "For TMWD path, run: npm run hub:start",
-      "For remote-debugging CDP path, launch Chrome with --remote-debugging-port=9222",
-      "Use --allow-empty-tabs when checking connectivity only (without active tabs/sessions).",
-      "Then run live contract: npm run check:live",
-    ],
+    suggestions: buildSuggestions(cli, readiness),
   };
 
   process.stdout.write(`${JSON.stringify(result)}\n`);

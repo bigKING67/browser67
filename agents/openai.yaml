@@ -1,0 +1,16 @@
+interface:
+  display_name: "TMWD Browser MCP"
+  short_description: "Use tmwd_browser for real Chrome/Edge profile automation"
+  default_prompt: "Use tmwd_browser for logged-in Chrome/Edge pages, current tabs, CDP bridge, downloads/uploads, clipboard write/paste wrappers, and managed tab lifecycle."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "tmwd_browser"
+      description: "Primary real-browser MCP server for TMWD-backed Chrome/Edge automation and wrappers."
+    - type: "mcp"
+      value: "js-reverse"
+      description: "TMWD-backed JS reverse MCP for signature tracing, hook sampling, and evidence export."
+
+policy:
+  allow_implicit_invocation: true

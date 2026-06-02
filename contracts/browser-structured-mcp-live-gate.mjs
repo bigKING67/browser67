@@ -42,6 +42,25 @@ function isRemoteCdpMode(mode) {
   return mode === "remote_cdp" || mode === "cdp";
 }
 
+function isTmwdReadyPath(readiness) {
+  return readiness?.ready === true
+    && (readiness.path === "tmwd_ws" || readiness.path === "tmwd_link");
+}
+
+function isCdpReadyPath(readiness) {
+  return readiness?.ready === true && readiness.path === "cdp";
+}
+
+function shouldSuggestRemoteCdp(config, doctorPayload) {
+  if (isRemoteCdpMode(config.tmwd_mode)) {
+    return true;
+  }
+  if (config.tmwd_mode === "tmwd") {
+    return false;
+  }
+  return !isTmwdReadyPath(doctorPayload?.readiness) && !isCdpReadyPath(doctorPayload?.readiness);
+}
+
 function parseArgs(argv) {
   const parsed = {
     timeout_ms: 12_000,
@@ -278,13 +297,23 @@ function emitAndReturn(config, payload) {
   }
 }
 
-function doctorHints(config) {
-  const hints = [
-    "Run TMWD hub: npm run hub:start",
-    "OR launch a remote-debugging CDP Chrome: --remote-debugging-port=9222",
+function doctorHints(config, doctorPayload) {
+  const hints = [];
+  if (isRemoteCdpMode(config.tmwd_mode)) {
+    hints.push("Launch remote-debugging CDP Chrome: --remote-debugging-port=9222");
+  } else {
+    hints.push(
+      "Run TMWD hub: npm run hub:start",
+      "Install or enable the TMWD browser extension, then keep a Chrome/Edge tab open.",
+    );
+  }
+  if (!isRemoteCdpMode(config.tmwd_mode) && shouldSuggestRemoteCdp(config, doctorPayload)) {
+    hints.push("Optional remote-debugging CDP debug path: launch Chrome with --remote-debugging-port=9222");
+  }
+  hints.push(
     "Then retry gate: npm run check:live",
     `Current mode=${config.tmwd_mode} transport=${config.tmwd_transport}`,
-  ];
+  );
   if (config.ensure_tmwd_hub !== true) {
     hints.push("Gate auto-ensure is disabled: remove --no-ensure-tmwd-hub to allow auto-start.");
   }
@@ -526,7 +555,7 @@ async function run() {
       doctor: doctorPayload,
       ensure_tmwd_hub: ensureTmwdHubState,
       session_wait: sessionReadyWaitState,
-      hints: doctorHints(config),
+      hints: doctorHints(config, doctorPayload),
     });
     return;
   }
@@ -549,7 +578,7 @@ async function run() {
       live_payload: livePayload,
       live_stdout: String(liveResult.stdout ?? "").trim(),
       live_stderr: String(liveResult.stderr ?? "").trim(),
-      hints: doctorHints(config),
+      hints: doctorHints(config, doctorPayload),
     });
     return;
   }

@@ -126,6 +126,24 @@ function unavailableApiCheck(endpoint) {
   };
 }
 
+const remoteDebuggingSuggestion = "For remote-debugging CDP path, launch Chrome with --remote-debugging-port=9222";
+
+function doctorSuggestions({ ok, mode, path }) {
+  const tmwdReady = ok === true && (path === "tmwd_ws" || path === "tmwd_link");
+  const cdpReady = ok === true && path === "cdp";
+  if (mode === "remote_cdp" || mode === "cdp") {
+    return [remoteDebuggingSuggestion];
+  }
+  const suggestions = [
+    "For TMWD path, run: npm run hub:start",
+    "Install or enable the TMWD browser extension, then keep a Chrome/Edge tab open.",
+  ];
+  if (mode === "auto" && !tmwdReady && !cdpReady) {
+    suggestions.push(remoteDebuggingSuggestion);
+  }
+  return suggestions;
+}
+
 function buildDoctorPayload({ ok, mode = "auto", path = "tmwd_ws", reason = "auto_has_route" }) {
   const tmwdReachable = path === "tmwd_ws" || path === "tmwd_link";
   return {
@@ -166,10 +184,7 @@ function buildDoctorPayload({ ok, mode = "auto", path = "tmwd_ws", reason = "aut
           page_count: 0,
         },
       },
-      suggestions: [
-        "For TMWD path, run: npm run hub:start",
-        "For remote-debugging CDP path, launch Chrome with --remote-debugging-port=9222",
-      ],
+      suggestions: doctorSuggestions({ ok, mode, path }),
     },
     ensure_tmwd_hub: {
       attempted: false,
@@ -201,8 +216,26 @@ function run() {
     path: "none",
     reason: "auto_no_route",
   });
+  const tmwdBlockedPayload = buildDoctorPayload({
+    ok: false,
+    mode: "tmwd",
+    path: "none",
+    reason: "tmwd_no_route",
+  });
   validateSchemaValue(schema, schema, okPayload);
   validateSchemaValue(schema, schema, blockedPayload);
+  validateSchemaValue(schema, schema, tmwdBlockedPayload);
+  const remoteModePayload = buildDoctorPayload({
+    ok: false,
+    mode: "remote_cdp",
+    path: "cdp",
+    reason: "cdp_unavailable",
+  });
+  validateSchemaValue(schema, schema, remoteModePayload);
+  assert.equal(okPayload.doctor.suggestions.includes(remoteDebuggingSuggestion), false);
+  assert.equal(blockedPayload.doctor.suggestions.includes(remoteDebuggingSuggestion), true);
+  assert.equal(tmwdBlockedPayload.doctor.suggestions.includes(remoteDebuggingSuggestion), false);
+  assert.equal(remoteModePayload.doctor.suggestions.includes(remoteDebuggingSuggestion), true);
 
   const missingStableField = structuredClone(okPayload);
   delete missingStableField.doctor.readiness.path;
@@ -214,7 +247,7 @@ function run() {
   process.stdout.write(`${JSON.stringify({
     ok: true,
     schema_path: schemaPath,
-    validated_examples: 2,
+    validated_examples: 4,
     required_top_level: schema.required,
     doctor_path_enum: schema.properties.doctor.properties.readiness.properties.path.enum,
   })}\n`);
