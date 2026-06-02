@@ -225,7 +225,8 @@ function resolveExecuteJsScriptInput(args) {
     };
   }
   return {
-    source: "script",
+    missing: true,
+    source: "missing",
     value: "",
   };
 }

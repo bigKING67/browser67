@@ -1,4 +1,5 @@
 import { nowIso, resolveTmwdTransport } from "./common.mjs";
+import { makeJsonTextContent } from "./mcp-result.mjs";
 
 function makeErrorPayload(tool, error) {
   const message = String(error?.message ?? error ?? "unknown error");
@@ -20,19 +21,16 @@ function makeErrorPayload(tool, error) {
   return {
     isError: true,
     content: [
-      {
-        type: "json",
-        json: {
-          status: "error",
-          tool,
-          error: message,
-          error_code: errorCode,
-          retryable,
-          transport_attempts: transportAttempts,
-          details: errorDetails,
-          at: nowIso(),
-        },
-      },
+      makeJsonTextContent({
+        status: "error",
+        tool,
+        error: message,
+        error_code: errorCode,
+        retryable,
+        transport_attempts: transportAttempts,
+        details: errorDetails,
+        at: nowIso(),
+      }),
     ],
   };
 }

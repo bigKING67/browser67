@@ -20,9 +20,16 @@ import {
   fetchCdpTargets,
 } from "./cdp-runtime.mjs";
 import { runBridgeCommand } from "./bridge-commands.mjs";
+import {
+  handleBrowserClipboardOps,
+  handleBrowserDownloadOps,
+  handleBrowserFileOps,
+  handleBrowserTabLifecycle,
+} from "./browser-wrappers.mjs";
 import { extractActionableNodes } from "./content-extraction.mjs";
 import {
   classifyBrowserErrorCode,
+  createToolError,
   isRetryableBrowserErrorCode,
   makeErrorPayload,
 } from "./errors.mjs";
@@ -158,6 +165,14 @@ async function getTransientTexts(args) {
 }
 
 async function handleBrowserExecuteJs(args) {
+  const scriptInput = resolveExecuteJsScriptInput(args ?? {});
+  if (scriptInput.missing === true) {
+    throw createToolError(
+      "INVALID_ARGUMENT",
+      "browser_execute_js requires either script or code",
+      { details: { accepted_fields: ["script", "code"] } },
+    );
+  }
   let preferred = null;
   try {
     preferred = await resolvePreferredBrowserContext(args ?? {});
@@ -212,7 +227,6 @@ async function handleBrowserExecuteJs(args) {
       },
     };
   }
-  const scriptInput = resolveExecuteJsScriptInput(args ?? {});
   const command = parseBridgeCommand(scriptInput.value);
   let jsReturn = null;
   let error = "";
@@ -302,7 +316,16 @@ async function handleBrowserExecuteJs(args) {
       syncSessionRegistry(afterTargets);
     } else {
       const executed = await cdpEvaluateScript(args, String(scriptInput.value ?? ""));
-      jsReturn = executed.result.value;
+      const cdpValue = executed.result.value;
+      if (cdpValue && typeof cdpValue === "object" && Object.prototype.hasOwnProperty.call(cdpValue, "ok")) {
+        if (cdpValue.ok === false) {
+          error = String(cdpValue.error?.message ?? cdpValue.error ?? "cdp script failed");
+        } else {
+          jsReturn = cdpValue.data;
+        }
+      } else {
+        jsReturn = cdpValue;
+      }
       tabId = executed.target.id;
       selection = executed.result.selection;
       afterTargets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
@@ -577,6 +600,18 @@ async function dispatchToolCall(name, args) {
     }
     if (name === "browser_native_input") {
       return makeResult(await handleBrowserNativeInput(args));
+    }
+    if (name === "browser_file_ops") {
+      return makeResult(await handleBrowserFileOps(args));
+    }
+    if (name === "browser_download_ops") {
+      return makeResult(await handleBrowserDownloadOps(args));
+    }
+    if (name === "browser_tab_lifecycle") {
+      return makeResult(await handleBrowserTabLifecycle(args));
+    }
+    if (name === "browser_clipboard_ops") {
+      return makeResult(await handleBrowserClipboardOps(args));
     }
     return {
       isError: true,

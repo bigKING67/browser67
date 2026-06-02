@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createRpcClient } from "./browser-structured-mcp-contract/rpc-client.mjs";
-import { firstJsonContent } from "./browser-structured-mcp-contract/rpc-content.mjs";
+import {
+  assertTextJsonContent,
+  firstJsonContent,
+} from "./browser-structured-mcp-contract/rpc-content.mjs";
+import { assertOpenAiToolSchemaCompatibility } from "./browser-structured-mcp-contract/schema-compat.mjs";
 import {
   startExecuteErrorTmwdLinkServer,
   startHangingTmwdLinkServer,
@@ -46,6 +53,7 @@ async function run() {
   const rpc = createRpcClient();
   let hangingTmwdLinkServer;
   let executeErrorTmwdLinkServer;
+  let tmpDownloadDir;
   try {
     hangingTmwdLinkServer = await startHangingTmwdLinkServer();
     executeErrorTmwdLinkServer = await startExecuteErrorTmwdLinkServer();
@@ -67,6 +75,7 @@ async function run() {
 
     const toolsList = await rpc.call("tools/list", {}, cli.timeout_ms);
     const tools = Array.isArray(toolsList?.result?.tools) ? toolsList.result.tools : [];
+    assertOpenAiToolSchemaCompatibility(tools, "browser-structured-mcp");
     const names = tools
       .map((entry) => (typeof entry?.name === "string" ? entry.name : ""))
       .filter((name) => name.length > 0);
@@ -75,6 +84,10 @@ async function run() {
     assert.equal(names.includes("browser_extract"), true);
     assert.equal(names.includes("browser_tab_ops"), true);
     assert.equal(names.includes("browser_native_input"), true);
+    assert.equal(names.includes("browser_file_ops"), true);
+    assert.equal(names.includes("browser_download_ops"), true);
+    assert.equal(names.includes("browser_tab_lifecycle"), true);
+    assert.equal(names.includes("browser_clipboard_ops"), true);
     const executeJsTool = tools.find((entry) => entry?.name === "browser_execute_js");
     assert.equal(
       executeJsTool?.inputSchema?.properties?.native_auto_fallback?.type,
@@ -109,6 +122,23 @@ async function run() {
       "object",
     );
 
+    const missingScriptCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_execute_js",
+        arguments: {
+          tmwd_mode: "tmwd",
+          tmwd_transport: "ws",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(missingScriptCall?.result?.isError, true);
+    assertTextJsonContent(missingScriptCall.result, "browser_execute_js missing script error");
+    const missingScriptPayload = firstJsonContent(missingScriptCall.result);
+    assert.equal(missingScriptPayload?.error_code, "INVALID_ARGUMENT");
+    assert.equal(missingScriptPayload?.retryable, false);
+
     const nativeCapabilitiesCall = await rpc.call(
       "tools/call",
       {
@@ -120,6 +150,7 @@ async function run() {
       cli.timeout_ms,
     );
     assert.equal(nativeCapabilitiesCall?.result?.isError, undefined);
+    assertTextJsonContent(nativeCapabilitiesCall.result, "browser_native_input capabilities result");
     const nativeCapabilitiesPayload = firstJsonContent(nativeCapabilitiesCall.result);
     assert.equal(nativeCapabilitiesPayload?.status, "success");
     assert.equal(nativeCapabilitiesPayload?.action, "capabilities");
@@ -149,6 +180,218 @@ async function run() {
     assert.equal(typeof nativeDryRunPayload?.next_step, "string");
     assert.equal(typeof nativeDryRunPayload?.capabilities_summary?.supported, "boolean");
 
+    const filePlanCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_file_ops",
+        arguments: {
+          action: "native_file_chooser_plan",
+          selector: "input[type=file]",
+          files: ["/tmp/example-upload.txt"],
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(filePlanCall?.result?.isError, undefined);
+    assertTextJsonContent(filePlanCall.result, "browser_file_ops success result");
+    const filePlanPayload = firstJsonContent(filePlanCall.result);
+    assert.equal(filePlanPayload?.status, "success");
+    assert.equal(filePlanPayload?.action, "native_file_chooser_plan");
+    assert.equal(filePlanPayload?.executable, false);
+
+    const fileMissingCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_file_ops",
+        arguments: {
+          action: "set_input_files",
+          selector: "input[type=file]",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(fileMissingCall?.result?.isError, true);
+    assertTextJsonContent(fileMissingCall.result, "browser_file_ops missing args error");
+    const fileMissingPayload = firstJsonContent(fileMissingCall.result);
+    assert.equal(fileMissingPayload?.error_code, "INVALID_ARGUMENT");
+
+    const fileUnsupportedCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_file_ops",
+        arguments: {
+          action: "unsupported_file_action",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(fileUnsupportedCall?.result?.isError, true);
+    const fileUnsupportedPayload = firstJsonContent(fileUnsupportedCall.result);
+    assert.equal(fileUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+
+    tmpDownloadDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-download-contract-"));
+    const downloadPrepareCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_download_ops",
+        arguments: {
+          action: "prepare",
+          download_dir: tmpDownloadDir,
+          set_behavior: false,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(downloadPrepareCall?.result?.isError, undefined);
+    assertTextJsonContent(downloadPrepareCall.result, "browser_download_ops prepare result");
+    const downloadPreparePayload = firstJsonContent(downloadPrepareCall.result);
+    assert.equal(downloadPreparePayload?.status, "success");
+    assert.equal(downloadPreparePayload?.action, "prepare");
+    assert.equal(typeof downloadPreparePayload?.token, "string");
+
+    const downloadMissingCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_download_ops",
+        arguments: {
+          action: "wait",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(downloadMissingCall?.result?.isError, true);
+    assertTextJsonContent(downloadMissingCall.result, "browser_download_ops missing args error");
+    const downloadMissingPayload = firstJsonContent(downloadMissingCall.result);
+    assert.equal(downloadMissingPayload?.error_code, "INVALID_ARGUMENT");
+
+    const downloadUnsupportedCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_download_ops",
+        arguments: {
+          action: "unsupported_download_action",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(downloadUnsupportedCall?.result?.isError, true);
+    const downloadUnsupportedPayload = firstJsonContent(downloadUnsupportedCall.result);
+    assert.equal(downloadUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+
+    const tabCreateDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "create_managed",
+          url: "about:blank",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabCreateDryRunCall?.result?.isError, undefined);
+    assertTextJsonContent(tabCreateDryRunCall.result, "browser_tab_lifecycle create dry-run result");
+    const tabCreateDryRunPayload = firstJsonContent(tabCreateDryRunCall.result);
+    assert.equal(tabCreateDryRunPayload?.status, "success");
+    assert.equal(tabCreateDryRunPayload?.created, false);
+    assert.equal(typeof tabCreateDryRunPayload?.managed_tab?.tab_id, "string");
+
+    const tabMissingCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "create_managed",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabMissingCall?.result?.isError, true);
+    assertTextJsonContent(tabMissingCall.result, "browser_tab_lifecycle missing args error");
+    const tabMissingPayload = firstJsonContent(tabMissingCall.result);
+    assert.equal(tabMissingPayload?.error_code, "INVALID_ARGUMENT");
+
+    const tabUnsupportedCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "unsupported_tab_action",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabUnsupportedCall?.result?.isError, true);
+    const tabUnsupportedPayload = firstJsonContent(tabUnsupportedCall.result);
+    assert.equal(tabUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+
+    const tabCloseUnmanagedCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "close_unkept",
+          tab_id: "user-tab-not-managed",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabCloseUnmanagedCall?.result?.isError, undefined);
+    assertTextJsonContent(tabCloseUnmanagedCall.result, "browser_tab_lifecycle close_unkept result");
+    const tabCloseUnmanagedPayload = firstJsonContent(tabCloseUnmanagedCall.result);
+    assert.equal(tabCloseUnmanagedPayload?.status, "success");
+    assert.deepEqual(tabCloseUnmanagedPayload?.unmanaged_tabs_ignored, ["user-tab-not-managed"]);
+
+    const clipboardDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_clipboard_ops",
+        arguments: {
+          action: "write_text",
+          text: "contract clipboard text",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(clipboardDryRunCall?.result?.isError, undefined);
+    assertTextJsonContent(clipboardDryRunCall.result, "browser_clipboard_ops success result");
+    const clipboardDryRunPayload = firstJsonContent(clipboardDryRunCall.result);
+    assert.equal(clipboardDryRunPayload?.status, "success");
+    assert.equal(clipboardDryRunPayload?.action, "write_text");
+    assert.equal(clipboardDryRunPayload?.read_supported, false);
+
+    const clipboardMissingCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_clipboard_ops",
+        arguments: {
+          action: "write_text",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(clipboardMissingCall?.result?.isError, true);
+    assertTextJsonContent(clipboardMissingCall.result, "browser_clipboard_ops missing args error");
+    const clipboardMissingPayload = firstJsonContent(clipboardMissingCall.result);
+    assert.equal(clipboardMissingPayload?.error_code, "INVALID_ARGUMENT");
+
+    const clipboardUnsupportedCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_clipboard_ops",
+        arguments: {
+          action: "read_text",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(clipboardUnsupportedCall?.result?.isError, true);
+    const clipboardUnsupportedPayload = firstJsonContent(clipboardUnsupportedCall.result);
+    assert.equal(clipboardUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+
     const toolCall = await rpc.call(
       "tools/call",
       {
@@ -164,6 +407,7 @@ async function run() {
       cli.timeout_ms,
     );
     assert.equal(toolCall?.result?.isError, true);
+    assertTextJsonContent(toolCall.result, "browser_execute_js transport error");
     const errorPayload = firstJsonContent(toolCall.result);
     assert.equal(typeof errorPayload?.error_code, "string");
     assert.equal(typeof errorPayload?.retryable, "boolean");
@@ -511,6 +755,11 @@ async function run() {
         native_input_dry_run_next_step: nativeDryRunPayload?.next_step,
         native_input_unsupported_ok: true,
         native_input_error_code: nativeUnsupportedPayload?.error_code,
+        wrapper_file_ops_ok: true,
+        wrapper_download_ops_ok: true,
+        wrapper_tab_lifecycle_ok: true,
+        wrapper_tab_lifecycle_unmanaged_ignored: tabCloseUnmanagedPayload?.unmanaged_tabs_ignored,
+        wrapper_clipboard_ops_ok: true,
         ws_endpoint: cli.ws_endpoint,
       })}\n`,
     );
@@ -521,6 +770,9 @@ async function run() {
     }
     if (executeErrorTmwdLinkServer && typeof executeErrorTmwdLinkServer.close === "function") {
       await executeErrorTmwdLinkServer.close();
+    }
+    if (tmpDownloadDir) {
+      await fs.rm(tmpDownloadDir, { recursive: true, force: true });
     }
   }
 }

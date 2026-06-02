@@ -231,9 +231,24 @@ function createMcpClient(serverPath) {
     if (!Array.isArray(content)) {
       throw new Error(`tool_call_bad_payload ${name}: missing content`);
     }
-    const jsonPayload = content.find((item) => item?.type === "json")?.json;
+    const jsonPayload = content
+      .map((item) => {
+        if (item?.type === "json" && typeof item.json === "object" && item.json !== null) {
+          return item.json;
+        }
+        if (item?.type === "text" && typeof item.text === "string") {
+          try {
+            const parsed = JSON.parse(item.text);
+            return typeof parsed === "object" && parsed !== null ? parsed : null;
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      })
+      .find(Boolean);
     if (!jsonPayload) {
-      throw new Error(`tool_call_bad_payload ${name}: missing json payload`);
+      throw new Error(`tool_call_bad_payload ${name}: missing JSON payload`);
     }
     return jsonPayload;
   }

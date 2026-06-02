@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { makeResult } from "./mcp-result.mjs";
+import { makeJsonTextContent, makeResult } from "./mcp-result.mjs";
 import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
@@ -109,10 +109,8 @@ const TOOL_SCHEMAS = Object.fromEntries(
           script_id: { type: "string" },
           source_url: { type: "string" },
           keywords: {
-            oneOf: [
-              { type: "string" },
-              { type: "array", items: { type: "string" } },
-            ],
+            type: "string",
+            description: "Pipe-separated keywords, for example: sign|token|crypto.",
           },
           pattern: { type: "string" },
           request_id: { type: "string" },
@@ -1200,14 +1198,13 @@ function handleRequest(request) {
       .catch((error) => {
         sendResponse(id, {
           isError: true,
-          content: [{
-            type: "json",
-            json: {
+          content: [
+            makeJsonTextContent({
               ok: false,
               tool: toolName,
               error: String(error?.message ?? error),
-            },
-          }],
+            }),
+          ],
         });
       });
     return;

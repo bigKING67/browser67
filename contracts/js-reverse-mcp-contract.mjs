@@ -4,7 +4,11 @@ import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { firstJsonContent } from "./browser-structured-mcp-contract/rpc-content.mjs";
+import {
+  assertTextJsonContent,
+  firstJsonContent,
+} from "./browser-structured-mcp-contract/rpc-content.mjs";
+import { assertOpenAiToolSchemaCompatibility } from "./browser-structured-mcp-contract/schema-compat.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -180,6 +184,7 @@ async function run() {
 
     const toolsList = await rpc.call("tools/list", {}, cli.timeout_ms);
     const tools = Array.isArray(toolsList?.result?.tools) ? toolsList.result.tools : [];
+    assertOpenAiToolSchemaCompatibility(tools, "js-reverse");
     const names = tools
       .map((entry) => (typeof entry?.name === "string" ? entry.name : ""))
       .filter((name) => name.length > 0);
@@ -211,6 +216,7 @@ async function run() {
       cli.timeout_ms,
     );
     assert.equal(understandCall?.result?.isError, undefined);
+    assertTextJsonContent(understandCall.result, "js-reverse understand_code result");
     const understandPayload = firstJsonContent(understandCall.result);
     assert.equal(understandPayload?.ok, true);
     assert.equal(understandPayload?.suspicious_keywords?.includes("sign"), true);
@@ -255,6 +261,7 @@ async function run() {
       cli.timeout_ms,
     );
     const unsupportedPayload = firstJsonContent(unsupportedCall.result);
+    assertTextJsonContent(unsupportedCall.result, "js-reverse unsupported debugger result");
     assert.equal(unsupportedPayload?.status, "not_supported");
     assert.equal(typeof unsupportedPayload?.fallback, "string");
 

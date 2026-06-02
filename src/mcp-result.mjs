@@ -1,12 +1,16 @@
+function makeJsonTextContent(payload) {
+  return {
+    type: "text",
+    text: JSON.stringify(payload),
+  };
+}
+
 function makeResult(payload) {
   return {
     content: [
-      {
-        type: "json",
-        json: payload,
-      },
+      makeJsonTextContent(payload),
     ],
   };
 }
 
-export { makeResult };
+export { makeJsonTextContent, makeResult };
