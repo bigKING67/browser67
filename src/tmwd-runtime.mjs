@@ -445,8 +445,12 @@ async function resolvePreferredBrowserContext(args) {
 async function executeTmwdJs(args, tmwdContext, code) {
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms);
   if (tmwdContext.tmwd_transport === "ws") {
+    const numericTargetTabId = Number(tmwdContext.target.id);
+    const bridgeTabId = Number.isFinite(numericTargetTabId)
+      ? numericTargetTabId
+      : tmwdContext.target.id;
     const codePayload = typeof code === "object" && code !== null
-      ? { tabId: tmwdContext.target.id, ...code }
+      ? { ...code, tabId: code.tabId ?? bridgeTabId }
       : String(code ?? "");
     const response = await sendTmwdWsRequest(
       {
@@ -454,7 +458,7 @@ async function executeTmwdJs(args, tmwdContext, code) {
         tmwd_ws_endpoint: tmwdContext.endpoint,
       },
       {
-        tabId: tmwdContext.target.id,
+        tabId: bridgeTabId,
         code: codePayload,
       },
       Math.min(20_000, timeoutMs + 2_000),

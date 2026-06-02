@@ -346,16 +346,20 @@ async function collectStatus(config) {
       detail: "skipped_tcp_unreachable",
     };
   const statePid = Number(state?.pid ?? NaN);
-  const discoveredPid = Number.isFinite(statePid)
+  const statePidAlive = Number.isFinite(statePid) ? isPidAlive(statePid) : false;
+  const scannedPid = !statePidAlive && shouldUseProcessScanFallback(config)
+    ? discoverHubPidByPs()
+    : null;
+  const discoveredPid = statePidAlive
     ? statePid
-    : (shouldUseProcessScanFallback(config) ? discoverHubPidByPs() : null);
+    : (Number.isFinite(scannedPid) ? scannedPid : null);
   const pidAlive = Number.isFinite(discoveredPid) ? isPidAlive(discoveredPid) : false;
   const running = wsTcp.reachable || linkTcp.reachable;
   const tmwdSignatureOk = linkCommand.ok === true;
   const conflictSuspected = running && !Number.isFinite(discoveredPid) && !tmwdSignatureOk;
-  const pidSource = Number.isFinite(statePid)
+  const pidSource = statePidAlive
     ? "state"
-    : (Number.isFinite(discoveredPid) ? "process_scan" : "none");
+    : (Number.isFinite(scannedPid) ? "process_scan" : "none");
   const effectiveState = {
     ...(state ?? {}),
     ...(Number.isFinite(discoveredPid) ? { pid: discoveredPid } : {}),

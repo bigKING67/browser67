@@ -268,7 +268,7 @@ function sendWsPayload(socket, payload) {
   socket.send(JSON.stringify(payload));
 }
 
-function relayExecToExtension({ sessionId, code, timeoutMs, replySocket = null, replyId = "" }) {
+async function relayExecToExtension({ sessionId, code, timeoutMs, replySocket = null, replyId = "" }) {
   ensureExtensionSocketReady();
   const tabId = Number(sessionId);
   if (!Number.isFinite(tabId)) {
@@ -358,7 +358,10 @@ function handleControllerRequest(socket, message) {
   const bridgeCmd = code && typeof code === "object"
     ? String(code.cmd ?? "").trim()
     : "";
-  if (bridgeCmd === "tabs") {
+  const bridgeMethod = code && typeof code === "object"
+    ? String(code.method ?? "").trim().toLowerCase()
+    : "";
+  if (bridgeCmd === "tabs" && (!bridgeMethod || bridgeMethod === "list")) {
     const tabs = listActiveSessions().map((session) => ({
       id: session.id,
       url: session.url,
