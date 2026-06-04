@@ -38,6 +38,7 @@
     "check:remote-cdp": "node contracts/browser-structured-mcp-remote-cdp-contract.mjs",
     "check:live": "node contracts/browser-structured-mcp-live-gate.mjs --tmwd-mode tmwd --tmwd-transport auto --disable-event-log",
     "check:live:doctor": "node contracts/browser-structured-mcp-live-gate.mjs --doctor-only --tmwd-mode tmwd --tmwd-transport auto --disable-event-log",
+    "check:managed-tab-live": "node contracts/browser-managed-tab-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto --require-tabs-get",
     "launchd:install": "node scripts/install-launchd.mjs",
     "launchd:uninstall": "node scripts/uninstall-launchd.mjs",
     "verify": "node scripts/verify.mjs",

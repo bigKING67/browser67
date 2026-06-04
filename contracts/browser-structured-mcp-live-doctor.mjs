@@ -2,6 +2,8 @@
 import { Socket } from "node:net";
 import WebSocket from "ws";
 
+import { CAPABILITIES } from "../src/capabilities.mjs";
+
 function normalizeTmwdMode(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === "auto" || normalized === "tmwd" || normalized === "remote_cdp" || normalized === "cdp") {
@@ -499,6 +501,7 @@ async function run() {
     mode: cli.tmwd_mode,
     transport: cli.tmwd_transport,
     allow_empty_tabs: cli.allow_empty_tabs,
+    capabilities: CAPABILITIES,
     readiness,
     checks,
     suggestions: buildSuggestions(cli, readiness),

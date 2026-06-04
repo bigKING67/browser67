@@ -73,6 +73,24 @@ function requireNumericTabId(raw) {
   return tabId;
 }
 
+function includeUnscriptableTabs(msg) {
+  return msg.includeUnscriptable === true
+    || msg.include_unscriptable === true
+    || msg.includeInternal === true
+    || msg.include_internal === true;
+}
+
+function tabSummary(tab) {
+  return {
+    id: tab.id,
+    url: tab.url || '',
+    title: tab.title || '',
+    active: tab.active === true,
+    windowId: tab.windowId,
+    scriptable: isScriptable(tab.url)
+  };
+}
+
 async function handleTabs(msg) {
   try {
     const method = msg.method || 'list';
@@ -89,7 +107,11 @@ async function handleTabs(msg) {
     if (method === 'switch') {
       const tab = await chrome.tabs.update(requireNumericTabId(msg.tabId), { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
-      return { ok: true, data: { id: tab.id, url: tab.url, title: tab.title, active: tab.active, windowId: tab.windowId } };
+      return { ok: true, data: tabSummary(tab) };
+    }
+    if (method === 'get') {
+      const tab = await chrome.tabs.get(requireNumericTabId(msg.tabId));
+      return { ok: true, data: tabSummary(tab) };
     }
     if (method === 'close') {
       const tabId = requireNumericTabId(msg.tabId);
@@ -97,8 +119,9 @@ async function handleTabs(msg) {
       return { ok: true, data: { id: tabId, closed: true } };
     }
     if (method === 'list') {
-      const tabs = (await chrome.tabs.query({})).filter(t => isScriptable(t.url));
-      const data = tabs.map(t => ({ id: t.id, url: t.url, title: t.title, active: t.active, windowId: t.windowId }));
+      const tabs = await chrome.tabs.query({});
+      const visibleTabs = includeUnscriptableTabs(msg) ? tabs : tabs.filter(t => isScriptable(t.url));
+      const data = visibleTabs.map(t => tabSummary(t));
       return { ok: true, data };
     }
     return { ok: false, error: `unsupported tabs method: ${method}` };

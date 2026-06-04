@@ -8,6 +8,7 @@ import {
   normalizeTimeoutMs,
   randomId,
 } from "./common.mjs";
+import { CAPABILITIES } from "./capabilities.mjs";
 import {
   cdpEvaluateScript,
   cdpRunCommand,
@@ -27,6 +28,7 @@ import {
   extractCreatedTabId,
   findReusableManagedTab,
   getManagedTab,
+  isManagedTabWithinLiveGrace,
   listManagedTabRecords,
   managedTabGroups,
   managedTabPayload,
@@ -148,8 +150,7 @@ async function executeBrowserScript(args, body, input = {}) {
   };
 }
 
-async function executeTmwdCommand(args, command) {
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+async function executeTmwdCommandWithPreferred(args, preferred, command) {
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw createToolError(
       "TRANSPORT_UNAVAILABLE",
@@ -175,6 +176,11 @@ async function executeTmwdCommand(args, command) {
       title: result.context.target.title,
     },
   };
+}
+
+async function executeTmwdCommand(args, command) {
+  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  return executeTmwdCommandWithPreferred(args, preferred, command);
 }
 
 function dispatchFileInputEventsExpression(selector) {
@@ -587,6 +593,161 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function clampInteger(raw, fallback, min, max) {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function normalizeWaitOptions(args = {}) {
+  const waitUntilRaw = String(args.wait_until ?? args.waitUntil ?? "listed").trim().toLowerCase();
+  const waitUntil = waitUntilRaw === "none" ? "none" : "listed";
+  return {
+    wait_until: waitUntil,
+    wait_timeout_ms: clampInteger(args.wait_timeout_ms ?? args.waitTimeoutMs, 3_000, 0, 10_000),
+    wait_poll_ms: clampInteger(args.wait_poll_ms ?? args.waitPollMs, 100, 50, 1_000),
+  };
+}
+
+function normalizeTabSummary(raw) {
+  const row = raw?.data && typeof raw.data === "object" ? raw.data : raw;
+  if (!row || typeof row !== "object") {
+    return null;
+  }
+  const id = String(row.id ?? row.tab_id ?? row.tabId ?? row.sessionId ?? "").trim();
+  if (!id) {
+    return null;
+  }
+  const url = String(row.url ?? "");
+  return {
+    id,
+    url,
+    title: String(row.title ?? ""),
+    active: row.active === true,
+    windowId: row.windowId,
+    scriptable: row.scriptable === true || /^https?:/.test(url),
+  };
+}
+
+function normalizeTabList(raw) {
+  const rows = Array.isArray(raw)
+    ? raw
+    : (Array.isArray(raw?.data) ? raw.data : []);
+  return rows.map((row) => normalizeTabSummary(row)).filter((row) => row !== null);
+}
+
+function liveTabMap(liveTabs = []) {
+  return new Map(
+    (Array.isArray(liveTabs) ? liveTabs : [])
+      .map((item) => [String(item?.id ?? item?.tab_id ?? item?.tabId ?? "").trim(), item])
+      .filter(([id]) => id.length > 0),
+  );
+}
+
+async function readBrowserTabById(args, preferred, tabId) {
+  const normalizedTabId = String(tabId ?? "").trim();
+  if (!normalizedTabId) {
+    return null;
+  }
+  if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
+    try {
+      const got = await executeTmwdCommandWithPreferred(args, preferred, {
+        cmd: "tabs",
+        method: "get",
+        tabId: normalizedTabId,
+      });
+      const summary = normalizeTabSummary(got.value);
+      if (summary?.id === normalizedTabId) {
+        return summary;
+      }
+    } catch {
+      // Older extension builds may not have tabs.get; fall back to list.
+    }
+    try {
+      const listed = await executeTmwdCommandWithPreferred(args, preferred, {
+        cmd: "tabs",
+        method: "list",
+        includeUnscriptable: true,
+      });
+      return normalizeTabList(listed.value).find((tab) => tab.id === normalizedTabId) ?? null;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const targets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
+    syncSessionRegistry(targets);
+    const target = targets.find((item) => item.id === normalizedTabId);
+    return target ? normalizeTabSummary(target) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}) {
+  const waitOptions = normalizeWaitOptions(args ?? {});
+  const startedAt = Date.now();
+  if (waitOptions.wait_until === "none") {
+    return {
+      ...waitOptions,
+      ready: false,
+      ready_after_ms: 0,
+      tab: null,
+    };
+  }
+  let latestTab = null;
+  while (Date.now() - startedAt <= waitOptions.wait_timeout_ms) {
+    const tab = await readBrowserTabById(args, preferred, tabId);
+    if (tab) {
+      latestTab = tab;
+      if (String(tab.url ?? "").trim().length > 0) {
+        return {
+          ...waitOptions,
+          ready: true,
+          ready_after_ms: Date.now() - startedAt,
+          tab,
+        };
+      }
+    }
+    if (waitOptions.wait_timeout_ms === 0) {
+      break;
+    }
+    await sleep(Math.min(waitOptions.wait_poll_ms, Math.max(0, waitOptions.wait_timeout_ms - (Date.now() - startedAt))));
+  }
+  return {
+    ...waitOptions,
+    ready: false,
+    ready_after_ms: Date.now() - startedAt,
+    tab: latestTab,
+    ready_warning: `created tab was not visible before timeout (${String(waitOptions.wait_timeout_ms)}ms)`,
+    fallback_url: fallback.url,
+    fallback_title: fallback.title,
+  };
+}
+
+async function resolveManagedRecordLiveness(args, preferred, record, liveById) {
+  if (record.dry_run === true) {
+    return { live: true, reason: "dry_run" };
+  }
+  if (liveById?.has(record.tab_id)) {
+    return { live: true, reason: "live_session_registry" };
+  }
+  const exactTab = await readBrowserTabById(args, preferred, record.tab_id);
+  if (exactTab) {
+    return {
+      live: true,
+      reason: "tabs_get",
+      tab: exactTab,
+    };
+  }
+  if (isManagedTabWithinLiveGrace(record)) {
+    return { live: true, reason: "recent_grace" };
+  }
+  return { live: false, reason: "not_live" };
+}
+
 async function waitForStableDownloads(session, args) {
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms ?? 20_000);
   const pollMsRaw = Number(args?.poll_ms ?? 300);
@@ -730,7 +891,7 @@ async function createManagedTab(args, options = {}) {
   let transport = preferred.transport;
   let transportAttempts = Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [];
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    const commandResult = await executeTmwdCommand(args, {
+    const commandResult = await executeTmwdCommandWithPreferred(args, preferred, {
       cmd: "tabs",
       method: "create",
       url,
@@ -748,11 +909,13 @@ async function createManagedTab(args, options = {}) {
   if (!tabId) {
     throw createToolError("EXECUTION_ERROR", "managed tab create did not return tab id");
   }
+  const visible = await waitForManagedTabVisible(args, preferred, tabId, { url, title });
+  const visibleTab = visible.tab;
   const record = recordManagedTab({
     ...args,
     tab_id: tabId,
-    url,
-    title,
+    url: String(visibleTab?.url ?? "").trim() || url,
+    title: String(visibleTab?.title ?? title ?? ""),
     keep: args?.keep === true,
     dry_run: false,
     status: "open",
@@ -767,6 +930,10 @@ async function createManagedTab(args, options = {}) {
     owner: "tmwd",
     transport,
     transport_attempts: transportAttempts,
+    ready: visible.ready,
+    ready_after_ms: visible.ready_after_ms,
+    wait_until: visible.wait_until,
+    ready_warning: visible.ready_warning,
     managed_tab: managedTabPayload(record),
     ...sessionPointers(),
   };
@@ -797,7 +964,17 @@ async function selectOrCreateManagedTab(args) {
   }
   const preferred = await resolvePreferredBrowserContext(args ?? {});
   const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
-  const reusable = findReusableManagedTab(args, url, liveTabs);
+  const liveById = liveTabMap(liveTabs);
+  let reusable = findReusableManagedTab(args, url, liveTabs);
+  let reusableLiveness;
+  for (let index = 0; reusable.record && index < 5; index += 1) {
+    reusableLiveness = await resolveManagedRecordLiveness(args, preferred, reusable.record, liveById);
+    if (reusableLiveness.live === true) {
+      break;
+    }
+    deleteManagedTab(reusable.record.tab_id);
+    reusable = findReusableManagedTab(args, url, liveTabs);
+  }
   const unmanagedIgnored = summarizeUnmanagedMatches(args, url, liveTabs);
   if (reusable.record) {
     let record = reusable.record;
@@ -829,6 +1006,7 @@ async function selectOrCreateManagedTab(args) {
       owner: "tmwd",
       selected_by: reusable.selected_by,
       reuse_policy: reusable.policy,
+      liveness: reusableLiveness,
       managed_tab: managedTabPayload(record),
       unmanaged_tabs_ignored: unmanagedIgnored,
       navigation,
@@ -870,18 +1048,33 @@ function markManagedTabKeep(args) {
   };
 }
 
-function listManagedTabs() {
+async function listManagedTabs(args = {}) {
+  const includeDisconnected = args?.include_disconnected === true || args?.history === true;
+  const liveSessions = listSessionsSnapshot();
+  const sessions = includeDisconnected
+    ? listSessionsSnapshot({ include_disconnected: true })
+    : liveSessions;
+  const disconnectedSessions = includeDisconnected
+    ? sessions.filter((session) => session.active !== true)
+    : undefined;
+  const pruneStale = args?.prune_stale === true
+    ? await pruneStaleManagedTabs({ ...args, dry_run: args?.dry_run === true })
+    : undefined;
   return {
     status: "success",
     action: "list_managed",
+    capabilities: CAPABILITIES,
     managed_tabs: listManagedTabRecords({ include_closed: true }).map((record) => managedTabPayload(record)),
     groups: managedTabGroups(),
-    sessions: listSessionsSnapshot({ include_disconnected: true }),
+    live_sessions: liveSessions,
+    disconnected_sessions: disconnectedSessions,
+    sessions,
+    prune_stale: pruneStale,
     ...sessionPointers(),
   };
 }
 
-async function closeOneManagedTab(args, record) {
+async function closeOneManagedTab(args, record, preferred = null) {
   if (record.dry_run === true || args?.dry_run === true) {
     return {
       tab_id: record.tab_id,
@@ -890,9 +1083,9 @@ async function closeOneManagedTab(args, record) {
       reason: "dry_run",
     };
   }
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
-  if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    const result = await executeTmwdCommand(args, {
+  const resolved = preferred ?? await resolvePreferredBrowserContext(args ?? {});
+  if (resolved.transport === "tmwd_ws" || resolved.transport === "tmwd_link") {
+    const result = await executeTmwdCommandWithPreferred(args, resolved, {
       cmd: "tabs",
       method: "close",
       tabId: record.tab_id,
@@ -944,9 +1137,12 @@ async function closeUnkeptManagedTabs(args) {
     .filter((record) => record.keep !== true);
   const closed = [];
   const errors = [];
+  const preferred = args?.dry_run === true || candidates.length === 0
+    ? null
+    : await resolvePreferredBrowserContext(args ?? {});
   for (const record of candidates) {
     try {
-      const result = await closeOneManagedTab(args, record);
+      const result = await closeOneManagedTab(args, record, preferred);
       closed.push(result);
       if (args?.dry_run !== true && record.dry_run !== true) {
         updateManagedTab(record.tab_id, {
@@ -977,12 +1173,65 @@ async function closeUnkeptManagedTabs(args) {
   };
 }
 
+async function pruneStaleManagedTabs(args = {}) {
+  const records = listManagedTabRecords();
+  if (records.length === 0) {
+    return {
+      status: "success",
+      action: "prune_stale",
+      dry_run: args?.dry_run === true,
+      pruned_count: 0,
+      would_prune_count: 0,
+      pruned: [],
+      kept: [],
+      capabilities: CAPABILITIES,
+      ...sessionPointers(),
+    };
+  }
+  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
+  const liveById = liveTabMap(liveTabs);
+  const pruned = [];
+  const kept = [];
+  for (const record of records) {
+    const liveness = await resolveManagedRecordLiveness(args, preferred, record, liveById);
+    const payload = {
+      tab_id: record.tab_id,
+      workspace_key: record.workspace_key,
+      url: record.url,
+      reason: liveness.reason,
+    };
+    if (liveness.live === true) {
+      kept.push(payload);
+      continue;
+    }
+    pruned.push(payload);
+    if (args?.dry_run !== true) {
+      deleteManagedTab(record.tab_id);
+    }
+  }
+  return {
+    status: "success",
+    action: "prune_stale",
+    dry_run: args?.dry_run === true,
+    transport: preferred.transport,
+    transport_attempts: Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [],
+    pruned_count: args?.dry_run === true ? 0 : pruned.length,
+    would_prune_count: pruned.length,
+    pruned,
+    kept,
+    capabilities: CAPABILITIES,
+    ...sessionPointers(),
+  };
+}
+
 async function handleBrowserTabLifecycle(args) {
   const action = normalizeAction(args, [
     "create_managed",
     "select_or_create",
     "mark_keep",
     "list_managed",
+    "prune_stale",
     "close_unkept",
   ]);
   if (action === "select_or_create") {
@@ -996,6 +1245,9 @@ async function handleBrowserTabLifecycle(args) {
   }
   if (action === "list_managed") {
     return listManagedTabs(args);
+  }
+  if (action === "prune_stale") {
+    return pruneStaleManagedTabs(args);
   }
   return closeUnkeptManagedTabs(args);
 }

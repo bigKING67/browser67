@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { dirname, resolve } from "node:path";
 
@@ -10,6 +10,8 @@ const deletedTabIds = new Set();
 const OWNERSHIP_POLICIES = new Set(["tmwd_only", "fresh"]);
 const REUSE_SCOPES = new Set(["exact", "origin_path", "origin", "none"]);
 const RECENT_MANAGED_TAB_LIVE_GRACE_MS = 30_000;
+const REGISTRY_LOCK_TIMEOUT_MS = 2_000;
+const REGISTRY_LOCK_STALE_MS = 10_000;
 let registryLoaded = false;
 
 function expandUserPath(input) {
@@ -32,6 +34,57 @@ function resolveRegistryPath() {
 }
 
 const registryPath = resolveRegistryPath();
+
+function sleepSync(ms) {
+  const buffer = new SharedArrayBuffer(4);
+  Atomics.wait(new Int32Array(buffer), 0, 0, ms);
+}
+
+function acquireRegistryLock() {
+  const lockPath = `${registryPath}.lock`;
+  const startedAt = Date.now();
+  while (true) {
+    try {
+      mkdirSync(dirname(lockPath), { recursive: true });
+      mkdirSync(lockPath);
+      return { lockPath };
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+      let stale = false;
+      try {
+        const stat = statSync(lockPath);
+        stale = Date.now() - stat.mtimeMs > REGISTRY_LOCK_STALE_MS;
+      } catch {
+        stale = true;
+      }
+      if (stale) {
+        try {
+          rmdirSync(lockPath);
+          continue;
+        } catch {
+          // Another process may have refreshed or removed the lock.
+        }
+      }
+      if (Date.now() - startedAt > REGISTRY_LOCK_TIMEOUT_MS) {
+        throw new Error(`managed tab registry lock timeout: ${lockPath}`);
+      }
+      sleepSync(50);
+    }
+  }
+}
+
+function releaseRegistryLock(lock) {
+  if (!lock?.lockPath) {
+    return;
+  }
+  try {
+    rmdirSync(lock.lockPath);
+  } catch {
+    // Best effort: a stale-lock cleanup may have already removed it.
+  }
+}
 
 function readRegistryRecordsFromDisk() {
   let parsed;
@@ -60,43 +113,47 @@ function loadRegistry() {
 
 function persistRegistry() {
   loadRegistry();
-
-  const merged = new Map();
-  for (const record of readRegistryRecordsFromDisk()) {
-    if (record.dry_run === true || record.status === "closed") {
-      continue;
+  const lock = acquireRegistryLock();
+  try {
+    const merged = new Map();
+    for (const record of readRegistryRecordsFromDisk()) {
+      if (record.dry_run === true || record.status === "closed") {
+        continue;
+      }
+      merged.set(record.tab_id, record);
     }
-    merged.set(record.tab_id, record);
-  }
-  for (const tabId of deletedTabIds) {
-    merged.delete(tabId);
-  }
-  for (const record of managedTabs.values()) {
-    if (record.dry_run === true) {
-      continue;
+    for (const tabId of deletedTabIds) {
+      merged.delete(tabId);
     }
-    if (record.status === "closed") {
-      merged.delete(record.tab_id);
-      continue;
+    for (const record of managedTabs.values()) {
+      if (record.dry_run === true) {
+        continue;
+      }
+      if (record.status === "closed") {
+        merged.delete(record.tab_id);
+        continue;
+      }
+      merged.set(record.tab_id, record);
     }
-    merged.set(record.tab_id, record);
-  }
 
-  mkdirSync(dirname(registryPath), { recursive: true });
-  const payload = {
-    version: 1,
-    updated_at: nowIso(),
-    managed_tabs: Array.from(merged.values()).map((record) => managedTabPayload(record)),
-  };
-  const tempPath = `${registryPath}.${process.pid}.tmp`;
-  writeFileSync(tempPath, `${JSON.stringify(payload, null, 2)}\n`);
-  renameSync(tempPath, registryPath);
+    mkdirSync(dirname(registryPath), { recursive: true });
+    const payload = {
+      version: 1,
+      updated_at: nowIso(),
+      managed_tabs: Array.from(merged.values()).map((record) => managedTabPayload(record)),
+    };
+    const tempPath = `${registryPath}.${process.pid}.tmp`;
+    writeFileSync(tempPath, `${JSON.stringify(payload, null, 2)}\n`);
+    renameSync(tempPath, registryPath);
 
-  managedTabs.clear();
-  for (const record of merged.values()) {
-    managedTabs.set(record.tab_id, record);
+    managedTabs.clear();
+    for (const record of merged.values()) {
+      managedTabs.set(record.tab_id, record);
+    }
+    deletedTabIds.clear();
+  } finally {
+    releaseRegistryLock(lock);
   }
-  deletedTabIds.clear();
 }
 
 function normalizeBoolean(raw, fallback) {
@@ -346,12 +403,16 @@ function recordIsLive(record, liveById) {
   if (liveById.has(record.tab_id)) {
     return true;
   }
+  return isManagedTabWithinLiveGrace(record);
+}
+
+function isManagedTabWithinLiveGrace(record, nowMs = Date.now()) {
   const lastSeenAtMs = Math.max(
-    Date.parse(record.last_used_at || ""),
-    Date.parse(record.updated_at || ""),
-    Date.parse(record.created_at || ""),
+    Date.parse(record?.last_used_at || ""),
+    Date.parse(record?.updated_at || ""),
+    Date.parse(record?.created_at || ""),
   );
-  return Number.isFinite(lastSeenAtMs) && Date.now() - lastSeenAtMs <= RECENT_MANAGED_TAB_LIVE_GRACE_MS;
+  return Number.isFinite(lastSeenAtMs) && nowMs - lastSeenAtMs <= RECENT_MANAGED_TAB_LIVE_GRACE_MS;
 }
 
 function candidateMatches(record, target, policy) {
@@ -541,6 +602,7 @@ export {
   extractCreatedTabId,
   findReusableManagedTab,
   getManagedTab,
+  isManagedTabWithinLiveGrace,
   listManagedTabRecords,
   managedTabGroups,
   managedTabPayload,

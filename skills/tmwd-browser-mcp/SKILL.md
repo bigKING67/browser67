@@ -38,6 +38,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 ```json
 {"cmd":"tabs"}
 {"cmd":"tabs","method":"create","url":"https://example.test","active":true}
+{"cmd":"tabs","method":"get","tabId":123}
+{"cmd":"tabs","method":"list","includeUnscriptable":true}
 {"cmd":"cookies"}
 {"cmd":"cdp","method":"Runtime.evaluate","params":{"expression":"document.title"}}
 {"cmd":"batch","commands":[{"cmd":"tabs"},{"cmd":"cdp","method":"Runtime.evaluate","params":{"expression":"document.URL"}}]}
@@ -52,6 +54,9 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
   `browser_tab_lifecycle({action:"select_or_create", url, ownership_policy:"tmwd_only", reuse_scope:"origin_path", workspace_key})`.
 - Use `create_managed` only when a fresh TMWD-owned tab is explicitly needed; use `fresh:true` or `reuse:false` as the escape hatch.
 - Managed tab registry is outside the repo by default: `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json`; use `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for isolated test/workspace runs.
+- `create_managed` / `select_or_create` wait for new tabs to become visible by default (`wait_until:"listed"`). Use `wait_until:"none"` only when the caller will do its own readiness wait.
+- `list_managed` is live-only by default. Pass `include_disconnected:true` or `history:true` only when you explicitly need disconnected session history.
+- Use `prune_stale` to remove registry records for managed tabs that no longer exist; it never closes unmanaged user tabs.
 - `close_unkept` requires `workspace_key` or `task_id` unless explicitly using `scope:"all"` / `all:true` / `confirm_all:true`.
 - Use `js-reverse` for page API/interface discovery, request initiator tracing,
   signatures, anti-bot parameters, hook sampling, and local rebuild bundles; it
@@ -66,6 +71,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 ## Important pitfalls
 
 - After extension updates, reload the unpacked extension and refresh old tabs.
+- If Chrome visibly shows `about:blank` but `tabs.list` does not, use `tabs.list` with `includeUnscriptable:true` or `tabs.get`; default tab lists intentionally hide non-HTTP(S) pages.
+- For lifecycle regressions, run `npm run check:managed-tab-live`; it opens only temporary local fixture pages and closes the TMWD-owned tabs it creates.
 - `await` in `browser_execute_js` must explicitly `return` to expose values.
 - For CDP coordinate clicks, warm up debugger attachment before measuring coordinates.
 - For real local file upload, prefer same-batch `DOM.getDocument -> DOM.querySelector -> DOM.setFileInputFiles`; DataTransfer is only suitable for in-memory files.

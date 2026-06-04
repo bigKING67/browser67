@@ -92,7 +92,7 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
-- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `close_unkept`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `close_unkept` only closes managed tabs and ignores unmanaged user tabs.
+- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `close_unkept` only closes managed tabs and ignores unmanaged user tabs.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
 ## Tab ownership policy
@@ -100,6 +100,8 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 - User-opened tabs are `user_unmanaged`: scan/read-only by default. Do not navigate, type, click, close, or adopt them unless the user explicitly asks to operate on the current tab.
 - TMWD work tabs are `tmwd_managed`: create them through `browser_tab_lifecycle`.
 - Managed tab registry is stored outside the repo at `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json` by default. Override with `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for tests or isolated runs.
+- `list_managed` returns live sessions by default. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
+- `create_managed` / `select_or_create` wait for the created tab to be visible by default (`wait_until:"listed"`, `wait_timeout_ms:3000`). Use `wait_until:"none"` only for fire-and-forget workflows.
 - Default active-work entry:
 
 ```json
@@ -114,7 +116,10 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 - Use `fresh:true` or `reuse:false` only when a new TMWD-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
 - Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
+- Use `prune_stale` or `list_managed` with `prune_stale:true` to remove registry records for managed tabs that no longer exist. This never closes unmanaged user tabs.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
+- Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
+- Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
 
 ## JS reverse boundary
 

@@ -62,6 +62,36 @@
         "allow_empty_tabs": {
           "type": "boolean"
         },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "schema_revision": {
+              "type": "integer"
+            },
+            "server_revision": {
+              "type": "string"
+            },
+            "supports_select_or_create": {
+              "type": "boolean"
+            },
+            "supports_tabs_close": {
+              "type": "boolean"
+            },
+            "supports_tabs_get": {
+              "type": "boolean"
+            },
+            "supports_include_unscriptable_tabs": {
+              "type": "boolean"
+            },
+            "supports_wait_until_visible": {
+              "type": "boolean"
+            },
+            "supports_prune_stale": {
+              "type": "boolean"
+            }
+          }
+        },
         "readiness": {
           "type": "object",
           "required": [

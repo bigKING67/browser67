@@ -39,6 +39,9 @@ function run() {
     assertContains(source, "async function handleTabs(msg)", relativeFile);
     assertContains(source, "method === 'close'", relativeFile);
     assertContains(source, "chrome.tabs.remove(tabId)", relativeFile);
+    assertContains(source, "method === 'get'", relativeFile);
+    assertContains(source, "chrome.tabs.get", relativeFile);
+    assertContains(source, "includeUnscriptable", relativeFile);
     assertContains(source, "unsupported tabs method", relativeFile);
     assertContains(source, "R.push(await handleTabs(c))", relativeFile);
   }

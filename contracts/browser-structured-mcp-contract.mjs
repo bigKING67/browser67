@@ -133,6 +133,10 @@ async function run() {
       true,
     );
     assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.action?.enum?.includes("prune_stale"),
+      true,
+    );
+    assert.equal(
       tabLifecycleTool?.inputSchema?.properties?.ownership_policy?.default,
       "tmwd_only",
     );
@@ -150,6 +154,18 @@ async function run() {
     );
     assert.equal(
       tabLifecycleTool?.inputSchema?.properties?.confirm_all?.type,
+      "boolean",
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.wait_until?.default,
+      "listed",
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.wait_until?.enum?.includes("none"),
+      true,
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.prune_stale?.type,
       "boolean",
     );
 
@@ -454,6 +470,40 @@ async function run() {
     const tabCloseUnmanagedPayload = firstJsonContent(tabCloseUnmanagedCall.result);
     assert.equal(tabCloseUnmanagedPayload?.status, "success");
     assert.deepEqual(tabCloseUnmanagedPayload?.unmanaged_tabs_ignored, ["user-tab-not-managed"]);
+
+    const tabListManagedCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "list_managed",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabListManagedCall?.result?.isError, undefined);
+    const tabListManagedPayload = firstJsonContent(tabListManagedCall.result);
+    assert.equal(tabListManagedPayload?.status, "success");
+    assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
+    assert.equal(Array.isArray(tabListManagedPayload?.live_sessions), true);
+    assert.equal(Array.isArray(tabListManagedPayload?.sessions), true);
+
+    const tabPruneStaleCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "prune_stale",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabPruneStaleCall?.result?.isError, undefined);
+    const tabPruneStalePayload = firstJsonContent(tabPruneStaleCall.result);
+    assert.equal(tabPruneStalePayload?.status, "success");
+    assert.equal(tabPruneStalePayload?.action, "prune_stale");
+    assert.equal(tabPruneStalePayload?.capabilities?.supports_prune_stale, true);
 
     const clipboardDryRunCall = await rpc.call(
       "tools/call",

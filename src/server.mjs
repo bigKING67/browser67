@@ -478,6 +478,39 @@ function handleBrowserDiff(args) {
   };
 }
 
+function wantsUnscriptableTabs(args = {}) {
+  return args.include_unscriptable === true
+    || args.include_internal === true
+    || args.includeUnscriptable === true
+    || args.includeInternal === true;
+}
+
+function normalizeBridgeTabRows(raw) {
+  const rows = Array.isArray(raw)
+    ? raw
+    : (Array.isArray(raw?.data) ? raw.data : []);
+  return rows
+    .map((row) => {
+      if (!row || typeof row !== "object") {
+        return null;
+      }
+      const id = normalizeIdToken(row.id ?? row.tab_id ?? row.tabId ?? row.sessionId);
+      if (!id) {
+        return null;
+      }
+      const url = String(row.url ?? "");
+      return {
+        id,
+        url,
+        title: String(row.title ?? ""),
+        active: row.active === true,
+        windowId: row.windowId,
+        scriptable: row.scriptable === true || /^https?:/.test(url),
+      };
+    })
+    .filter((row) => row !== null);
+}
+
 async function handleBrowserTabOps(args) {
   const op = String(args?.op ?? "").trim().toLowerCase();
   if (op === "current" || op === "current_session") {
@@ -564,6 +597,51 @@ async function handleBrowserTabOps(args) {
     };
   }
   if (op === "list") {
+    const includeUnscriptable = wantsUnscriptableTabs(args ?? {});
+    if (includeUnscriptable && (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link")) {
+      try {
+        const allTabsResult = await executeTmwdJsWithFallback(
+          args ?? {},
+          preferred.context,
+          {
+            cmd: "tabs",
+            method: "list",
+            includeUnscriptable: true,
+          },
+        );
+        const allTabs = normalizeBridgeTabRows(allTabsResult.executed.value);
+        return {
+          status: "ok",
+          transport: normalizeTmwdTransportLabel(allTabsResult.context.tmwd_transport),
+          transport_attempts: mergeTransportAttempts(
+            preferred.transport_attempts,
+            allTabsResult.transport_attempts,
+          ),
+          include_unscriptable: true,
+          tabs_count: allTabs.length,
+          tabs: allTabs,
+          scriptable_tabs_count: tabs.length,
+          scriptable_tabs: asShortTabs(tabs),
+          internal_tabs: allTabs.filter((tab) => tab.scriptable !== true),
+          active_tab: getActiveTargetId() || null,
+          sessions: listSessionsSnapshot(),
+          ...sessionPointers(),
+        };
+      } catch (error) {
+        return {
+          status: "partial",
+          transport: preferred.transport,
+          transport_attempts: transportAttempts,
+          include_unscriptable: false,
+          include_unscriptable_warning: String(error?.message ?? error),
+          tabs_count: tabs.length,
+          tabs: asShortTabs(tabs),
+          active_tab: getActiveTargetId() || null,
+          sessions: listSessionsSnapshot(),
+          ...sessionPointers(),
+        };
+      }
+    }
     return {
       status: "ok",
       transport: preferred.transport,
