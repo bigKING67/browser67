@@ -3,7 +3,7 @@
   "upstream": {
     "name": "lsdefine/GenericAgent",
     "remote": "https://github.com/lsdefine/GenericAgent.git",
-    "commit": "f5450d690155995c34afab500a7c326eb86a9cd6",
+    "commit": "e690ded43961a1ab380b67b8de6b4b8f44c4c3a8",
     "extension_source": "assets/tmwd_cdp_bridge",
     "ignored_files": [
       "config.js"
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "background.js",
-      "sha256": "a9737f7b72668b5befe3dfbb655e873f9cea9eda4f2ad6ade4ef51d832ffad39"
+      "sha256": "81ecca702cc8a2206e5187477d1b7b38a3436b078a4119a1b87f74746a040269"
     },
     {
       "path": "content.js",
