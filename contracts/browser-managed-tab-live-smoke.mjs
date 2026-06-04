@@ -321,10 +321,99 @@ async function run() {
     assert.equal(managedGone.ok, true, "managed tab remained after close_unkept");
 
     const managedList = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
       action: "list_managed",
     });
     assert.equal(Array.isArray(managedList.managed_tabs), true);
     assert.equal(managedList.managed_tabs.length, 0, "isolated managed registry should be empty after close");
+
+    const externallyClosedPath = `/tmwd-managed-external-close-smoke-${String(Date.now())}`;
+    const externallyClosedUrl = `${fixture.origin}${externallyClosedPath}`;
+    const externallyClosedWorkspace = `${workspaceKey}-external-close`;
+    const externalArgs = {
+      ...commonArgs(cli),
+      action: "select_or_create",
+      url: externallyClosedUrl,
+      workspace_key: externallyClosedWorkspace,
+      active: false,
+      wait_until: "listed",
+      wait_timeout_ms: 5_000,
+      wait_poll_ms: 100,
+    };
+    const externalFirst = await callTool("browser_tab_lifecycle", externalArgs);
+    const externallyClosedTabId = String(externalFirst?.managed_tab?.tab_id ?? "");
+    assert.ok(externallyClosedTabId, "external-close managed create did not return tab id");
+    assert.equal(externalFirst.created, true, "external-close first select_or_create should create a managed tab");
+    openedTabIds.add(externallyClosedTabId);
+
+    const externalDirectClose = await bridgeCommand({
+      cmd: "tabs",
+      method: "close",
+      tabId: externallyClosedTabId,
+    });
+    assert.equal(externalDirectClose?.closed, true, "external-close tabs.close did not confirm closed=true");
+    openedTabIds.delete(externallyClosedTabId);
+    const externalGone = await waitFor(async () => {
+      const tabs = await listTabs();
+      return {
+        ok: !tabs.some((tab) => tab.id === externallyClosedTabId),
+        tabs,
+      };
+    }, 5_000);
+    assert.equal(externalGone.ok, true, "externally closed managed tab remained after tabs.close");
+
+    const liveOnlyAfterExternalClose = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "list_managed",
+    });
+    assert.equal(
+      liveOnlyAfterExternalClose.managed_tabs.some((row) => String(row?.tab_id ?? "") === externallyClosedTabId),
+      false,
+      "list_managed default should hide externally closed stale managed tabs",
+    );
+    assert.equal(
+      liveOnlyAfterExternalClose.live_filter?.stale?.some((row) => String(row?.tab_id ?? "") === externallyClosedTabId),
+      true,
+      "list_managed should report externally closed managed tab as stale evidence",
+    );
+
+    const historyAfterExternalClose = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "list_managed",
+      include_disconnected: true,
+    });
+    assert.equal(
+      historyAfterExternalClose.managed_tabs.some((row) => String(row?.tab_id ?? "") === externallyClosedTabId),
+      true,
+      "list_managed include_disconnected should expose stale registry history",
+    );
+
+    const externalReplacement = await callTool("browser_tab_lifecycle", externalArgs);
+    const replacementTabId = String(externalReplacement?.managed_tab?.tab_id ?? "");
+    assert.ok(replacementTabId, "external-close replacement did not return tab id");
+    assert.equal(externalReplacement.created, true, "externally closed managed tab should not be reused");
+    assert.notEqual(replacementTabId, externallyClosedTabId, "externally closed managed tab id was reused");
+    openedTabIds.add(replacementTabId);
+
+    const externalCleanup = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "close_unkept",
+      workspace_key: externallyClosedWorkspace,
+    });
+    assert.equal(externalCleanup.status, "success", "external-close cleanup did not succeed");
+    assert.equal(
+      externalCleanup.closed.some((row) => String(row?.tab_id ?? "") === replacementTabId && row.closed === true),
+      true,
+      "external-close cleanup did not close replacement managed tab",
+    );
+    openedTabIds.delete(replacementTabId);
+
+    const finalManagedList = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "list_managed",
+    });
+    assert.equal(Array.isArray(finalManagedList.managed_tabs), true);
+    assert.equal(finalManagedList.managed_tabs.length, 0, "isolated managed registry should be empty after external-close cleanup");
 
     let registryRemaining = 0;
     try {
@@ -348,6 +437,7 @@ async function run() {
         second_reused: secondManaged.reused === true,
         tab_id: managedTabId,
         closed_count: managedClose.closed.length,
+        externally_closed_not_reused: externalReplacement.created === true && replacementTabId !== externallyClosedTabId,
         registry_remaining: registryRemaining,
       },
     };

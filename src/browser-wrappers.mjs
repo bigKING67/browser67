@@ -28,7 +28,6 @@ import {
   extractCreatedTabId,
   findReusableManagedTab,
   getManagedTab,
-  isManagedTabWithinLiveGrace,
   listManagedTabRecords,
   managedTabGroups,
   managedTabPayload,
@@ -742,9 +741,6 @@ async function resolveManagedRecordLiveness(args, preferred, record, liveById) {
       tab: exactTab,
     };
   }
-  if (isManagedTabWithinLiveGrace(record)) {
-    return { live: true, reason: "recent_grace" };
-  }
   return { live: false, reason: "not_live" };
 }
 
@@ -1060,12 +1056,90 @@ async function listManagedTabs(args = {}) {
   const pruneStale = args?.prune_stale === true
     ? await pruneStaleManagedTabs({ ...args, dry_run: args?.dry_run === true })
     : undefined;
+  const registryRecords = listManagedTabRecords({ include_closed: includeDisconnected });
+  let managedRecords = registryRecords;
+  let liveFilter;
+  if (!includeDisconnected) {
+    liveFilter = {
+      applied: true,
+      source: "none",
+      before_count: registryRecords.length,
+      after_count: registryRecords.length,
+      stale_count: 0,
+      stale: [],
+    };
+    if (registryRecords.length > 0) {
+      let preferred = null;
+      try {
+        preferred = await resolvePreferredBrowserContext(args ?? {});
+      } catch (error) {
+        liveFilter.warning = `live browser check unavailable; returning only tabs known in the active session registry: ${String(error?.message ?? error)}`;
+      }
+      if (preferred) {
+        const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : liveSessions;
+        const liveById = liveTabMap(liveTabs);
+        const kept = [];
+        const stale = [];
+        for (const record of registryRecords) {
+          const liveness = await resolveManagedRecordLiveness(args, preferred, record, liveById);
+          if (liveness.live === true) {
+            kept.push(record);
+            continue;
+          }
+          stale.push({
+            tab_id: record.tab_id,
+            workspace_key: record.workspace_key,
+            url: record.url,
+            reason: liveness.reason,
+          });
+        }
+        managedRecords = kept;
+        liveFilter = {
+          ...liveFilter,
+          source: preferred.transport,
+          transport_attempts: Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [],
+          after_count: kept.length,
+          stale_count: stale.length,
+          stale,
+        };
+      } else {
+        const liveById = liveTabMap(liveSessions);
+        const kept = registryRecords.filter((record) => liveById.has(record.tab_id));
+        const stale = registryRecords
+          .filter((record) => !liveById.has(record.tab_id))
+          .map((record) => ({
+            tab_id: record.tab_id,
+            workspace_key: record.workspace_key,
+            url: record.url,
+            reason: "live_check_unavailable",
+          }));
+        managedRecords = kept;
+        liveFilter = {
+          ...liveFilter,
+          source: "session_registry",
+          after_count: kept.length,
+          stale_count: stale.length,
+          stale,
+        };
+      }
+    }
+  } else {
+    liveFilter = {
+      applied: false,
+      reason: "include_disconnected_or_history",
+      before_count: registryRecords.length,
+      after_count: registryRecords.length,
+      stale_count: 0,
+      stale: [],
+    };
+  }
   return {
     status: "success",
     action: "list_managed",
     capabilities: CAPABILITIES,
-    managed_tabs: listManagedTabRecords({ include_closed: true }).map((record) => managedTabPayload(record)),
+    managed_tabs: managedRecords.map((record) => managedTabPayload(record)),
     groups: managedTabGroups(),
+    live_filter: liveFilter,
     live_sessions: liveSessions,
     disconnected_sessions: disconnectedSessions,
     sessions,
