@@ -158,6 +158,12 @@ async function executeTmwdCommand(args, command) {
     );
   }
   const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, command);
+  if (result.executed?.raw?.ok === false) {
+    throw createToolError(
+      "EXECUTION_ERROR",
+      String(result.executed.raw.error ?? "TMWD command failed"),
+    );
+  }
   return {
     transport: result.context.tmwd_transport === "ws" ? "tmwd_ws" : "tmwd_link",
     transport_attempts: result.transport_attempts,
@@ -891,6 +897,12 @@ async function closeOneManagedTab(args, record) {
       method: "close",
       tabId: record.tab_id,
     });
+    if (result.value?.closed !== true) {
+      throw createToolError(
+        "EXECUTION_ERROR",
+        "tabs.close did not confirm closed=true; reload the TMWD browser extension if it is still running old bridge code",
+      );
+    }
     return {
       tab_id: record.tab_id,
       closed: true,

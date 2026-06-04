@@ -20,27 +20,7 @@ async function handleExtMessage(msg, sender) {
   if (msg.cmd === 'cdp') return await handleCDP(msg, sender);
   if (msg.cmd === 'batch') return await handleBatch(msg, sender);
   if (msg.cmd === 'tabs') {
-    try {
-      if (msg.method === 'create') {
-        const tab = await chrome.tabs.create({
-          url: msg.url,
-          active: msg.active !== undefined ? msg.active : false,
-          index: msg.index,
-          windowId: msg.windowId,
-          openerTabId: msg.openerTabId
-        });
-        return { ok: true, data: { id: tab.id, url: tab.url, title: tab.title } };
-      }
-      if (msg.method === 'switch') {
-        const tab = await chrome.tabs.update(requireNumericTabId(msg.tabId), { active: true });
-        await chrome.windows.update(tab.windowId, { focused: true });
-        return { ok: true };
-      } else {
-        const tabs = (await chrome.tabs.query({})).filter(t => isScriptable(t.url));
-        const data = tabs.map(t => ({ id: t.id, url: t.url, title: t.title, active: t.active, windowId: t.windowId }));
-        return { ok: true, data };
-      }
-    } catch (e) { return { ok: false, error: e.message }; }
+    return await handleTabs(msg);
   }
   if (msg.cmd === 'management') {
     try {
@@ -93,6 +73,40 @@ function requireNumericTabId(raw) {
   return tabId;
 }
 
+async function handleTabs(msg) {
+  try {
+    const method = msg.method || 'list';
+    if (method === 'create') {
+      const tab = await chrome.tabs.create({
+        url: msg.url,
+        active: msg.active !== undefined ? msg.active : false,
+        index: msg.index,
+        windowId: msg.windowId,
+        openerTabId: msg.openerTabId
+      });
+      return { ok: true, data: { id: tab.id, url: tab.url, title: tab.title } };
+    }
+    if (method === 'switch') {
+      const tab = await chrome.tabs.update(requireNumericTabId(msg.tabId), { active: true });
+      await chrome.windows.update(tab.windowId, { focused: true });
+      return { ok: true, data: { id: tab.id, url: tab.url, title: tab.title, active: tab.active, windowId: tab.windowId } };
+    }
+    if (method === 'close') {
+      const tabId = requireNumericTabId(msg.tabId);
+      await chrome.tabs.remove(tabId);
+      return { ok: true, data: { id: tabId, closed: true } };
+    }
+    if (method === 'list') {
+      const tabs = (await chrome.tabs.query({})).filter(t => isScriptable(t.url));
+      const data = tabs.map(t => ({ id: t.id, url: t.url, title: t.title, active: t.active, windowId: t.windowId }));
+      return { ok: true, data };
+    }
+    return { ok: false, error: `unsupported tabs method: ${method}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   handleExtMessage(msg, sender).then(sendResponse);
   return true;
@@ -129,8 +143,7 @@ async function handleBatch(msg, sender) {
       if (c.cmd === 'cookies') {
         R.push(await handleCookies(c, sender));
       } else if (c.cmd === 'tabs') {
-        const tabs = (await chrome.tabs.query({})).filter(t => isScriptable(t.url));
-        R.push({ ok: true, data: tabs.map(t => ({ id: t.id, url: t.url, title: t.title, active: t.active, windowId: t.windowId })) });
+        R.push(await handleTabs(c));
       } else if (c.cmd === 'cdp') {
         const tabId = requireNumericTabId(c.tabId ?? msg.tabId ?? sender.tab?.id);
         if (attached !== tabId) {
