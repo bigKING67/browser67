@@ -50,6 +50,12 @@ function parseArgs(argv) {
 
 async function run() {
   const cli = parseArgs(process.argv.slice(2));
+  const previousTabRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
+  const tmpTabRegistryPath = path.join(
+    os.tmpdir(),
+    `tmwd-tab-registry-contract-${process.pid}-${Date.now()}.json`,
+  );
+  process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = tmpTabRegistryPath;
   const rpc = createRpcClient();
   let hangingTmwdLinkServer;
   let executeErrorTmwdLinkServer;
@@ -120,6 +126,31 @@ async function run() {
     assert.equal(
       executeJsTool?.inputSchema?.properties?.native_fallback_args?.type,
       "object",
+    );
+    const tabLifecycleTool = tools.find((entry) => entry?.name === "browser_tab_lifecycle");
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.action?.enum?.includes("select_or_create"),
+      true,
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.ownership_policy?.default,
+      "tmwd_only",
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.reuse_scope?.default,
+      "origin_path",
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.scope?.enum?.includes("all"),
+      true,
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.all?.type,
+      "boolean",
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.confirm_all?.type,
+      "boolean",
     );
 
     const missingScriptCall = await rpc.call(
@@ -295,7 +326,52 @@ async function run() {
     const tabCreateDryRunPayload = firstJsonContent(tabCreateDryRunCall.result);
     assert.equal(tabCreateDryRunPayload?.status, "success");
     assert.equal(tabCreateDryRunPayload?.created, false);
+    assert.equal(tabCreateDryRunPayload?.owner, "tmwd");
     assert.equal(typeof tabCreateDryRunPayload?.managed_tab?.tab_id, "string");
+
+    const tabSelectOrCreateDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "select_or_create",
+          url: "http://example.test/reports/a",
+          workspace_key: "contract-workspace",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabSelectOrCreateDryRunCall?.result?.isError, undefined);
+    assertTextJsonContent(tabSelectOrCreateDryRunCall.result, "browser_tab_lifecycle select_or_create dry-run result");
+    const tabSelectOrCreateDryRunPayload = firstJsonContent(tabSelectOrCreateDryRunCall.result);
+    assert.equal(tabSelectOrCreateDryRunPayload?.status, "success");
+    assert.equal(tabSelectOrCreateDryRunPayload?.action, "select_or_create");
+    assert.equal(tabSelectOrCreateDryRunPayload?.owner, "tmwd");
+    assert.equal(tabSelectOrCreateDryRunPayload?.created, false);
+    assert.equal(tabSelectOrCreateDryRunPayload?.reused, false);
+    assert.equal(tabSelectOrCreateDryRunPayload?.would_create, true);
+    assert.equal(tabSelectOrCreateDryRunPayload?.managed_tab?.workspace_key, "contract-workspace");
+
+    const tabSelectOrCreateReuseDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "select_or_create",
+          url: "http://example.test/reports/b",
+          workspace_key: "contract-workspace",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabSelectOrCreateReuseDryRunCall?.result?.isError, undefined);
+    const tabSelectOrCreateReuseDryRunPayload = firstJsonContent(tabSelectOrCreateReuseDryRunCall.result);
+    assert.equal(tabSelectOrCreateReuseDryRunPayload?.status, "success");
+    assert.equal(tabSelectOrCreateReuseDryRunPayload?.created, false);
+    assert.equal(tabSelectOrCreateReuseDryRunPayload?.reused, false);
+    assert.equal(tabSelectOrCreateReuseDryRunPayload?.would_create, true);
 
     const tabMissingCall = await rpc.call(
       "tools/call",
@@ -326,6 +402,40 @@ async function run() {
     const tabUnsupportedPayload = firstJsonContent(tabUnsupportedCall.result);
     assert.equal(tabUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
 
+    const tabCloseMissingScopeCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "close_unkept",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabCloseMissingScopeCall?.result?.isError, true);
+    const tabCloseMissingScopePayload = firstJsonContent(tabCloseMissingScopeCall.result);
+    assert.equal(tabCloseMissingScopePayload?.error_code, "INVALID_ARGUMENT");
+
+    for (const args of [
+      { action: "close_unkept", scope: "all", dry_run: true },
+      { action: "close_unkept", all: true, dry_run: true },
+      { action: "close_unkept", confirm_all: true, dry_run: true },
+    ]) {
+      const tabCloseAllDryRunCall = await rpc.call(
+        "tools/call",
+        {
+          name: "browser_tab_lifecycle",
+          arguments: args,
+        },
+        cli.timeout_ms,
+      );
+      assert.equal(tabCloseAllDryRunCall?.result?.isError, undefined);
+      const tabCloseAllDryRunPayload = firstJsonContent(tabCloseAllDryRunCall.result);
+      assert.equal(tabCloseAllDryRunPayload?.status, "success");
+      assert.equal(tabCloseAllDryRunPayload?.close_scope?.all, true);
+    }
+
     const tabCloseUnmanagedCall = await rpc.call(
       "tools/call",
       {
@@ -333,6 +443,7 @@ async function run() {
         arguments: {
           action: "close_unkept",
           tab_id: "user-tab-not-managed",
+          workspace_key: "contract-workspace",
           dry_run: true,
         },
       },
@@ -765,6 +876,11 @@ async function run() {
     );
   } finally {
     await rpc.close();
+    if (previousTabRegistryPath === undefined) {
+      delete process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
+    } else {
+      process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = previousTabRegistryPath;
+    }
     if (hangingTmwdLinkServer && typeof hangingTmwdLinkServer.close === "function") {
       await hangingTmwdLinkServer.close();
     }
@@ -774,6 +890,7 @@ async function run() {
     if (tmpDownloadDir) {
       await fs.rm(tmpDownloadDir, { recursive: true, force: true });
     }
+    await fs.rm(tmpTabRegistryPath, { force: true });
   }
 }
 

@@ -5,9 +5,10 @@ description: >-
   Chrome/Edge pages, current tabs, cookies/session-aware page inspection, CDP
   bridge commands, background tab actions, downloads/uploads, file chooser
   planning, clipboard write/paste wrappers, managed tab lifecycle, and native
-  fallback planning. For signature-chain tracing, script search, network/WS
-  sampling, hooks, and rebuild bundles, hand off to the js-reverse MCP/skill
-  backed by this same TMWD runtime.
+  fallback planning. For page API/interface discovery, request initiator
+  tracing, signature-chain tracing, script search, network/WS sampling, hooks,
+  and rebuild bundles, hand off to the js-reverse MCP/skill backed by this same
+  TMWD runtime.
 ---
 
 # TMWD Browser MCP
@@ -25,11 +26,12 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 5. Use `browser_tab_ops` for list/switch/current/session selection.
 6. Use `browser_file_ops` for upload inputs and native chooser planning.
 7. Use `browser_download_ops` for per-run download prepare/wait/list flows.
-8. Use `browser_tab_lifecycle` only for tabs it created; unmanaged user tabs must not be closed.
+8. Use `browser_tab_lifecycle` with `action="select_or_create"` for active work tabs. It reuses only TMWD-owned managed tabs; user-opened unmanaged tabs are read-only by default and must not be navigated, mutated, or closed.
 9. Use `browser_clipboard_ops` for write/paste only; it intentionally does not read clipboard.
 10. Use `browser_native_input` only when browser-side automation is blocked.
-11. Use `js-reverse` MCP for reverse-specific observe/capture/rebuild work instead
-   of overloading the generic `tmwd_browser` tools.
+11. Use `js-reverse` MCP for page API discovery and reverse-specific
+   observe/capture/rebuild work instead of overloading the generic
+   `tmwd_browser` tools.
 
 ## Bridge command examples
 
@@ -46,8 +48,14 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 
 - Use TMWD for the user's current browser, logged-in pages, cookies, and visible tab state.
 - Use TMWD wrappers for downloads/uploads/file chooser planning/clipboard write-paste/managed tab lifecycle.
-- Use `js-reverse` for signatures, anti-bot parameters, hook sampling, and local
-  rebuild bundles; it uses this same TMWD transport by default.
+- When the user is already using a page, do not take over that unmanaged tab for active work. Create or reuse a TMWD-owned tab instead:
+  `browser_tab_lifecycle({action:"select_or_create", url, ownership_policy:"tmwd_only", reuse_scope:"origin_path", workspace_key})`.
+- Use `create_managed` only when a fresh TMWD-owned tab is explicitly needed; use `fresh:true` or `reuse:false` as the escape hatch.
+- Managed tab registry is outside the repo by default: `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json`; use `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for isolated test/workspace runs.
+- `close_unkept` requires `workspace_key` or `task_id` unless explicitly using `scope:"all"` / `all:true` / `confirm_all:true`.
+- Use `js-reverse` for page API/interface discovery, request initiator tracing,
+  signatures, anti-bot parameters, hook sampling, and local rebuild bundles; it
+  uses this same TMWD transport by default.
 - Use `remote_cdp` only when the user explicitly wants a debug Chrome/CI/JS reverse protocol path.
 - Validate that explicit path with `npm run check:remote-cdp`; set `CHROME_BIN`
   if Chrome is not installed in a default location.
@@ -62,7 +70,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - For CDP coordinate clicks, warm up debugger attachment before measuring coordinates.
 - For real local file upload, prefer same-batch `DOM.getDocument -> DOM.querySelector -> DOM.setFileInputFiles`; DataTransfer is only suitable for in-memory files.
 - `browser_download_ops` only observes the prepared token/directory window; do not read Chrome history DB.
-- `browser_tab_lifecycle.close_unkept` must never close unmanaged existing user tabs.
+- `browser_tab_lifecycle.close_unkept` must never close unmanaged existing user tabs; it only closes TMWD-owned managed tabs that are not marked `keep:true`.
+- `browser_tab_lifecycle` dry-runs are planning-only: do not depend on dry-run calls to select, persist, touch, or clean managed tabs.
 - `browser_clipboard_ops` has no clipboard-read action by design.
 - OpenAI tool registration rejects top-level JSON Schema composition keywords
   such as `anyOf`/`oneOf`; keep required alternates as runtime validation and

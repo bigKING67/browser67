@@ -30,6 +30,7 @@ args = ["/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/js-r
 | 用户要做什么 | 入口 |
 |-------------|------|
 | "分析这个站" | 快速工作流：一键侦察 → `analyze_target` |
+| "拿页面 API / 找接口" | API 发现 → `list_network_requests` → `get_network_request` → `get_request_initiator` → `search_in_scripts` |
 | "参数 X 怎么生成的" | 快速工作流：参数追踪 → 网络→initiator→Hook |
 | "反混淆这段代码" | 快速工作流：去混淆 → `deobfuscate_code` |
 | "用 Python/Node 复现签名" | 完整六阶段 → 从 Phase 1 开始 |
@@ -45,6 +46,7 @@ args = ["/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/js-r
 3. **Evidence-first** — 每个补丁必须有代理日志或运行时捕获数据支撑。猜测 `window.xxx` 应该返回什么会导致本地通过但服务端验证失败。
 4. **一次一补丁** — 多个问题时只修第一个失败点（first divergence），复跑，确认前移，再修下一个。批量补丁出错后无法定位是哪个补丁的问题。
 5. **服务端验证为准** — 本地输出匹配浏览器是必要不充分条件，必须用真实服务器请求验证。
+6. **TMWD-owned tabs only** — `new_page` 默认只复用 JS reverse/TMWD 自己创建的 managed tab；如果用户自己已经打开同一个页面，不接管该 tab，而是新开或复用 `workspace_key` 下的 TMWD-owned tab。
 
 ---
 
@@ -52,11 +54,11 @@ args = ["/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/js-r
 
 ### Phase 1: Observe — 搞清楚目标
 
-目标：确认目标请求、相关脚本、候选函数、触发动作。
+目标：确认目标请求/API、相关脚本、候选函数、触发动作。
 
 步骤：
 1. `check_browser_health` 验证连接
-2. `new_page`/`navigate_page` 导航到目标页
+2. `new_page`/`navigate_page` 导航到目标页；主动工作默认传 `workspace_key`，让 `new_page` 在 TMWD-owned tab pool 内复用，不影响用户 unmanaged tab
 3. `list_network_requests` 找目标 API（sign/token/_signature/h5st/nonce/x-bogus）
 4. `get_request_initiator` 追溯调用栈
 5. `search_in_scripts` 定位脚本和函数

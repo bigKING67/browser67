@@ -78,7 +78,7 @@ approval_mode = "approve"
 ## Tool routing
 
 - `tmwd_browser`: primary path for real browser tasks, logged-in pages, existing tabs, cookies, CDP bridge, background tabs, batch actions, downloads/uploads, file chooser planning, clipboard write/paste wrappers, and managed tab lifecycle.
-- `js-reverse`: primary path for signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context.
+- `js-reverse`: primary path for page API/interface discovery, request initiator tracing, signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context.
 - in-app Browser: localhost/file previews without Chrome profile state.
 - Computer Use: desktop UI and pure visual pointer/keyboard actions.
 - `remote_cdp`: explicit debug Chrome/CI/JS reverse protocol work, not ordinary login-state tasks.
@@ -92,16 +92,38 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
-- `browser_tab_lifecycle`: `create_managed`, `mark_keep`, `list_managed`, `close_unkept`. `close_unkept` only closes tabs created by this wrapper and ignores unmanaged user tabs.
+- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `close_unkept`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `close_unkept` only closes managed tabs and ignores unmanaged user tabs.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
+
+## Tab ownership policy
+
+- User-opened tabs are `user_unmanaged`: scan/read-only by default. Do not navigate, type, click, close, or adopt them unless the user explicitly asks to operate on the current tab.
+- TMWD work tabs are `tmwd_managed`: create them through `browser_tab_lifecycle`.
+- Managed tab registry is stored outside the repo at `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json` by default. Override with `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for tests or isolated runs.
+- Default active-work entry:
+
+```json
+{
+  "action": "select_or_create",
+  "url": "http://localhost:3000/example",
+  "workspace_key": "project-localhost",
+  "ownership_policy": "tmwd_only",
+  "reuse_scope": "origin_path"
+}
+```
+
+- Use `fresh:true` or `reuse:false` only when a new TMWD-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
+- Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
+- `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
 
 ## JS reverse boundary
 
 The bundled `js-reverse` MCP focuses on observe-first, hook-preferred workflows:
 
-- supported: page health, tab selection, scripts, DOM snapshot, performance
-  resources, fetch/xhr/websocket/eval/timer/cookie/function hooks, evidence
-  recording, report export, and minimal Node rebuild bundle export.
+- supported: page health, tab selection, page API/interface discovery, request
+  initiator tracing, scripts, DOM snapshot, performance resources,
+  fetch/xhr/websocket/eval/timer/cookie/function hooks, evidence recording,
+  report export, and minimal Node rebuild bundle export.
 - intentionally not full debugger yet: persistent `Debugger.pause`, callframe
   stepping, and breakpoint state currently return `not_supported` with hook-based
   fallbacks. Use a dedicated remote CDP debug browser only when callframe-level

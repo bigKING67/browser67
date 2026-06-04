@@ -15,6 +15,15 @@ import {
   markSessionSelected,
   sessionPointers,
 } from "./session-registry.mjs";
+import {
+  extractCreatedTabId,
+  findReusableManagedTab,
+  managedTabPayload,
+  planManagedTab,
+  recordManagedTab,
+  summarizeUnmanagedMatches,
+  updateManagedTab,
+} from "./tab-workspace.mjs";
 
 const VERSION = "0.1.0-tmwd-js-reverse";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -127,6 +136,16 @@ const TOOL_SCHEMAS = Object.fromEntries(
           before: { type: "object" },
           after: { type: "object" },
           user_agent: { type: "string" },
+          active: { type: "boolean", default: true },
+          keep: { type: "boolean", default: false },
+          fresh: { type: "boolean", default: false },
+          reuse: { type: "boolean", default: true },
+          ownership_policy: { type: "string", enum: ["tmwd_only", "fresh"], default: "tmwd_only" },
+          reuse_scope: { type: "string", enum: ["exact", "origin_path", "origin", "none"], default: "origin_path" },
+          workspace_key: { type: "string" },
+          reuse_key: { type: "string" },
+          navigate_reused: { type: "boolean", default: true },
+          dry_run: { type: "boolean", default: false },
           tmwd_mode: { type: "string", enum: ["tmwd"] },
           tmwd_transport: { type: "string", enum: ["auto", "ws", "link"] },
           tmwd_ws_endpoint: { type: "string" },
@@ -474,8 +493,127 @@ async function handleSelectPage(args) {
 
 async function handleNewPage(args) {
   const url = String(args?.url ?? "about:blank").trim() || "about:blank";
-  const result = await bridgeCommand(args, { cmd: "tabs", method: "create", url, active: args?.active !== false });
-  return { ok: true, transport: result.transport, page: result.value };
+  if (args?.dry_run === true) {
+    const reusable = findReusableManagedTab(
+      { ...args, workspace_key: args?.workspace_key ?? "js-reverse" },
+      url,
+      [],
+    );
+    if (reusable.record) {
+      return {
+        ok: true,
+        action: "new_page",
+        created: false,
+        reused: true,
+        dry_run: true,
+        owner: "tmwd",
+        selected_by: reusable.selected_by,
+        page: managedTabPayload(reusable.record),
+        ...sessionPointers(),
+      };
+    }
+    const record = planManagedTab({
+      ...args,
+      workspace_key: args?.workspace_key ?? "js-reverse",
+      url,
+      source: "js-reverse",
+      status: "planned",
+      dry_run: true,
+      keep: args?.keep === true,
+    });
+    return {
+      ok: true,
+      action: "new_page",
+      created: false,
+      reused: false,
+      would_create: true,
+      dry_run: true,
+      owner: "tmwd",
+      page: managedTabPayload(record),
+    };
+  }
+  const tabs = await bridgeCommand(args, { cmd: "tabs" });
+  const liveTabs = Array.isArray(tabs.value) ? tabs.value : [];
+  const workspaceArgs = {
+    ...args,
+    workspace_key: args?.workspace_key ?? "js-reverse",
+  };
+  const reusable = findReusableManagedTab(workspaceArgs, url, liveTabs);
+  const unmanagedIgnored = summarizeUnmanagedMatches(workspaceArgs, url, liveTabs);
+  if (reusable.record) {
+    let record = reusable.record;
+    let navigation;
+    if (reusable.policy.navigate_reused && record.url !== reusable.policy.target.normalized_url) {
+      const nav = await pageEval(
+        { ...args, session_id: record.tab_id, page_id: record.tab_id },
+        "if (location.href !== input.url) location.href = input.url; return { url: location.href, title: document.title };",
+        { url },
+      );
+      navigation = { requested_url: url, result: nav.value, transport: nav.transport };
+      record = updateManagedTab(record.tab_id, {
+        url,
+        title: String(nav.value?.title ?? record.title ?? ""),
+      }) ?? record;
+    } else {
+      record = updateManagedTab(record.tab_id, { touch: true }) ?? record;
+    }
+    markSessionSelected(record.tab_id, { make_default: false });
+    return {
+      ok: true,
+      action: "new_page",
+      created: false,
+      reused: true,
+      owner: "tmwd",
+      selected_by: reusable.selected_by,
+      reuse_policy: reusable.policy,
+      page: managedTabPayload(record),
+      unmanaged_tabs_ignored: unmanagedIgnored,
+      navigation,
+      ...sessionPointers(),
+    };
+  }
+  const result = await bridgeCommand(args, {
+    cmd: "tabs",
+    method: "create",
+    url,
+    active: args?.active !== false,
+  });
+  const tabId = extractCreatedTabId(result);
+  if (!tabId) {
+    return {
+      ok: false,
+      action: "new_page",
+      error: "new_page create did not return tab id",
+      transport: result.transport,
+      page: result.value,
+    };
+  }
+  const record = recordManagedTab({
+    ...args,
+    tab_id: tabId,
+    workspace_key: args?.workspace_key ?? "js-reverse",
+    url,
+    title: String(result?.value?.title ?? result?.value?.data?.title ?? ""),
+    source: "js-reverse",
+    keep: args?.keep === true,
+  });
+  if (record.tab_id) {
+    markSessionSelected(record.tab_id, { make_default: false });
+  }
+  return {
+    ok: true,
+    action: "new_page",
+    transport: result.transport,
+    created: true,
+    reused: false,
+    owner: "tmwd",
+    selected_by: "created_new_tmwd_owned_tab",
+    reuse_policy: reusable.policy,
+    page: result.value,
+    managed_page: managedTabPayload(record),
+    unmanaged_tabs_ignored: unmanagedIgnored,
+    ...sessionPointers(),
+  };
 }
 
 async function handleNavigatePage(args) {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -164,6 +165,12 @@ function createRpcClient() {
 
 async function run() {
   const cli = parseArgs(process.argv.slice(2));
+  const previousTabRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
+  const tmpTabRegistryPath = resolve(
+    tmpdir(),
+    `tmwd-js-reverse-tab-registry-contract-${process.pid}-${Date.now()}.json`,
+  );
+  process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = tmpTabRegistryPath;
   const rpc = createRpcClient();
   try {
     const init = await rpc.call(
@@ -204,6 +211,49 @@ async function run() {
     const createHookTool = tools.find((entry) => entry?.name === "create_hook");
     assert.equal(createHookTool?.inputSchema?.type, "object");
     assert.equal(createHookTool?.inputSchema?.properties?.hook_id?.type, "string");
+    const newPageTool = tools.find((entry) => entry?.name === "new_page");
+    assert.equal(newPageTool?.inputSchema?.properties?.ownership_policy?.default, "tmwd_only");
+    assert.equal(newPageTool?.inputSchema?.properties?.reuse_scope?.default, "origin_path");
+
+    const newPageDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "new_page",
+        arguments: {
+          url: "http://example.test/app/one",
+          workspace_key: "js-reverse-contract",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(newPageDryRunCall?.result?.isError, undefined);
+    assertTextJsonContent(newPageDryRunCall.result, "js-reverse new_page dry-run result");
+    const newPageDryRunPayload = firstJsonContent(newPageDryRunCall.result);
+    assert.equal(newPageDryRunPayload?.ok, true);
+    assert.equal(newPageDryRunPayload?.owner, "tmwd");
+    assert.equal(newPageDryRunPayload?.created, false);
+    assert.equal(newPageDryRunPayload?.reused, false);
+    assert.equal(newPageDryRunPayload?.would_create, true);
+
+    const newPageReuseDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "new_page",
+        arguments: {
+          url: "http://example.test/app/two",
+          workspace_key: "js-reverse-contract",
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(newPageReuseDryRunCall?.result?.isError, undefined);
+    const newPageReuseDryRunPayload = firstJsonContent(newPageReuseDryRunCall.result);
+    assert.equal(newPageReuseDryRunPayload?.ok, true);
+    assert.equal(newPageReuseDryRunPayload?.created, false);
+    assert.equal(newPageReuseDryRunPayload?.reused, false);
+    assert.equal(newPageReuseDryRunPayload?.would_create, true);
 
     const understandCall = await rpc.call(
       "tools/call",
@@ -268,6 +318,11 @@ async function run() {
     process.stdout.write(`${JSON.stringify({ ok: true, tools_count: names.length })}\n`);
   } finally {
     await rpc.close();
+    if (previousTabRegistryPath === undefined) {
+      delete process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
+    } else {
+      process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = previousTabRegistryPath;
+    }
   }
 }
 

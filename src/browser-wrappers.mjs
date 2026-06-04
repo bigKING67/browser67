@@ -23,13 +23,25 @@ import {
   syncSessionRegistry,
 } from "./session-registry.mjs";
 import {
+  deleteManagedTab,
+  extractCreatedTabId,
+  findReusableManagedTab,
+  getManagedTab,
+  listManagedTabRecords,
+  managedTabGroups,
+  managedTabPayload,
+  planManagedTab,
+  recordManagedTab,
+  summarizeUnmanagedMatches,
+  updateManagedTab,
+} from "./tab-workspace.mjs";
+import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
 } from "./tmwd-runtime.mjs";
 
 const PARTIAL_DOWNLOAD_SUFFIXES = [".crdownload", ".download", ".part", ".tmp"];
 const downloadSessions = new Map();
-const managedTabs = new Map();
 
 function normalizeAction(args, supported) {
   const action = String(args?.action ?? "").trim().toLowerCase();
@@ -677,63 +689,32 @@ async function handleBrowserDownloadOps(args) {
   return handleDownloadListRecent(args);
 }
 
-function managedTabPayload(record) {
-  return {
-    tab_id: record.tab_id,
-    url: record.url,
-    title: record.title,
-    keep: record.keep === true,
-    dry_run: record.dry_run === true,
-    status: record.status,
-    created_at: record.created_at,
-    updated_at: record.updated_at,
-  };
-}
-
-function extractCreatedTabId(result) {
-  const candidates = [
-    result?.value?.id,
-    result?.value?.tabId,
-    result?.value?.tab_id,
-    result?.value?.data?.id,
-    result?.value?.data?.tabId,
-    result?.value?.data?.tab_id,
-    result?.raw?.tab_id,
-    result?.raw?.data?.id,
-    result?.raw?.data?.tabId,
-  ];
-  for (const candidate of candidates) {
-    const value = String(candidate ?? "").trim();
-    if (value) {
-      return value;
-    }
-  }
-  return "";
-}
-
-async function createManagedTab(args) {
+async function createManagedTab(args, options = {}) {
   const url = String(args?.url ?? "").trim();
   if (!url) {
-    throw createToolError("INVALID_ARGUMENT", "url is required for action=create_managed");
+    throw createToolError(
+      "INVALID_ARGUMENT",
+      `url is required for action=${options.action ?? "create_managed"}`,
+    );
   }
   const active = args?.active !== false;
   if (args?.dry_run === true) {
-    const tabId = randomId("dry_tab");
-    const record = {
-      tab_id: tabId,
+    const record = planManagedTab({
+      ...args,
       url,
       title: "",
-      keep: false,
+      keep: args?.keep === true,
       dry_run: true,
       status: "planned",
-      created_at: nowIso(),
-      updated_at: nowIso(),
-    };
-    managedTabs.set(tabId, record);
+      source: options.source ?? "tmwd_browser",
+    });
     return {
       status: "success",
-      action: "create_managed",
+      action: options.action ?? "create_managed",
       created: false,
+      reused: false,
+      would_create: true,
+      owner: "tmwd",
       managed_tab: managedTabPayload(record),
     };
   }
@@ -761,26 +742,99 @@ async function createManagedTab(args) {
   if (!tabId) {
     throw createToolError("EXECUTION_ERROR", "managed tab create did not return tab id");
   }
-  const record = {
+  const record = recordManagedTab({
+    ...args,
     tab_id: tabId,
     url,
     title,
-    keep: false,
+    keep: args?.keep === true,
     dry_run: false,
     status: "open",
-    created_at: nowIso(),
-    updated_at: nowIso(),
-  };
-  managedTabs.set(tabId, record);
+    source: options.source ?? "tmwd_browser",
+  });
   markSessionSelected(tabId, { make_default: false });
   return {
     status: "success",
-    action: "create_managed",
+    action: options.action ?? "create_managed",
     created: true,
+    reused: false,
+    owner: "tmwd",
     transport,
     transport_attempts: transportAttempts,
     managed_tab: managedTabPayload(record),
     ...sessionPointers(),
+  };
+}
+
+async function selectOrCreateManagedTab(args) {
+  const url = String(args?.url ?? "").trim();
+  if (!url) {
+    throw createToolError("INVALID_ARGUMENT", "url is required for action=select_or_create");
+  }
+  if (args?.dry_run === true) {
+    const reusable = findReusableManagedTab(args, url, []);
+    if (reusable.record) {
+      return {
+        status: "success",
+        action: "select_or_create",
+        created: false,
+        reused: true,
+        dry_run: true,
+        owner: "tmwd",
+        selected_by: reusable.selected_by,
+        reuse_policy: reusable.policy,
+        managed_tab: managedTabPayload(reusable.record),
+        ...sessionPointers(),
+      };
+    }
+    return createManagedTab(args, { action: "select_or_create" });
+  }
+  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
+  const reusable = findReusableManagedTab(args, url, liveTabs);
+  const unmanagedIgnored = summarizeUnmanagedMatches(args, url, liveTabs);
+  if (reusable.record) {
+    let record = reusable.record;
+    let navigation;
+    if (reusable.policy.navigate_reused && record.url !== reusable.policy.target.normalized_url) {
+      const nav = await executeBrowserScript(
+        { ...args, session_id: record.tab_id, switch_tab_id: record.tab_id },
+        "if (location.href !== input.url) location.href = input.url; return { url: location.href, title: document.title };",
+        { url },
+      );
+      navigation = {
+        requested_url: url,
+        result: nav.value,
+        transport: nav.transport,
+      };
+      record = updateManagedTab(record.tab_id, {
+        url,
+        title: String(nav.value?.title ?? record.title ?? ""),
+      }) ?? record;
+    } else {
+      record = updateManagedTab(record.tab_id, { touch: true }) ?? record;
+    }
+    markSessionSelected(record.tab_id, { make_default: false });
+    return {
+      status: "success",
+      action: "select_or_create",
+      created: false,
+      reused: true,
+      owner: "tmwd",
+      selected_by: reusable.selected_by,
+      reuse_policy: reusable.policy,
+      managed_tab: managedTabPayload(record),
+      unmanaged_tabs_ignored: unmanagedIgnored,
+      navigation,
+      ...sessionPointers(),
+    };
+  }
+  const created = await createManagedTab(args, { action: "select_or_create" });
+  return {
+    ...created,
+    reuse_policy: reusable.policy,
+    selected_by: "created_new_tmwd_owned_tab",
+    unmanaged_tabs_ignored: unmanagedIgnored,
   };
 }
 
@@ -790,7 +844,7 @@ function markManagedTabKeep(args) {
     throw createToolError("INVALID_ARGUMENT", "tab_id or session_id is required for action=mark_keep");
   }
   const keep = args?.keep !== false;
-  const record = managedTabs.get(tabId);
+  const record = getManagedTab(tabId);
   if (!record) {
     return {
       status: "success",
@@ -801,14 +855,12 @@ function markManagedTabKeep(args) {
       note: "tab is not managed by browser_tab_lifecycle; unmanaged user tabs are ignored",
     };
   }
-  record.keep = keep;
-  record.updated_at = nowIso();
-  managedTabs.set(tabId, record);
+  const updated = updateManagedTab(tabId, { keep });
   return {
     status: "success",
     action: "mark_keep",
     managed: true,
-    managed_tab: managedTabPayload(record),
+    managed_tab: managedTabPayload(updated ?? record),
   };
 }
 
@@ -816,7 +868,8 @@ function listManagedTabs() {
   return {
     status: "success",
     action: "list_managed",
-    managed_tabs: Array.from(managedTabs.values()).map((record) => managedTabPayload(record)),
+    managed_tabs: listManagedTabRecords({ include_closed: true }).map((record) => managedTabPayload(record)),
+    groups: managedTabGroups(),
     sessions: listSessionsSnapshot({ include_disconnected: true }),
     ...sessionPointers(),
   };
@@ -855,21 +908,42 @@ async function closeOneManagedTab(args, record) {
   };
 }
 
+function resolveCloseScope(args = {}) {
+  const taskId = String(args.task_id ?? args.taskId ?? "").trim();
+  const workspaceKey = String(args.workspace_key ?? args.workspaceKey ?? "").trim();
+  const scope = String(args.scope ?? "").trim().toLowerCase();
+  const all = scope === "all" || args.all === true || args.confirm_all === true;
+  if (!taskId && !workspaceKey && !all) {
+    throw createToolError(
+      "INVALID_ARGUMENT",
+      "workspace_key or task_id is required for action=close_unkept; use scope=\"all\" to close all unkept managed tabs",
+    );
+  }
+  return { taskId, workspaceKey, all, scope: all ? "all" : (workspaceKey ? "workspace" : "task") };
+}
+
 async function closeUnkeptManagedTabs(args) {
+  const closeScope = resolveCloseScope(args ?? {});
   const unmanagedTabId = String(args?.tab_id ?? args?.session_id ?? "").trim();
-  const unmanagedIgnored = unmanagedTabId && !managedTabs.has(unmanagedTabId) ? [unmanagedTabId] : [];
-  const candidates = Array.from(managedTabs.values()).filter((record) => record.keep !== true);
+  const unmanagedIgnored = unmanagedTabId && !getManagedTab(unmanagedTabId) ? [unmanagedTabId] : [];
+  const candidates = listManagedTabRecords(closeScope.all
+    ? {}
+    : { task_id: closeScope.taskId, workspace_key: closeScope.workspaceKey })
+    .filter((record) => record.keep !== true);
   const closed = [];
   const errors = [];
   for (const record of candidates) {
     try {
       const result = await closeOneManagedTab(args, record);
       closed.push(result);
-      record.status = result.closed ? "closed" : record.status;
-      record.updated_at = nowIso();
-      managedTabs.set(record.tab_id, record);
-      if (result.closed) {
-        managedTabs.delete(record.tab_id);
+      if (args?.dry_run !== true && record.dry_run !== true) {
+        updateManagedTab(record.tab_id, {
+          status: result.closed ? "closed" : record.status,
+          touch: false,
+        });
+        if (result.closed) {
+          deleteManagedTab(record.tab_id);
+        }
       }
     } catch (error) {
       errors.push({
@@ -881,10 +955,11 @@ async function closeUnkeptManagedTabs(args) {
   return {
     status: errors.length > 0 ? "partial" : "success",
     action: "close_unkept",
+    close_scope: closeScope,
     closed,
     errors,
     unmanaged_tabs_ignored: unmanagedIgnored,
-    kept_tabs: Array.from(managedTabs.values())
+    kept_tabs: listManagedTabRecords()
       .filter((record) => record.keep === true)
       .map((record) => managedTabPayload(record)),
   };
@@ -893,10 +968,14 @@ async function closeUnkeptManagedTabs(args) {
 async function handleBrowserTabLifecycle(args) {
   const action = normalizeAction(args, [
     "create_managed",
+    "select_or_create",
     "mark_keep",
     "list_managed",
     "close_unkept",
   ]);
+  if (action === "select_or_create") {
+    return selectOrCreateManagedTab(args);
+  }
   if (action === "create_managed") {
     return createManagedTab(args);
   }
