@@ -65,6 +65,65 @@ function closeTmwdWsConnection(reason) {
   }
 }
 
+function clampDisposeTimeoutMs(raw) {
+  const parsed = Number(raw ?? 1_000);
+  if (!Number.isFinite(parsed)) {
+    return 1_000;
+  }
+  return Math.max(100, Math.min(10_000, Math.floor(parsed)));
+}
+
+async function waitForSocketClose(socket, timeoutMs) {
+  if (!socket || socket.readyState === WebSocket.CLOSED) {
+    return "already_closed";
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (status) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(status);
+    };
+    const timer = setTimeout(() => finish("timeout"), timeoutMs);
+    try {
+      socket.addEventListener("close", () => finish("closed"), { once: true });
+      socket.addEventListener("error", () => finish("error"), { once: true });
+    } catch {
+      finish("listener_unavailable");
+    }
+  });
+}
+
+async function disposeTmwdRuntime(options = {}) {
+  const socket = tmwdWsRuntime.socket;
+  const timeoutMs = clampDisposeTimeoutMs(options.timeout_ms ?? options.timeoutMs);
+  const snapshot = {
+    endpoint: tmwdWsRuntime.endpoint,
+    state: tmwdWsRuntime.state,
+    pending_count: tmwdWsRuntime.pending.size,
+    had_socket: Boolean(socket),
+  };
+  const waitClose = socket ? waitForSocketClose(socket, timeoutMs) : Promise.resolve("no_socket");
+  closeTmwdWsConnection(String(options.reason ?? "tmwd runtime disposed"));
+  const closeStatus = await waitClose;
+  return {
+    status: "success",
+    action: "dispose_tmwd_runtime",
+    close_status: closeStatus,
+    timeout_ms: timeoutMs,
+    before: snapshot,
+    after: {
+      endpoint: tmwdWsRuntime.endpoint,
+      state: tmwdWsRuntime.state,
+      pending_count: tmwdWsRuntime.pending.size,
+      had_socket: Boolean(tmwdWsRuntime.socket),
+    },
+  };
+}
+
 function onTmwdWsMessage(eventData) {
   let payload;
   try {
@@ -589,6 +648,7 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload) {
 }
 
 export {
+  disposeTmwdRuntime,
   executeTmwdJs,
   executeTmwdJsWithFallback,
   normalizeTmwdSessions,

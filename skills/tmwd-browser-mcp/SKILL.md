@@ -73,6 +73,7 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - After extension updates, reload the unpacked extension and refresh old tabs.
 - If Chrome visibly shows `about:blank` but `tabs.list` does not, use `tabs.list` with `includeUnscriptable:true` or `tabs.get`; default tab lists intentionally hide non-HTTP(S) pages.
 - For lifecycle regressions, run `npm run check:managed-tab-live`; it opens only temporary local fixture pages and closes the TMWD-owned tabs it creates.
+- For ad-hoc one-shot Node scripts that directly import `src/tmwd-runtime.mjs`, call `await disposeTmwdRuntime()` in `finally`; otherwise an open TMWD websocket can keep the shell process alive after the browser action has already succeeded.
 - `await` in `browser_execute_js` must explicitly `return` to expose values.
 - For CDP coordinate clicks, warm up debugger attachment before measuring coordinates.
 - For real local file upload, prefer same-batch `DOM.getDocument -> DOM.querySelector -> DOM.setFileInputFiles`; DataTransfer is only suitable for in-memory files.
