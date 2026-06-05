@@ -1,10 +1,21 @@
 node_modules/
 npm-debug.log*
+.DS_Store
+.env
+.env.*
 
 # Runtime state belongs under ~/.tmwd-browser-mcp and should not be committed.
 .tmwd-browser-mcp/
 runtime/
+tmp/
+temp/
 
 # Source keeps a non-secret example only. setup-extension writes config.js into
 # the installed unpacked-extension directory.
 extension/config.js
+
+# JS reverse evidence/rebuild output can contain request samples, cookies,
+# storage keys, or per-task runtime captures. Keep it outside public commits.
+*.har
+*.pcap
+*.pcapng

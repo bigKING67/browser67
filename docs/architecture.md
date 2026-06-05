@@ -46,5 +46,5 @@ native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
 - `~/.tmwd-browser-mcp/runtime/` is runtime state and logs.
 - `runtime/js-reverse/` is ignored local evidence, reports, and rebuild bundles
   produced by `src/js-reverse-server.mjs`.
-- `~/Library/LaunchAgents/com.gaoqian.tmwd-browser-mcp.plist` is optional
+- `~/Library/LaunchAgents/com.browser67.tmwd-browser-mcp.plist` is optional
   user-level autostart state created by `npm run launchd:install`.

@@ -10,7 +10,7 @@ const repoRoot = resolve(__dirname, "..");
 const home = process.env.HOME || process.cwd();
 const runtimeHome = resolve(process.env.TMWD_BROWSER_MCP_HOME || `${home}/.tmwd-browser-mcp`);
 const launchAgentsDir = resolve(home, "Library/LaunchAgents");
-const label = "com.gaoqian.tmwd-browser-mcp";
+const label = "com.browser67.tmwd-browser-mcp";
 const plistPath = resolve(launchAgentsDir, `${label}.plist`);
 const userTarget = `gui/${process.getuid?.() ?? ""}`;
 

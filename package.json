@@ -1,9 +1,25 @@
 {
   "name": "tmwd-browser-mcp",
   "version": "0.1.0",
-  "private": true,
   "description": "Standalone TMWD browser MCP server for real Chrome/Edge profile automation, CDP bridge workflows, native fallback, and JS reverse workflows.",
   "type": "module",
+  "keywords": [
+    "mcp",
+    "browser-automation",
+    "chrome",
+    "edge",
+    "tmwd",
+    "js-reverse",
+    "codex"
+  ],
+  "homepage": "https://github.com/bigKING67/browser67#readme",
+  "bugs": {
+    "url": "https://github.com/bigKING67/browser67/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bigKING67/browser67.git"
+  },
   "bin": {
     "tmwd-browser-mcp": "./bin/tmwd-browser-mcp.mjs",
     "tmwd-browser": "./bin/tmwd-browser-mcp.mjs"

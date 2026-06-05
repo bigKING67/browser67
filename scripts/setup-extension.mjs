@@ -16,6 +16,7 @@ const defaultHome = resolve(
 const defaultTargetDir = resolve(defaultHome, "browser/tmwd_cdp_bridge");
 const defaultMcpRegistryPath = resolve(defaultHome, "mcp/servers.toml");
 const browserServerPath = resolve(repoRoot, "src/server.mjs");
+const jsReverseServerPath = resolve(repoRoot, "src/js-reverse-server.mjs");
 
 function parseArgs(argv) {
   const parsed = {
@@ -85,26 +86,47 @@ function tomlString(value) {
 function ensureMcpRegistry(registryPath) {
   mkdirSync(dirname(registryPath), { recursive: true });
   const current = existsSync(registryPath) ? readFileSync(registryPath, "utf8") : "";
-  if (/^\s*name\s*=\s*["']tmwd-browser-mcp["']/m.test(current)) {
+  const blocks = [];
+  if (!/^\s*name\s*=\s*["']tmwd-browser-mcp["']/m.test(current)) {
+    blocks.push([
+      "",
+      "# Standalone TMWD browser MCP server.",
+      "[[servers]]",
+      "name = \"tmwd-browser-mcp\"",
+      "command = \"node\"",
+      `args = [${tomlString(browserServerPath)}]`,
+      "enabled = true",
+      "",
+      "[servers.env]",
+      "BROWSER_STRUCTURED_TMWD_MODE = \"tmwd\"",
+      "BROWSER_STRUCTURED_TMWD_TRANSPORT = \"auto\"",
+      "BROWSER_STRUCTURED_TMWD_WS_ENDPOINT = \"ws://127.0.0.1:18765\"",
+      "BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT = \"http://127.0.0.1:18766/link\"",
+      "",
+    ].join("\n"));
+  }
+  if (!/^\s*name\s*=\s*["']js-reverse["']/m.test(current)) {
+    blocks.push([
+      "",
+      "# TMWD-backed JavaScript reverse-engineering MCP server.",
+      "[[servers]]",
+      "name = \"js-reverse\"",
+      "command = \"node\"",
+      `args = [${tomlString(jsReverseServerPath)}]`,
+      "enabled = true",
+      "",
+      "[servers.env]",
+      "BROWSER_STRUCTURED_TMWD_MODE = \"tmwd\"",
+      "BROWSER_STRUCTURED_TMWD_TRANSPORT = \"auto\"",
+      "BROWSER_STRUCTURED_TMWD_WS_ENDPOINT = \"ws://127.0.0.1:18765\"",
+      "BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT = \"http://127.0.0.1:18766/link\"",
+      "",
+    ].join("\n"));
+  }
+  if (blocks.length === 0) {
     return { path: registryPath, changed: false };
   }
-  const block = [
-    "",
-    "# Standalone TMWD browser MCP server.",
-    "[[servers]]",
-    "name = \"tmwd-browser-mcp\"",
-    "command = \"node\"",
-    `args = [${tomlString(browserServerPath)}]`,
-    "enabled = true",
-    "",
-    "[servers.env]",
-    "BROWSER_STRUCTURED_TMWD_MODE = \"tmwd\"",
-    "BROWSER_STRUCTURED_TMWD_TRANSPORT = \"auto\"",
-    "BROWSER_STRUCTURED_TMWD_WS_ENDPOINT = \"ws://127.0.0.1:18765\"",
-    "BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT = \"http://127.0.0.1:18766/link\"",
-    "",
-  ].join("\n");
-  appendFileSync(registryPath, block, "utf8");
+  appendFileSync(registryPath, blocks.join(""), "utf8");
   return { path: registryPath, changed: true };
 }
 

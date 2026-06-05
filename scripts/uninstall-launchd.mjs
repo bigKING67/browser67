@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const home = process.env.HOME || process.cwd();
-const label = "com.gaoqian.tmwd-browser-mcp";
+const label = "com.browser67.tmwd-browser-mcp";
 const plistPath = resolve(home, "Library/LaunchAgents", `${label}.plist`);
 const userTarget = `gui/${process.getuid?.() ?? ""}`;
 

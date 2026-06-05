@@ -5,7 +5,7 @@ Recommended Codex MCP block:
 ```toml
 [mcp_servers.tmwd_browser]
 command = "node"
-args = ["/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/server.mjs"]
+args = ["/path/to/browser67/src/server.mjs"]
 
 [mcp_servers.tmwd_browser.env]
 BROWSER_STRUCTURED_TMWD_MODE = "tmwd"
@@ -45,7 +45,7 @@ approval_mode = "approve"
 
 [mcp_servers.js-reverse]
 command = "node"
-args = ["/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/js-reverse-server.mjs"]
+args = ["/path/to/browser67/src/js-reverse-server.mjs"]
 
 [mcp_servers.js-reverse.env]
 BROWSER_STRUCTURED_TMWD_MODE = "tmwd"
@@ -146,7 +146,7 @@ When GenericAgent changes its TMWebDriver extension, resync this standalone
 project from the local upstream checkout:
 
 ```bash
-cd /Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp
+cd /path/to/browser67
 npm run extension:sync
 npm run extension:check
 npm run upstream:lock
@@ -160,7 +160,7 @@ tabs so content scripts are reinjected. If manually loading from the standalone
 project, run `npm run setup:local-extension` and load exactly:
 
 ```text
-/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/runtime/chrome-extension/tmwd_cdp_bridge/
+/path/to/browser67/runtime/chrome-extension/tmwd_cdp_bridge/
 ```
 
 Before committing maintenance changes:

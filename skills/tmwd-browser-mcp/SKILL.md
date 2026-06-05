@@ -18,7 +18,7 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 ## Core workflow
 
 1. Check readiness:
-   - run `npm run doctor` in `/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp`, or
+   - run `npm run doctor` in `/path/to/browser67`, or
    - call `browser_tab_ops` / `browser_scan` with `tmwd_mode="tmwd"`.
 2. For login-state tasks, keep `tmwd_mode="tmwd"` and `tmwd_transport="auto"`.
 3. Use `browser_scan` for current page/tabs/text.

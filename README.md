@@ -1,6 +1,8 @@
 # tmwd-browser-mcp
 
 Standalone TMWD browser MCP server for real Chrome/Edge profile automation.
+This repository is published as `browser67` for agents that need both real
+browser automation and TMWD-backed JavaScript reverse-engineering tools.
 
 This project extracts the `browser-structured-mcp` path from `grobot`, keeps the
 GenericAgent/TMWebDriver extension protocol aligned, and adds a focused runtime
@@ -14,6 +16,10 @@ for Codex, grobot, and JS reverse workflows.
   - `browser_extract`
   - `browser_diff`
   - `browser_tab_ops`
+  - `browser_file_ops`
+  - `browser_download_ops`
+  - `browser_tab_lifecycle`
+  - `browser_clipboard_ops`
   - `browser_native_input`
 - JS reverse MCP server:
   - `check_browser_health`
@@ -49,6 +55,14 @@ work that needs Network/Debugger/Script source.
 ## Install dependencies
 
 ```bash
+git clone https://github.com/bigKING67/browser67.git
+cd browser67
+npm ci
+```
+
+For an existing checkout:
+
+```bash
 npm install
 ```
 
@@ -64,6 +78,10 @@ Default extension target:
 ~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/
 ```
 
+`npm run setup` also writes local registry entries for both
+`tmwd-browser-mcp` and `js-reverse` into
+`~/.tmwd-browser-mcp/mcp/servers.toml` unless `--skip-registry` is passed.
+
 For manual Chrome extension loading from this repository, prepare the
 project-local runtime copy:
 
@@ -74,7 +92,7 @@ npm run setup:local-extension
 Then load exactly this directory, not its parent:
 
 ```text
-/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/runtime/chrome-extension/tmwd_cdp_bridge/
+/path/to/browser67/runtime/chrome-extension/tmwd_cdp_bridge/
 ```
 
 Then open `chrome://extensions`, enable Developer Mode, and load that directory
@@ -104,7 +122,7 @@ npm run server
 Codex config should point directly at:
 
 ```text
-/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/server.mjs
+/path/to/browser67/src/server.mjs
 ```
 
 Run the TMWD-backed JS reverse MCP server with:
@@ -116,7 +134,7 @@ npm run js-reverse:server
 Codex `js-reverse` config should point directly at:
 
 ```text
-/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/js-reverse-server.mjs
+/path/to/browser67/src/js-reverse-server.mjs
 ```
 
 ## Quality gates
@@ -163,8 +181,11 @@ npm run upstream:lock
 Default upstream path:
 
 ```text
-/Users/gaoqian/Documents/sixseven/codeproject/GenericAgent/assets/tmwd_cdp_bridge
+../GenericAgent/assets/tmwd_cdp_bridge
 ```
+
+Use `node scripts/sync-genericagent-extension.mjs --source <path>` when your
+GenericAgent checkout lives somewhere else.
 
 `extension/config.js` is intentionally not committed. `npm run setup` writes an
 install-local `config.js` with a per-install TID into
@@ -185,14 +206,18 @@ npm run launchd:install
 This writes:
 
 ```text
-~/Library/LaunchAgents/com.gaoqian.tmwd-browser-mcp.plist
+~/Library/LaunchAgents/com.browser67.tmwd-browser-mcp.plist
 ```
 
 and runs the hub from:
 
 ```text
-/Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp/src/tmwd-hub.mjs
+/path/to/browser67/src/tmwd-hub.mjs
 ```
+
+If you previously installed an older pre-browser67 LaunchAgent, stop or
+uninstall that old service before installing this one so only one hub claims the
+default ports.
 
 Uninstall:
 
