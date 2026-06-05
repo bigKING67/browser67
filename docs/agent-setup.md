@@ -18,6 +18,7 @@ owns observe/capture/rebuild workflows.
 | Project-level prompt for this repo | `AGENTS.md` |
 | TMWD browser skill | `skills/tmwd-browser-mcp/` |
 | JS reverse skill | `skills/js-reverse/` |
+| JS reverse SOP entrypoint | `docs/js-reverse-SOP.md` |
 | Generic agent descriptor | `agents/openai.yaml` |
 | JS reverse agent descriptor | `skills/js-reverse/agents/openai.yaml` |
 | JS reverse reference docs | `docs/js-reverse/` and `skills/js-reverse/references/` |
