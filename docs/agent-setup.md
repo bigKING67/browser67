@@ -14,6 +14,7 @@ owns observe/capture/rebuild workflows.
 | Purpose | File or directory |
 | --- | --- |
 | MCP server config examples | `docs/codex-integration.md` |
+| Copy-ready global prompt rules | `docs/global-prompt-snippet.md` |
 | Project-level prompt for this repo | `AGENTS.md` |
 | TMWD browser skill | `skills/tmwd-browser-mcp/` |
 | JS reverse skill | `skills/js-reverse/` |
@@ -79,6 +80,9 @@ For agents that consume YAML descriptors, use:
 
 Do not overwrite an agent's global prompt blindly. Merge these rules into the
 agent's existing global or project instructions:
+
+For a copy-ready Chinese prompt block, use `docs/global-prompt-snippet.md`.
+The compact English version is:
 
 ```text
 Use tmwd_browser for real Chrome/Edge browser automation: logged-in pages,

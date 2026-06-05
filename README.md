@@ -143,6 +143,8 @@ This repository includes the runtime, MCP config examples, skills, and prompt
 material needed by other agents:
 
 - `docs/codex-integration.md`: full `tmwd_browser` and `js-reverse` MCP config.
+- `docs/global-prompt-snippet.md`: copy-ready global prompt section for page
+  and browser operations.
 - `AGENTS.md`: project-level operating rules for agents working inside this
   repository.
 - `skills/tmwd-browser-mcp/`: skill/playbook for real-browser TMWD tasks.
