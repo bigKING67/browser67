@@ -137,6 +137,25 @@ Codex `js-reverse` config should point directly at:
 /path/to/browser67/src/js-reverse-server.mjs
 ```
 
+## Agent prompts and configs
+
+This repository includes the runtime, MCP config examples, skills, and prompt
+material needed by other agents:
+
+- `docs/codex-integration.md`: full `tmwd_browser` and `js-reverse` MCP config.
+- `AGENTS.md`: project-level operating rules for agents working inside this
+  repository.
+- `skills/tmwd-browser-mcp/`: skill/playbook for real-browser TMWD tasks.
+- `skills/js-reverse/`: skill/playbook for JavaScript reverse-engineering tasks.
+- `agents/openai.yaml` and `skills/js-reverse/agents/openai.yaml`: portable
+  agent metadata/prompts for agent systems that consume YAML descriptors.
+- `docs/agent-setup.md`: setup guide for copying the prompts/skills into another
+  agent environment.
+
+Do not replace another user's global prompt blindly. Merge the routing and
+security rules from `docs/agent-setup.md` into that agent's own global/project
+instructions.
+
 ## Quality gates
 
 ```bash
