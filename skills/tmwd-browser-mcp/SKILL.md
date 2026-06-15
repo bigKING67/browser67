@@ -55,7 +55,10 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - Use `create_managed` only when a fresh TMWD-owned tab is explicitly needed; use `fresh:true` or `reuse:false` as the escape hatch.
 - Managed tab registry is outside the repo by default: `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json`; use `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for isolated test/workspace runs.
 - `create_managed` / `select_or_create` wait for new tabs to become visible by default (`wait_until:"listed"`). Use `wait_until:"none"` only when the caller will do its own readiness wait.
-- `list_managed` is live-only by default. Pass `include_disconnected:true` or `history:true` only when you explicitly need disconnected session history.
+- `list_managed` is live-only by default and limits large arrays. Use
+  `summary_only:true`, `max_items`, or `max_stale_items` for bounded
+  diagnostics; pass `include_disconnected:true` or `history:true` only when you
+  explicitly need disconnected session history.
 - Use `prune_stale` to remove registry records for managed tabs that no longer exist; it never closes unmanaged user tabs.
 - `close_unkept` requires `workspace_key` or `task_id` unless explicitly using `scope:"all"` / `all:true` / `confirm_all:true`.
 - Use `js-reverse` for page API/interface discovery, request initiator tracing,

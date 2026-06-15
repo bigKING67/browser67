@@ -273,6 +273,23 @@ const TOOL_SCHEMAS = {
         include_disconnected: { type: "boolean", default: false },
         history: { type: "boolean", default: false },
         prune_stale: { type: "boolean", default: false },
+        summary_only: {
+          type: "boolean",
+          default: false,
+          description: "Return counts and metadata without expanding managed tab, group, stale, pruned, or kept arrays.",
+        },
+        max_items: {
+          type: "number",
+          minimum: 0,
+          maximum: 500,
+          description: "Maximum managed tab/group/prune rows returned by list_managed and prune_stale. Counts still report full totals.",
+        },
+        max_stale_items: {
+          type: "number",
+          minimum: 0,
+          maximum: 500,
+          description: "Maximum live_filter.stale rows returned by list_managed. Counts still report full totals.",
+        },
         dry_run: { type: "boolean", default: false },
         tab_id: { type: "string" },
         switch_tab_id: { type: "string" },

@@ -100,7 +100,7 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 - User-opened tabs are `user_unmanaged`: scan/read-only by default. Do not navigate, type, click, close, or adopt them unless the user explicitly asks to operate on the current tab.
 - TMWD work tabs are `tmwd_managed`: create them through `browser_tab_lifecycle`.
 - Managed tab registry is stored outside the repo at `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json` by default. Override with `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for tests or isolated runs.
-- `list_managed` returns live sessions by default. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
+- `list_managed` returns live sessions by default and limits large arrays. Use `summary_only:true`, `max_items`, or `max_stale_items` for bounded diagnostics. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
 - `create_managed` / `select_or_create` wait for the created tab to be visible by default (`wait_until:"listed"`, `wait_timeout_ms:3000`). Use `wait_until:"none"` only for fire-and-forget workflows.
 - Default active-work entry:
 

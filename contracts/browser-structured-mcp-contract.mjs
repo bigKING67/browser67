@@ -168,6 +168,18 @@ async function run() {
       tabLifecycleTool?.inputSchema?.properties?.prune_stale?.type,
       "boolean",
     );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.summary_only?.type,
+      "boolean",
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.max_items?.maximum,
+      500,
+    );
+    assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.max_stale_items?.maximum,
+      500,
+    );
 
     const missingScriptCall = await rpc.call(
       "tools/call",
@@ -487,6 +499,8 @@ async function run() {
     assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
     assert.equal(Array.isArray(tabListManagedPayload?.live_sessions), true);
     assert.equal(Array.isArray(tabListManagedPayload?.sessions), true);
+    assert.equal(typeof tabListManagedPayload?.summary?.managed_total_count, "number");
+    assert.equal(tabListManagedPayload?.result_limits?.max_items, 50);
 
     const tabPruneStaleCall = await rpc.call(
       "tools/call",

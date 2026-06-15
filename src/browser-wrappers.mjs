@@ -1044,8 +1044,50 @@ function markManagedTabKeep(args) {
   };
 }
 
+const DEFAULT_LIST_MANAGED_MAX_ITEMS = 50;
+const DEFAULT_LIST_MANAGED_MAX_STALE_ITEMS = 20;
+const MAX_LIST_MANAGED_ITEMS = 500;
+
+function normalizeListManagedLimit(raw, fallback) {
+  const parsed = Number(raw ?? fallback);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(MAX_LIST_MANAGED_ITEMS, Math.floor(parsed)));
+}
+
+function limitedList(items, maxItems, summaryOnly = false) {
+  const values = Array.isArray(items) ? items : [];
+  const limit = summaryOnly ? 0 : maxItems;
+  const returned = values.slice(0, limit);
+  return {
+    values: returned,
+    total_count: values.length,
+    returned_count: returned.length,
+    truncated: values.length > returned.length,
+  };
+}
+
+function limitLiveFilterPayload(liveFilter, maxStaleItems, summaryOnly = false) {
+  if (!liveFilter || typeof liveFilter !== "object") {
+    return liveFilter;
+  }
+  const stale = Array.isArray(liveFilter.stale) ? liveFilter.stale : [];
+  const limited = limitedList(stale, maxStaleItems, summaryOnly);
+  return {
+    ...liveFilter,
+    stale: limited.values,
+    stale_total_count: limited.total_count,
+    stale_returned_count: limited.returned_count,
+    stale_truncated: limited.truncated,
+  };
+}
+
 async function listManagedTabs(args = {}) {
   const includeDisconnected = args?.include_disconnected === true || args?.history === true;
+  const summaryOnly = args?.summary_only === true;
+  const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
+  const maxStaleItems = normalizeListManagedLimit(args?.max_stale_items, DEFAULT_LIST_MANAGED_MAX_STALE_ITEMS);
   const liveSessions = listSessionsSnapshot();
   const sessions = includeDisconnected
     ? listSessionsSnapshot({ include_disconnected: true })
@@ -1133,13 +1175,48 @@ async function listManagedTabs(args = {}) {
       stale: [],
     };
   }
+  const managedPayloads = managedRecords.map((record) => managedTabPayload(record));
+  const managedLimit = limitedList(managedPayloads, maxItems, summaryOnly);
+  const groupPayloads = managedTabGroups(managedRecords).map((group) => {
+    const tabs = Array.isArray(group.tabs) ? group.tabs : [];
+    const limitedTabs = tabs.slice(0, maxItems);
+    return {
+      ...group,
+      tabs: summaryOnly ? [] : limitedTabs,
+      tabs_total_count: tabs.length,
+      tabs_returned_count: summaryOnly ? 0 : limitedTabs.length,
+      tabs_truncated: tabs.length > limitedTabs.length,
+    };
+  });
+  const groupLimit = limitedList(groupPayloads, maxItems, summaryOnly);
+  const limitedLiveFilter = limitLiveFilterPayload(liveFilter, maxStaleItems, summaryOnly);
   return {
     status: "success",
     action: "list_managed",
     capabilities: CAPABILITIES,
-    managed_tabs: managedRecords.map((record) => managedTabPayload(record)),
-    groups: managedTabGroups(),
-    live_filter: liveFilter,
+    managed_tabs: managedLimit.values,
+    groups: groupLimit.values,
+    live_filter: limitedLiveFilter,
+    summary: {
+      include_disconnected: includeDisconnected,
+      summary_only: summaryOnly,
+      registry_count: registryRecords.length,
+      managed_total_count: managedLimit.total_count,
+      managed_returned_count: managedLimit.returned_count,
+      groups_total_count: groupLimit.total_count,
+      groups_returned_count: groupLimit.returned_count,
+      live_session_count: liveSessions.length,
+      disconnected_session_count: disconnectedSessions?.length ?? 0,
+      stale_total_count: limitedLiveFilter?.stale_total_count ?? 0,
+      stale_returned_count: limitedLiveFilter?.stale_returned_count ?? 0,
+    },
+    result_limits: {
+      max_items: maxItems,
+      max_stale_items: maxStaleItems,
+      managed_tabs_truncated: managedLimit.truncated,
+      groups_truncated: groupLimit.truncated,
+      stale_truncated: limitedLiveFilter?.stale_truncated === true,
+    },
     live_sessions: liveSessions,
     disconnected_sessions: disconnectedSessions,
     sessions,
@@ -1248,6 +1325,8 @@ async function closeUnkeptManagedTabs(args) {
 }
 
 async function pruneStaleManagedTabs(args = {}) {
+  const summaryOnly = args?.summary_only === true;
+  const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
   const records = listManagedTabRecords();
   if (records.length === 0) {
     return {
@@ -1284,6 +1363,8 @@ async function pruneStaleManagedTabs(args = {}) {
       deleteManagedTab(record.tab_id);
     }
   }
+  const prunedLimit = limitedList(pruned, maxItems, summaryOnly);
+  const keptLimit = limitedList(kept, maxItems, summaryOnly);
   return {
     status: "success",
     action: "prune_stale",
@@ -1292,8 +1373,16 @@ async function pruneStaleManagedTabs(args = {}) {
     transport_attempts: Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [],
     pruned_count: args?.dry_run === true ? 0 : pruned.length,
     would_prune_count: pruned.length,
-    pruned,
-    kept,
+    pruned: prunedLimit.values,
+    kept: keptLimit.values,
+    result_limits: {
+      max_items: maxItems,
+      summary_only: summaryOnly,
+      pruned_returned_count: prunedLimit.returned_count,
+      kept_returned_count: keptLimit.returned_count,
+      pruned_truncated: prunedLimit.truncated,
+      kept_truncated: keptLimit.truncated,
+    },
     capabilities: CAPABILITIES,
     ...sessionPointers(),
   };

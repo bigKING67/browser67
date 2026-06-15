@@ -552,9 +552,10 @@ function summarizeUnmanagedMatches(args = {}, url = "", liveTabs = []) {
     }));
 }
 
-function managedTabGroups() {
+function managedTabGroups(records = null) {
   const groups = new Map();
-  for (const record of listManagedTabRecords()) {
+  const sourceRecords = Array.isArray(records) ? records : listManagedTabRecords();
+  for (const record of sourceRecords) {
     const key = record.workspace_key || record.origin || "tmwd-workspace";
     const existing = groups.get(key) ?? {
       workspace_key: key,
