@@ -233,13 +233,13 @@ const TOOL_SCHEMAS = {
     },
   },
   browser_tab_lifecycle: {
-    description: "Managed browser tab lifecycle wrapper. Use select_or_create for TMWD-owned tab reuse; unmanaged user tabs are ignored and never closed.",
+    description: "Managed browser tab lifecycle wrapper. Use select_or_create for TMWD-owned tab reuse and finalize_task for task-end cleanup; unmanaged user tabs are ignored and never closed.",
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["create_managed", "select_or_create", "mark_keep", "list_managed", "prune_stale", "close_unkept"],
+          enum: ["create_managed", "select_or_create", "mark_keep", "list_managed", "prune_stale", "close_unkept", "finalize_task"],
         },
         url: { type: "string" },
         active: { type: "boolean", default: true },
@@ -254,7 +254,7 @@ const TOOL_SCHEMAS = {
         scope: {
           type: "string",
           enum: ["workspace", "task", "all"],
-          description: "Cleanup scope for action=close_unkept. Runtime requires workspace_key or task_id unless scope is all.",
+          description: "Cleanup scope for action=close_unkept or finalize_task. Runtime requires workspace_key or task_id unless scope is all.",
         },
         all: {
           type: "boolean",

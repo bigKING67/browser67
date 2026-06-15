@@ -300,6 +300,40 @@ function managedTabPayload(record) {
   };
 }
 
+function managedTabFinalizeHint(record, options = {}) {
+  const payload = managedTabPayload(record);
+  const includeAction = options.include_action !== false;
+  const action = String(options.action ?? "finalize_task").trim() || "finalize_task";
+  const tool = String(options.tool ?? "browser_tab_lifecycle").trim() || "browser_tab_lifecycle";
+  const scopeArgs = payload.workspace_key
+    ? { workspace_key: payload.workspace_key }
+    : (payload.task_id ? { task_id: payload.task_id } : {});
+  const suggestedArguments = {
+    ...(includeAction ? { action } : {}),
+    ...scopeArgs,
+    prune_stale: true,
+  };
+  const dryRun = payload.dry_run === true;
+  const kept = payload.keep === true;
+  return {
+    required: dryRun ? false : !kept,
+    reason: dryRun
+      ? "dry_run planned tab; no live cleanup is required until a tab is created"
+      : (kept
+        ? "managed tab is marked keep=true; finalize_task will preserve it"
+        : "managed keep=false tab should be finalized before task end"),
+    tool,
+    action,
+    cleanup_scope: payload.workspace_key ? "workspace" : (payload.task_id ? "task" : "unknown"),
+    workspace_key: payload.workspace_key || undefined,
+    task_id: payload.task_id || undefined,
+    suggested_arguments: suggestedArguments,
+    closes_only_managed_tabs: true,
+    preserves_keep_true: true,
+    ignores_unmanaged_user_tabs: true,
+  };
+}
+
 function planManagedTab(input) {
   return buildManagedRecord({
     ...input,
@@ -606,6 +640,7 @@ export {
   isManagedTabWithinLiveGrace,
   listManagedTabRecords,
   managedTabGroups,
+  managedTabFinalizeHint,
   managedTabPayload,
   normalizeOwnershipPolicy,
   normalizeReuseScope,

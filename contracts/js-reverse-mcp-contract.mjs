@@ -205,6 +205,7 @@ async function run() {
       "get_hook_data",
       "export_rebuild_bundle",
       "get_storage",
+      "finalize_task",
     ]) {
       assert.equal(names.includes(requiredName), true, `missing tool ${requiredName}`);
     }
@@ -254,6 +255,47 @@ async function run() {
     assert.equal(newPageReuseDryRunPayload?.created, false);
     assert.equal(newPageReuseDryRunPayload?.reused, false);
     assert.equal(newPageReuseDryRunPayload?.would_create, true);
+    assert.equal(newPageReuseDryRunPayload?.finalize_hint?.required, false);
+    assert.equal(newPageReuseDryRunPayload?.finalize_hint?.tool, "finalize_task");
+    assert.equal(newPageReuseDryRunPayload?.finalize_hint?.workspace_key, "js-reverse-contract");
+    assert.equal(newPageReuseDryRunPayload?.finalize_hint?.suggested_arguments?.action, undefined);
+
+    const finalizeMissingScopeCall = await rpc.call(
+      "tools/call",
+      {
+        name: "finalize_task",
+        arguments: {
+          dry_run: true,
+          prune_stale: false,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(finalizeMissingScopeCall?.result?.isError, undefined);
+    const finalizeMissingScopePayload = firstJsonContent(finalizeMissingScopeCall.result);
+    assert.equal(finalizeMissingScopePayload?.ok, false);
+    assert.match(finalizeMissingScopePayload?.error ?? "", /workspace_key or task_id/);
+
+    const finalizeDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "finalize_task",
+        arguments: {
+          workspace_key: "js-reverse-contract",
+          dry_run: true,
+          prune_stale: false,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(finalizeDryRunCall?.result?.isError, undefined);
+    const finalizeDryRunPayload = firstJsonContent(finalizeDryRunCall.result);
+    assert.equal(finalizeDryRunPayload?.ok, true);
+    assert.equal(finalizeDryRunPayload?.action, "finalize_task");
+    assert.equal(finalizeDryRunPayload?.dry_run, true);
+    assert.equal(finalizeDryRunPayload?.finalizer_policy?.closes_only_managed_tabs, true);
+    assert.equal(finalizeDryRunPayload?.finalizer_policy?.preserves_keep_true, true);
+    assert.equal(finalizeDryRunPayload?.remaining?.unkept_count, 0);
 
     const understandCall = await rpc.call(
       "tools/call",

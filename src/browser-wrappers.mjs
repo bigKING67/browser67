@@ -30,6 +30,7 @@ import {
   getManagedTab,
   listManagedTabRecords,
   managedTabGroups,
+  managedTabFinalizeHint,
   managedTabPayload,
   planManagedTab,
   recordManagedTab,
@@ -879,6 +880,7 @@ async function createManagedTab(args, options = {}) {
       would_create: true,
       owner: "tmwd",
       managed_tab: managedTabPayload(record),
+      finalize_hint: managedTabFinalizeHint(record),
     };
   }
   const preferred = await resolvePreferredBrowserContext(args ?? {});
@@ -931,6 +933,7 @@ async function createManagedTab(args, options = {}) {
     wait_until: visible.wait_until,
     ready_warning: visible.ready_warning,
     managed_tab: managedTabPayload(record),
+    finalize_hint: managedTabFinalizeHint(record),
     ...sessionPointers(),
   };
 }
@@ -953,6 +956,7 @@ async function selectOrCreateManagedTab(args) {
         selected_by: reusable.selected_by,
         reuse_policy: reusable.policy,
         managed_tab: managedTabPayload(reusable.record),
+        finalize_hint: managedTabFinalizeHint(reusable.record),
         ...sessionPointers(),
       };
     }
@@ -1004,6 +1008,7 @@ async function selectOrCreateManagedTab(args) {
       reuse_policy: reusable.policy,
       liveness: reusableLiveness,
       managed_tab: managedTabPayload(record),
+      finalize_hint: managedTabFinalizeHint(record),
       unmanaged_tabs_ignored: unmanagedIgnored,
       navigation,
       ...sessionPointers(),
@@ -1036,11 +1041,13 @@ function markManagedTabKeep(args) {
     };
   }
   const updated = updateManagedTab(tabId, { keep });
+  const payloadRecord = updated ?? record;
   return {
     status: "success",
     action: "mark_keep",
     managed: true,
-    managed_tab: managedTabPayload(updated ?? record),
+    managed_tab: managedTabPayload(payloadRecord),
+    finalize_hint: managedTabFinalizeHint(payloadRecord),
   };
 }
 
@@ -1324,6 +1331,84 @@ async function closeUnkeptManagedTabs(args) {
   };
 }
 
+function scopedManagedRecords(closeScope) {
+  return listManagedTabRecords(closeScope.all
+    ? {}
+    : { task_id: closeScope.taskId, workspace_key: closeScope.workspaceKey });
+}
+
+function summarizeFinalizeRemainder(records, args = {}) {
+  const summaryOnly = args?.summary_only === true;
+  const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
+  const kept = records.filter((record) => record.keep === true);
+  const unkept = records.filter((record) => record.keep !== true);
+  const returned = limitedList(records.map((record) => managedTabPayload(record)), maxItems, summaryOnly);
+  return {
+    total_count: records.length,
+    kept_count: kept.length,
+    unkept_count: unkept.length,
+    tabs: returned.values,
+    returned_count: returned.returned_count,
+    truncated: returned.truncated,
+  };
+}
+
+async function finalizeManagedTask(args = {}) {
+  const closeScope = resolveCloseScope(args);
+  const dryRun = args?.dry_run === true;
+  const shouldPruneStale = args?.prune_stale !== false;
+  let pruneStale;
+  if (shouldPruneStale) {
+    try {
+      pruneStale = await pruneStaleManagedTabs({
+        ...args,
+        dry_run: dryRun,
+        summary_only: args?.summary_only ?? true,
+      });
+    } catch (error) {
+      pruneStale = {
+        status: "error",
+        action: "prune_stale",
+        error: String(error?.message ?? error),
+      };
+    }
+  }
+  let closeUnkept;
+  try {
+    closeUnkept = await closeUnkeptManagedTabs(args);
+  } catch (error) {
+    closeUnkept = {
+      status: "error",
+      action: "close_unkept",
+      error: String(error?.message ?? error),
+    };
+  }
+  const remainingRecords = scopedManagedRecords(closeScope);
+  const remaining = summarizeFinalizeRemainder(remainingRecords, args);
+  const pruneOk = !pruneStale || pruneStale.status === "success";
+  const closeOk = closeUnkept.status === "success";
+  return {
+    status: pruneOk && closeOk ? "success" : "partial",
+    action: "finalize_task",
+    dry_run: dryRun,
+    finalizer_policy: {
+      scope: closeScope.scope,
+      closes_only_managed_tabs: true,
+      closes_keep_false: true,
+      preserves_keep_true: true,
+      ignores_unmanaged_user_tabs: true,
+      prunes_stale_registry_records: shouldPruneStale,
+    },
+    close_scope: closeScope,
+    prune_stale: pruneStale,
+    close_unkept: closeUnkept,
+    remaining,
+    next_step: dryRun
+      ? "Call finalize_task without dry_run to close the listed keep=false managed tabs."
+      : "Report the finalize_task result in the task handoff or final response.",
+  };
+}
+
 async function pruneStaleManagedTabs(args = {}) {
   const summaryOnly = args?.summary_only === true;
   const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
@@ -1396,6 +1481,7 @@ async function handleBrowserTabLifecycle(args) {
     "list_managed",
     "prune_stale",
     "close_unkept",
+    "finalize_task",
   ]);
   if (action === "select_or_create") {
     return selectOrCreateManagedTab(args);
@@ -1411,6 +1497,9 @@ async function handleBrowserTabLifecycle(args) {
   }
   if (action === "prune_stale") {
     return pruneStaleManagedTabs(args);
+  }
+  if (action === "finalize_task") {
+    return finalizeManagedTask(args);
   }
   return closeUnkeptManagedTabs(args);
 }

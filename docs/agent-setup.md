@@ -14,6 +14,7 @@ owns observe/capture/rebuild workflows.
 | Purpose | File or directory |
 | --- | --- |
 | MCP server config examples | `docs/codex-integration.md` |
+| Codex host hard-finally adapter | `src/codex-host-finalizer.mjs` |
 | Copy-ready global prompt rules | `docs/global-prompt-snippet.md` |
 | Project-level prompt for this repo | `AGENTS.md` |
 | TMWD browser skill | `skills/tmwd-browser-mcp/` |
@@ -93,16 +94,33 @@ native fallback, and managed tab lifecycle.
 
 Use js-reverse for page API/interface discovery, request initiator tracing,
 signature-chain tracing, script search, network/WS sampling, non-blocking hooks,
-evidence export, and local rebuild bundles.
+evidence export, and local rebuild bundles. Pages opened through js-reverse
+new_page are TMWD-managed too; finish reverse tasks with js-reverse
+finalize_task for the same workspace_key or task_id unless the page must stay
+open for evidence review.
 
 Default login-state browser work to tmwd_mode=tmwd and tmwd_transport=auto.
 Do not silently fallback to remote_cdp for login-state tasks. remote_cdp is only
 for explicit debug Chrome, CI, or callframe/debugger-level work.
 
 For active browser work, use browser_tab_lifecycle action=select_or_create with
-ownership_policy=tmwd_only and a workspace_key. User-opened unmanaged tabs are
-read-only by default. Do not navigate, click, type into, close, or adopt them
-unless the user explicitly asks to operate on that tab.
+ownership_policy=tmwd_only and a stable project/surface-level workspace_key.
+User-opened unmanaged tabs are read-only by default. Do not navigate, click,
+type into, close, or adopt them unless the user explicitly asks to operate on
+that tab. End active browser tasks with browser_tab_lifecycle
+action=finalize_task for the current workspace_key or task_id unless the user
+asked to keep the page open; it closes only keep=false managed tabs, preserves
+keep=true, prunes stale registry records, and ignores unmanaged user tabs.
+Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
+auditing whether finalizers were missed. Managed tab creation results include
+finalize_hint; treat finalize_hint.required=true as a task-end cleanup
+obligation unless the user explicitly asked to keep the page open.
+
+If the host can run a turn-end finally block, wire
+src/codex-host-finalizer.mjs into the MCP client layer. Register every MCP tool
+result with createCodexFinalizerTracker(), then dispatch plan().calls in the
+host finally path before the final response or handoff. The planner refuses
+automatic scope=all cleanup and only emits scoped finalize_task calls.
 
 For JS reverse tasks, observe first, prefer hooks over breakpoints, record
 runtime evidence, and rebuild locally only after identifying the target request,

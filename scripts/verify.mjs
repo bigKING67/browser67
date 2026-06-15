@@ -10,6 +10,8 @@ const commands = [
   ["npm", ["run", "check"]],
   ["npm", ["run", "check:live:doctor"]],
   ["npm", ["run", "check:js-reverse-live"]],
+  ["npm", ["run", "check:managed-tab-live"]],
+  ["npm", ["run", "check:managed-tabs-clean"]],
   ["npm", ["audit", "--audit-level=moderate"]],
 ];
 

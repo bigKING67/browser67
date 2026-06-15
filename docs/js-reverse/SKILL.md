@@ -46,7 +46,7 @@ args = ["/path/to/browser67/src/js-reverse-server.mjs"]
 3. **Evidence-first** — 每个补丁必须有代理日志或运行时捕获数据支撑。猜测 `window.xxx` 应该返回什么会导致本地通过但服务端验证失败。
 4. **一次一补丁** — 多个问题时只修第一个失败点（first divergence），复跑，确认前移，再修下一个。批量补丁出错后无法定位是哪个补丁的问题。
 5. **服务端验证为准** — 本地输出匹配浏览器是必要不充分条件，必须用真实服务器请求验证。
-6. **TMWD-owned tabs only** — `new_page` 默认只复用 JS reverse/TMWD 自己创建的 managed tab；如果用户自己已经打开同一个页面，不接管该 tab，而是新开或复用 `workspace_key` 下的 TMWD-owned tab。
+6. **TMWD-owned tabs only** — `new_page` 默认只复用 JS reverse/TMWD 自己创建的 managed tab；如果用户自己已经打开同一个页面，不接管该 tab，而是新开或复用 `workspace_key` 下的 TMWD-owned tab。任务结束默认对同一 `workspace_key`/`task_id` 执行 `finalize_task`，除非需要保留页面做证据复核。若 `new_page` 返回 `finalize_hint.required:true`，交付前按提示收尾。
 
 ---
 
@@ -58,7 +58,7 @@ args = ["/path/to/browser67/src/js-reverse-server.mjs"]
 
 步骤：
 1. `check_browser_health` 验证连接
-2. `new_page`/`navigate_page` 导航到目标页；主动工作默认传 `workspace_key`，让 `new_page` 在 TMWD-owned tab pool 内复用，不影响用户 unmanaged tab
+2. `new_page`/`navigate_page` 导航到目标页；主动工作默认传稳定 `workspace_key`，让 `new_page` 在 TMWD-owned tab pool 内复用，不影响用户 unmanaged tab
 3. `list_network_requests` 找目标 API（sign/token/_signature/h5st/nonce/x-bogus）
 4. `get_request_initiator` 追溯调用栈
 5. `search_in_scripts` 定位脚本和函数
@@ -180,6 +180,7 @@ get_script_source → deobfuscate_code → understand_code → summarize_code
 10. `get_hook_data(summary)` → 命中后 `get_hook_data(raw)` + `record_reverse_evidence`
 11. `export_rebuild_bundle`
 12. 本地补环境（Phase 4 循环）
+13. `finalize_task(workspace_key|task_id)` 清理 `keep:false` managed pages；若要保留现场，显式说明并使用 `keep:true`；若 `new_page` 返回 `finalize_hint.required:true`，按 `finalize_hint.suggested_arguments` 收尾
 
 ---
 

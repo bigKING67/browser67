@@ -27,6 +27,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 6. Use `browser_file_ops` for upload inputs and native chooser planning.
 7. Use `browser_download_ops` for per-run download prepare/wait/list flows.
 8. Use `browser_tab_lifecycle` with `action="select_or_create"` for active work tabs. It reuses only TMWD-owned managed tabs; user-opened unmanaged tabs are read-only by default and must not be navigated, mutated, or closed.
+   - Use stable `workspace_key` values at the project/surface level, for example `datahub-special-report`, not one-off subsection keys.
+   - End active browser tasks with `action="finalize_task"` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. `finalize_task` prunes stale registry records, closes only `keep:false` managed tabs in scope, preserves `keep:true`, and ignores unmanaged user tabs.
 9. Use `browser_clipboard_ops` for write/paste only; it intentionally does not read clipboard.
 10. Use `browser_native_input` only when browser-side automation is blocked.
 11. Use `js-reverse` MCP for page API discovery and reverse-specific
@@ -60,10 +62,14 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
   diagnostics; pass `include_disconnected:true` or `history:true` only when you
   explicitly need disconnected session history.
 - Use `prune_stale` to remove registry records for managed tabs that no longer exist; it never closes unmanaged user tabs.
-- `close_unkept` requires `workspace_key` or `task_id` unless explicitly using `scope:"all"` / `all:true` / `confirm_all:true`.
+- `finalize_task` is the preferred task-end cleanup wrapper and requires `workspace_key` or `task_id` unless explicitly using `scope:"all"` / `all:true` / `confirm_all:true`. Use `close_unkept` only when you need the lower-level close action without the finalizer summary.
+- `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`; if `finalize_hint.required` is true, run the suggested `finalize_task` call before the final response or handoff.
 - Use `js-reverse` for page API/interface discovery, request initiator tracing,
   signatures, anti-bot parameters, hook sampling, and local rebuild bundles; it
-  uses this same TMWD transport by default.
+  uses this same TMWD transport by default. Pages opened by `js-reverse new_page`
+  are also TMWD-managed; run `js-reverse finalize_task` for the same
+  `workspace_key` or `task_id` before final response unless evidence collection
+  requires keeping the page open.
 - Use `remote_cdp` only when the user explicitly wants a debug Chrome/CI/JS reverse protocol path.
 - Validate that explicit path with `npm run check:remote-cdp`; set `CHROME_BIN`
   if Chrome is not installed in a default location.
@@ -82,6 +88,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - For real local file upload, prefer same-batch `DOM.getDocument -> DOM.querySelector -> DOM.setFileInputFiles`; DataTransfer is only suitable for in-memory files.
 - `browser_download_ops` only observes the prepared token/directory window; do not read Chrome history DB.
 - `browser_tab_lifecycle.close_unkept` must never close unmanaged existing user tabs; it only closes TMWD-owned managed tabs that are not marked `keep:true`.
+- `browser_tab_lifecycle.finalize_task` is the normal finalizer for Codex tasks that used TMWD managed tabs. Run it before final response/handoff for the current `workspace_key` or `task_id`, and report whether tabs were closed or intentionally kept.
+- `npm run check:managed-tabs-clean` is a registry-only hygiene gate for missed finalizers; run it after lifecycle changes or when diagnosing tab buildup.
 - `browser_tab_lifecycle` dry-runs are planning-only: do not depend on dry-run calls to select, persist, touch, or clean managed tabs.
 - `browser_clipboard_ops` has no clipboard-read action by design.
 - OpenAI tool registration rejects top-level JSON Schema composition keywords

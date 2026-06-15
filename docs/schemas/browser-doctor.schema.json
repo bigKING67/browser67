@@ -89,6 +89,12 @@
             },
             "supports_prune_stale": {
               "type": "boolean"
+            },
+            "supports_finalize_task": {
+              "type": "boolean"
+            },
+            "supports_finalize_hint": {
+              "type": "boolean"
             }
           }
         },

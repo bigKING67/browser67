@@ -293,21 +293,29 @@ async function run() {
     openedTabIds.add(managedTabId);
     assert.equal(firstManaged.created, true, "first select_or_create should create a managed tab");
     assert.equal(firstManaged.ready, true, "managed tab should become visible before timeout");
+    assert.equal(firstManaged.finalize_hint?.required, true, "created managed tab should carry a required finalize hint");
+    assert.equal(
+      firstManaged.finalize_hint?.suggested_arguments?.workspace_key,
+      workspaceKey,
+      "finalize hint should point at the live smoke workspace",
+    );
 
     const secondManaged = await callTool("browser_tab_lifecycle", managedArgs);
     assert.equal(secondManaged.reused, true, "second select_or_create should reuse the managed tab");
     assert.equal(String(secondManaged?.managed_tab?.tab_id ?? ""), managedTabId, "managed lifecycle reused a different tab");
+    assert.equal(secondManaged.finalize_hint?.required, true, "reused managed tab should still carry a required finalize hint");
 
-    const managedClose = await callTool("browser_tab_lifecycle", {
+    const managedFinalize = await callTool("browser_tab_lifecycle", {
       ...commonArgs(cli),
-      action: "close_unkept",
+      action: "finalize_task",
       workspace_key: workspaceKey,
+      prune_stale: false,
     });
-    assert.equal(managedClose.status, "success", "managed close_unkept did not succeed");
+    assert.equal(managedFinalize.status, "success", "managed finalize_task did not succeed");
     assert.equal(
-      managedClose.closed.some((row) => String(row?.tab_id ?? "") === managedTabId && row.closed === true),
+      managedFinalize.close_unkept.closed.some((row) => String(row?.tab_id ?? "") === managedTabId && row.closed === true),
       true,
-      "managed close_unkept did not close the managed tab",
+      "managed finalize_task did not close the managed tab",
     );
     openedTabIds.delete(managedTabId);
 
@@ -397,12 +405,13 @@ async function run() {
 
     const externalCleanup = await callTool("browser_tab_lifecycle", {
       ...commonArgs(cli),
-      action: "close_unkept",
+      action: "finalize_task",
       workspace_key: externallyClosedWorkspace,
+      prune_stale: false,
     });
     assert.equal(externalCleanup.status, "success", "external-close cleanup did not succeed");
     assert.equal(
-      externalCleanup.closed.some((row) => String(row?.tab_id ?? "") === replacementTabId && row.closed === true),
+      externalCleanup.close_unkept.closed.some((row) => String(row?.tab_id ?? "") === replacementTabId && row.closed === true),
       true,
       "external-close cleanup did not close replacement managed tab",
     );
@@ -436,7 +445,7 @@ async function run() {
         first_ready: firstManaged.ready === true,
         second_reused: secondManaged.reused === true,
         tab_id: managedTabId,
-        closed_count: managedClose.closed.length,
+        closed_count: managedFinalize.close_unkept.closed.length,
         externally_closed_not_reused: externalReplacement.created === true && replacementTabId !== externallyClosedTabId,
         registry_remaining: registryRemaining,
       },
@@ -456,8 +465,9 @@ async function run() {
     try {
       await callTool("browser_tab_lifecycle", {
         ...commonArgs(cli),
-        action: "close_unkept",
+        action: "finalize_task",
         workspace_key: workspaceKey,
+        prune_stale: false,
       });
     } catch {
       // Best effort cleanup only.

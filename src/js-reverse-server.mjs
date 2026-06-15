@@ -16,8 +16,11 @@ import {
   sessionPointers,
 } from "./session-registry.mjs";
 import {
+  deleteManagedTab,
   extractCreatedTabId,
   findReusableManagedTab,
+  listManagedTabRecords,
+  managedTabFinalizeHint,
   managedTabPayload,
   planManagedTab,
   recordManagedTab,
@@ -52,6 +55,7 @@ const TOOL_DEFINITIONS = {
   check_browser_health: "Verify TMWD-backed browser connectivity for JS reverse tasks.",
   navigate_page: "Navigate the selected page.",
   new_page: "Create a new browser page.",
+  finalize_task: "Finalize js-reverse TMWD-managed pages for a workspace or task.",
   list_pages: "List TMWD-visible browser pages.",
   select_page: "Select a browser page by id.",
   list_scripts: "List script tags from the selected page.",
@@ -145,6 +149,11 @@ const TOOL_SCHEMAS = Object.fromEntries(
           workspace_key: { type: "string" },
           reuse_key: { type: "string" },
           navigate_reused: { type: "boolean", default: true },
+          scope: { type: "string", enum: ["workspace", "task", "all"] },
+          all: { type: "boolean", default: false },
+          confirm_all: { type: "boolean", default: false },
+          prune_stale: { type: "boolean", default: false },
+          summary_only: { type: "boolean", default: false },
           dry_run: { type: "boolean", default: false },
           tmwd_mode: { type: "string", enum: ["tmwd"] },
           tmwd_transport: { type: "string", enum: ["auto", "ws", "link"] },
@@ -509,6 +518,10 @@ async function handleNewPage(args) {
         owner: "tmwd",
         selected_by: reusable.selected_by,
         page: managedTabPayload(reusable.record),
+        finalize_hint: managedTabFinalizeHint(reusable.record, {
+          tool: "finalize_task",
+          include_action: false,
+        }),
         ...sessionPointers(),
       };
     }
@@ -530,6 +543,10 @@ async function handleNewPage(args) {
       dry_run: true,
       owner: "tmwd",
       page: managedTabPayload(record),
+      finalize_hint: managedTabFinalizeHint(record, {
+        tool: "finalize_task",
+        include_action: false,
+      }),
     };
   }
   const tabs = await bridgeCommand(args, { cmd: "tabs" });
@@ -567,6 +584,10 @@ async function handleNewPage(args) {
       selected_by: reusable.selected_by,
       reuse_policy: reusable.policy,
       page: managedTabPayload(record),
+      finalize_hint: managedTabFinalizeHint(record, {
+        tool: "finalize_task",
+        include_action: false,
+      }),
       unmanaged_tabs_ignored: unmanagedIgnored,
       navigation,
       ...sessionPointers(),
@@ -611,7 +632,158 @@ async function handleNewPage(args) {
     reuse_policy: reusable.policy,
     page: result.value,
     managed_page: managedTabPayload(record),
+    finalize_hint: managedTabFinalizeHint(record, {
+      tool: "finalize_task",
+      include_action: false,
+    }),
     unmanaged_tabs_ignored: unmanagedIgnored,
+    ...sessionPointers(),
+  };
+}
+
+function resolveFinalizeScope(args = {}) {
+  const taskId = String(args.task_id ?? args.taskId ?? "").trim();
+  const workspaceKey = String(args.workspace_key ?? args.workspaceKey ?? "").trim();
+  const scope = String(args.scope ?? "").trim().toLowerCase();
+  const all = scope === "all" || args.all === true || args.confirm_all === true;
+  if (!taskId && !workspaceKey && !all) {
+    return {
+      ok: false,
+      error: "workspace_key or task_id is required for finalize_task; use scope=\"all\" only after explicitly confirming cross-workspace cleanup",
+    };
+  }
+  return {
+    ok: true,
+    taskId,
+    workspaceKey,
+    all,
+    scope: all ? "all" : (workspaceKey ? "workspace" : "task"),
+  };
+}
+
+function recordsInScope(scope) {
+  return listManagedTabRecords(scope.all
+    ? {}
+    : { task_id: scope.taskId, workspace_key: scope.workspaceKey });
+}
+
+function summarizeRecords(records) {
+  const rows = Array.isArray(records) ? records : [];
+  return {
+    total_count: rows.length,
+    kept_count: rows.filter((record) => record.keep === true).length,
+    unkept_count: rows.filter((record) => record.keep !== true).length,
+  };
+}
+
+async function pruneStaleRegistryRecords(args, scope) {
+  const tabs = await bridgeCommand(args, { cmd: "tabs" });
+  const liveIds = new Set((Array.isArray(tabs.value) ? tabs.value : [])
+    .map((tab) => String(tab?.id ?? tab?.tab_id ?? tab?.tabId ?? "").trim())
+    .filter(Boolean));
+  const scoped = recordsInScope(scope);
+  const stale = scoped.filter((record) => !liveIds.has(String(record.tab_id)));
+  if (args?.dry_run !== true) {
+    for (const record of stale) {
+      deleteManagedTab(record.tab_id);
+    }
+  }
+  return {
+    ok: true,
+    action: "prune_stale",
+    dry_run: args?.dry_run === true,
+    checked_count: scoped.length,
+    pruned_count: args?.dry_run === true ? 0 : stale.length,
+    would_prune_count: stale.length,
+    transport: tabs.transport,
+    transport_attempts: tabs.transport_attempts,
+  };
+}
+
+async function closeUnkeptScopedRecords(args, scope) {
+  const candidates = recordsInScope(scope).filter((record) => record.keep !== true);
+  const closed = [];
+  const errors = [];
+  for (const record of candidates) {
+    if (args?.dry_run === true || record.dry_run === true) {
+      closed.push({ tab_id: record.tab_id, closed: false, dry_run: true, reason: "dry_run" });
+      continue;
+    }
+    try {
+      const result = await bridgeCommand(args, {
+        cmd: "tabs",
+        method: "close",
+        tabId: record.tab_id,
+      });
+      if (result.value?.closed !== true) {
+        throw new Error("tabs.close did not confirm closed=true");
+      }
+      deleteManagedTab(record.tab_id);
+      closed.push({
+        tab_id: record.tab_id,
+        closed: true,
+        transport: result.transport,
+        transport_attempts: result.transport_attempts,
+      });
+    } catch (error) {
+      errors.push({
+        tab_id: record.tab_id,
+        error: String(error?.message ?? error),
+      });
+    }
+  }
+  return {
+    ok: errors.length === 0,
+    action: "close_unkept",
+    closed,
+    errors,
+  };
+}
+
+async function handleFinalizeTask(args) {
+  const scope = resolveFinalizeScope(args);
+  if (scope.ok !== true) {
+    return scope;
+  }
+  const dryRun = args?.dry_run === true;
+  let pruneStale;
+  if (args?.prune_stale !== false) {
+    try {
+      pruneStale = await pruneStaleRegistryRecords(args, scope);
+    } catch (error) {
+      pruneStale = {
+        ok: false,
+        action: "prune_stale",
+        error: String(error?.message ?? error),
+      };
+    }
+  }
+  const closeUnkept = await closeUnkeptScopedRecords(args, scope);
+  const remaining = summarizeRecords(recordsInScope(scope));
+  const ok = (pruneStale?.ok ?? true) === true && closeUnkept.ok === true;
+  return {
+    ok,
+    action: "finalize_task",
+    dry_run: dryRun,
+    close_scope: {
+      taskId: scope.taskId,
+      workspaceKey: scope.workspaceKey,
+      all: scope.all,
+      scope: scope.scope,
+    },
+    finalizer_policy: {
+      closes_only_managed_tabs: true,
+      closes_keep_false: true,
+      preserves_keep_true: true,
+      ignores_unmanaged_user_tabs: true,
+      prunes_stale_registry_records: args?.prune_stale !== false,
+    },
+    prune_stale: pruneStale,
+    close_unkept: closeUnkept,
+    remaining,
+    note: dryRun
+      ? "dry_run only; no pages were closed"
+      : "finalize_task completed; report this cleanup result with reverse evidence",
     ...sessionPointers(),
   };
 }
@@ -1246,6 +1418,7 @@ async function dispatchToolCall(name, args = {}) {
   if (name === "list_pages") return makeResult(await handleListPages(args));
   if (name === "select_page") return makeResult(await handleSelectPage(args));
   if (name === "new_page") return makeResult(await handleNewPage(args));
+  if (name === "finalize_task") return makeResult(await handleFinalizeTask(args));
   if (name === "navigate_page") return makeResult(await handleNavigatePage(args));
   if (name === "list_scripts") return makeResult(await handleListScripts(args));
   if (name === "get_script_source") return makeResult(await handleGetScriptSource(args));

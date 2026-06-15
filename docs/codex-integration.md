@@ -78,7 +78,7 @@ approval_mode = "approve"
 ## Tool routing
 
 - `tmwd_browser`: primary path for real browser tasks, logged-in pages, existing tabs, cookies, CDP bridge, background tabs, batch actions, downloads/uploads, file chooser planning, clipboard write/paste wrappers, and managed tab lifecycle.
-- `js-reverse`: primary path for page API/interface discovery, request initiator tracing, signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context.
+- `js-reverse`: primary path for page API/interface discovery, request initiator tracing, signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context. JS reverse pages created with `new_page` are also TMWD-managed; end reverse tasks with `finalize_task` for the current `workspace_key` / `task_id` unless evidence collection requires keeping the page open.
 - in-app Browser: localhost/file previews without Chrome profile state.
 - Computer Use: desktop UI and pure visual pointer/keyboard actions.
 - `remote_cdp`: explicit debug Chrome/CI/JS reverse protocol work, not ordinary login-state tasks.
@@ -92,7 +92,7 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
-- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `close_unkept` only closes managed tabs and ignores unmanaged user tabs.
+- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, preserves `keep:true`, and ignores unmanaged user tabs.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
 ## Tab ownership policy
@@ -117,10 +117,68 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 - Use `fresh:true` or `reuse:false` only when a new TMWD-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
 - Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
 - Use `prune_stale` or `list_managed` with `prune_stale:true` to remove registry records for managed tabs that no longer exist. This never closes unmanaged user tabs.
+- End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
+- `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`. Treat `finalize_hint.required:true` as a visible reminder to run the suggested `finalize_task` call before final response or handoff.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
+- Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, which catches missing finalizers even when no live browser action is needed.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the TMWD websocket explicitly to avoid successful actions ending with a command timeout.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
+
+## Codex host hard-finally contract
+
+Wrapper-level cleanup is not a substitute for a host/runtime turn finalizer. A
+Codex-style host that wants hard-finally semantics should treat every MCP tool
+result as a possible cleanup signal and register any returned
+`finalize_hint.required:true` before the assistant turn ends.
+
+Use `src/codex-host-finalizer.mjs` as the repo-side contract adapter:
+
+```js
+import { createCodexFinalizerTracker } from "/path/to/browser67/src/codex-host-finalizer.mjs";
+
+const finalizer = createCodexFinalizerTracker({
+  default_arguments: {
+    tmwd_mode: "tmwd",
+    tmwd_transport: "auto",
+    timeout_ms: 20000,
+  },
+});
+
+// After each MCP tool result:
+finalizer.addToolResult({
+  source_server: "tmwd_browser",
+  source_tool: "browser_tab_lifecycle",
+  result: mcpToolResult,
+});
+
+// In the host turn-end finally block:
+const plan = finalizer.plan();
+for (const call of plan.calls) {
+  // Dispatch call.server + call.tool with call.arguments through the host MCP client.
+}
+```
+
+Host policy:
+
+- Run this from a real `finally` path that executes before the final user-facing
+  response, handoff, or interrupted-turn checkpoint.
+- De-duplicate by `call.key`; each call is already scoped by `workspace_key` and
+  / or `task_id`.
+- Never auto-run `scope:"all"`, `all:true`, or `confirm_all:true`; the planner
+  returns those hints under `ignored` with `reason:"auto_scope_all_blocked"`.
+- Preserve `keep:true`: hints for kept tabs are `required:false`, and
+  `finalize_task` preserves kept managed tabs even if called for the same scope.
+- Log `pending_count`, `ignored_count`, `scope_all_blocked_count`, closed tabs,
+  remaining tabs, and finalizer errors. Do not silently swallow cleanup failure.
+- On process restart or a fresh turn, use `npm run check:managed-tabs-clean` or a
+  registry-backed recovery pass to detect missed finalizers.
+
+Validate the adapter with:
+
+```bash
+npm run check:codex-host-finalizer
+```
 
 ## JS reverse boundary
 

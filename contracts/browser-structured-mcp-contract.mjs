@@ -137,6 +137,10 @@ async function run() {
       true,
     );
     assert.equal(
+      tabLifecycleTool?.inputSchema?.properties?.action?.enum?.includes("finalize_task"),
+      true,
+    );
+    assert.equal(
       tabLifecycleTool?.inputSchema?.properties?.ownership_policy?.default,
       "tmwd_only",
     );
@@ -356,6 +360,9 @@ async function run() {
     assert.equal(tabCreateDryRunPayload?.created, false);
     assert.equal(tabCreateDryRunPayload?.owner, "tmwd");
     assert.equal(typeof tabCreateDryRunPayload?.managed_tab?.tab_id, "string");
+    assert.equal(tabCreateDryRunPayload?.finalize_hint?.required, false);
+    assert.equal(tabCreateDryRunPayload?.finalize_hint?.tool, "browser_tab_lifecycle");
+    assert.equal(tabCreateDryRunPayload?.finalize_hint?.suggested_arguments?.action, "finalize_task");
 
     const tabSelectOrCreateDryRunCall = await rpc.call(
       "tools/call",
@@ -380,6 +387,9 @@ async function run() {
     assert.equal(tabSelectOrCreateDryRunPayload?.reused, false);
     assert.equal(tabSelectOrCreateDryRunPayload?.would_create, true);
     assert.equal(tabSelectOrCreateDryRunPayload?.managed_tab?.workspace_key, "contract-workspace");
+    assert.equal(tabSelectOrCreateDryRunPayload?.finalize_hint?.required, false);
+    assert.equal(tabSelectOrCreateDryRunPayload?.finalize_hint?.workspace_key, "contract-workspace");
+    assert.equal(tabSelectOrCreateDryRunPayload?.finalize_hint?.suggested_arguments?.action, "finalize_task");
 
     const tabSelectOrCreateReuseDryRunCall = await rpc.call(
       "tools/call",
@@ -483,6 +493,29 @@ async function run() {
     assert.equal(tabCloseUnmanagedPayload?.status, "success");
     assert.deepEqual(tabCloseUnmanagedPayload?.unmanaged_tabs_ignored, ["user-tab-not-managed"]);
 
+    const tabFinalizeDryRunCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_tab_lifecycle",
+        arguments: {
+          action: "finalize_task",
+          workspace_key: "contract-workspace",
+          prune_stale: false,
+          dry_run: true,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(tabFinalizeDryRunCall?.result?.isError, undefined);
+    const tabFinalizeDryRunPayload = firstJsonContent(tabFinalizeDryRunCall.result);
+    assert.equal(tabFinalizeDryRunPayload?.status, "success");
+    assert.equal(tabFinalizeDryRunPayload?.action, "finalize_task");
+    assert.equal(tabFinalizeDryRunPayload?.dry_run, true);
+    assert.equal(tabFinalizeDryRunPayload?.finalizer_policy?.closes_only_managed_tabs, true);
+    assert.equal(tabFinalizeDryRunPayload?.finalizer_policy?.preserves_keep_true, true);
+    assert.equal(tabFinalizeDryRunPayload?.close_unkept?.action, "close_unkept");
+    assert.equal(tabFinalizeDryRunPayload?.remaining?.unkept_count, 0);
+
     const tabListManagedCall = await rpc.call(
       "tools/call",
       {
@@ -497,6 +530,8 @@ async function run() {
     const tabListManagedPayload = firstJsonContent(tabListManagedCall.result);
     assert.equal(tabListManagedPayload?.status, "success");
     assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
+    assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v4");
+    assert.equal(tabListManagedPayload?.capabilities?.supports_finalize_hint, true);
     assert.equal(Array.isArray(tabListManagedPayload?.live_sessions), true);
     assert.equal(Array.isArray(tabListManagedPayload?.sessions), true);
     assert.equal(typeof tabListManagedPayload?.summary?.managed_total_count, "number");
@@ -518,6 +553,8 @@ async function run() {
     assert.equal(tabPruneStalePayload?.status, "success");
     assert.equal(tabPruneStalePayload?.action, "prune_stale");
     assert.equal(tabPruneStalePayload?.capabilities?.supports_prune_stale, true);
+    assert.equal(tabPruneStalePayload?.capabilities?.supports_finalize_task, true);
+    assert.equal(tabPruneStalePayload?.capabilities?.supports_finalize_hint, true);
 
     const clipboardDryRunCall = await rpc.call(
       "tools/call",
