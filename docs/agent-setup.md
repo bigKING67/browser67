@@ -111,6 +111,15 @@ that tab. End active browser tasks with browser_tab_lifecycle
 action=finalize_task for the current workspace_key or task_id unless the user
 asked to keep the page open; it closes only keep=false managed tabs, preserves
 keep=true, prunes stale registry records, and ignores unmanaged user tabs.
+If a managed tab redirects to a login page, use browser_auth_ops.ensure_login
+for approved sites, preferably with the managed tab_id. It first accepts
+already-authenticated pages without resubmitting. On a login page it selects a
+repo-external local profile by exact origin, redacts credentials from output,
+and returns blocked for unknown origins instead of guessing credentials. For a
+first-time site, use browser_auth_ops.suggest_profile on the managed login tab,
+then explicitly save the user-provided credentials with
+browser_auth_ops.upsert_profile and confirm_write=true; tab creation must never
+save credentials as a hidden side effect.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
 auditing whether finalizers were missed. Managed tab creation results include
 finalize_hint; treat finalize_hint.required=true as a task-end cleanup
@@ -153,6 +162,10 @@ npm run skills:check
 
 `check:live:*` requires the local hub and unpacked extension to be connected to
 Chrome/Edge. If those fail, inspect `npm run doctor:json` before changing code.
+After auth/profile changes, run `npm run check:auth-live`; it uses an isolated
+local profile directory and managed tab, verifies first-time profile suggestion
+and upsert, login submission, already-authenticated no-resubmit behavior,
+unknown-origin blocking, redaction, and finalizer cleanup.
 
 ## Operating boundary
 

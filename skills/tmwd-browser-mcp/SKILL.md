@@ -29,9 +29,10 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 8. Use `browser_tab_lifecycle` with `action="select_or_create"` for active work tabs. It reuses only TMWD-owned managed tabs; user-opened unmanaged tabs are read-only by default and must not be navigated, mutated, or closed.
    - Use stable `workspace_key` values at the project/surface level, for example `datahub-special-report`, not one-off subsection keys.
    - End active browser tasks with `action="finalize_task"` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. `finalize_task` prunes stale registry records, closes only `keep:false` managed tabs in scope, preserves `keep:true`, and ignores unmanaged user tabs.
-9. Use `browser_clipboard_ops` for write/paste only; it intentionally does not read clipboard.
-10. Use `browser_native_input` only when browser-side automation is blocked.
-11. Use `js-reverse` MCP for page API discovery and reverse-specific
+9. Use `browser_auth_ops.ensure_login` after selecting/creating a managed tab. It first checks whether the page is already authenticated; if the tab is on a login page, it only uses exact-origin local profiles from repo-external secret files, redacts outputs, and blocks unknown origins instead of guessing credentials. For a first-time site, use `suggest_profile` then explicit `upsert_profile` with user-provided credentials and `confirm_write:true`.
+10. Use `browser_clipboard_ops` for write/paste only; it intentionally does not read clipboard.
+11. Use `browser_native_input` only when browser-side automation is blocked.
+12. Use `js-reverse` MCP for page API discovery and reverse-specific
    observe/capture/rebuild work instead of overloading the generic
    `tmwd_browser` tools.
 
@@ -64,6 +65,8 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - Use `prune_stale` to remove registry records for managed tabs that no longer exist; it never closes unmanaged user tabs.
 - `finalize_task` is the preferred task-end cleanup wrapper and requires `workspace_key` or `task_id` unless explicitly using `scope:"all"` / `all:true` / `confirm_all:true`. Use `close_unkept` only when you need the lower-level close action without the finalizer summary.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`; if `finalize_hint.required` is true, run the suggested `finalize_task` call before the final response or handoff.
+- If the managed tab redirects to login, call `browser_auth_ops.ensure_login` with the same `tab_id` (or exact `session_id`). Profiles live in `~/.codex/secrets/tmwd-login-profiles/` by default and must exact-match the current origin. Unknown origins are `blocked`; do not manually try unrelated credentials.
+- For a new site with credentials supplied by the user, use `browser_auth_ops.suggest_profile` on the managed login tab, then `browser_auth_ops.upsert_profile` with exact `origin`/`allowed_origins`, selectors, username/password, and `confirm_write:true`; then call `ensure_login`. Profile writes are explicit and repo-external only. If the page is already logged in, `ensure_login` returns `already_authenticated:true` and does not require a profile or resubmit a form.
 - Use `js-reverse` for page API/interface discovery, request initiator tracing,
   signatures, anti-bot parameters, hook sampling, and local rebuild bundles; it
   uses this same TMWD transport by default. Pages opened by `js-reverse new_page`

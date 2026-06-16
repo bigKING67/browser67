@@ -26,6 +26,7 @@ import {
   handleBrowserFileOps,
   handleBrowserTabLifecycle,
 } from "./browser-wrappers.mjs";
+import { handleBrowserAuthOps } from "./browser-auth.mjs";
 import { extractActionableNodes } from "./content-extraction.mjs";
 import {
   classifyBrowserErrorCode,
@@ -687,6 +688,9 @@ async function dispatchToolCall(name, args) {
     }
     if (name === "browser_tab_lifecycle") {
       return makeResult(await handleBrowserTabLifecycle(args));
+    }
+    if (name === "browser_auth_ops") {
+      return makeResult(await handleBrowserAuthOps(args));
     }
     if (name === "browser_clipboard_ops") {
       return makeResult(await handleBrowserClipboardOps(args));

@@ -305,6 +305,82 @@ const TOOL_SCHEMAS = {
       required: ["action"],
     },
   },
+  browser_auth_ops: {
+    description: "Profile-driven login helpers for TMWD managed tabs: list/validate local login profiles, inspect login pages, suggest or save repo-external login profiles, or ensure an already-open tab is authenticated. Credentials are loaded from/saved to repo-external local profiles and never returned.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["list_profiles", "validate_profile", "inspect_login_page", "suggest_profile", "upsert_profile", "ensure_login"],
+        },
+        profile_id: {
+          type: "string",
+          description: "Profile id to use, or auto to select by exact origin allowlist.",
+        },
+        profiles_dir: {
+          type: "string",
+          description: "Optional repo-external profile directory. Defaults to ~/.codex/secrets/tmwd-login-profiles.",
+        },
+        url: {
+          type: "string",
+          description: "Optional target URL for dry-run planning or profile validation. ensure_login normally works on the selected tab/session.",
+        },
+        origin: {
+          type: "string",
+          description: "Exact http(s) origin for a profile write or suggestion, for example https://example.test.",
+        },
+        allowed_origins: {
+          type: "array",
+          items: { type: "string" },
+          description: "Exact http(s) origins allowed to use this profile. Wildcards are rejected.",
+        },
+        allowed_origin: {
+          type: "string",
+          description: "Single exact http(s) origin allowed to use this profile.",
+        },
+        username: {
+          type: "string",
+          description: "Username to save with upsert_profile. Never returned by tool results.",
+        },
+        password: {
+          type: "string",
+          description: "Password to save with upsert_profile. Never returned by tool results.",
+        },
+        login_path_pattern: { type: "string" },
+        login_path_patterns: {
+          type: "array",
+          items: { type: "string" },
+        },
+        username_selector: { type: "string" },
+        password_selector: { type: "string" },
+        submit_selector: { type: "string" },
+        success_path_not: { type: "string" },
+        success_text: { type: "string" },
+        overwrite: {
+          type: "boolean",
+          default: false,
+          description: "Allow upsert_profile to replace an existing profile file.",
+        },
+        confirm_write: {
+          type: "boolean",
+          default: false,
+          description: "Required true for upsert_profile because it writes credentials to a local secret profile.",
+        },
+        dry_run: { type: "boolean", default: false },
+        tab_id: { type: "string" },
+        switch_tab_id: { type: "string" },
+        session_id: { type: "string" },
+        session_url_pattern: { type: "string" },
+        tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "tmwd" },
+        tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
+        tmwd_ws_endpoint: { type: "string" },
+        tmwd_link_endpoint: { type: "string" },
+        timeout_ms: { type: "number", minimum: 100, maximum: 120_000 },
+      },
+      required: ["action"],
+    },
+  },
   browser_clipboard_ops: {
     description: "Minimal safe clipboard wrapper: write text or paste text without reading the user's clipboard.",
     inputSchema: {

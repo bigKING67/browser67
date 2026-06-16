@@ -19,6 +19,7 @@ for Codex, grobot, and JS reverse workflows.
   - `browser_file_ops`
   - `browser_download_ops`
   - `browser_tab_lifecycle`
+  - `browser_auth_ops`
   - `browser_clipboard_ops`
   - `browser_native_input`
 - JS reverse MCP server:
@@ -167,6 +168,7 @@ npm run verify
 npm run check:syntax
 npm run check
 npm run check:live:doctor
+npm run check:auth-live
 npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
@@ -178,7 +180,7 @@ is not connected.
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
 all `.mjs` syntax, deterministic contracts, live doctor readiness, JS reverse
-live readiness, and npm audit.
+live readiness, auth-profile onboarding/live smoke, and npm audit.
 
 ## Source alignment
 
