@@ -85,6 +85,8 @@ async function startAuthFixture() {
   const cookieName = `fixture_auth_${String(Date.now())}_${String(Math.floor(Math.random() * 1_000_000))}`;
   const state = {
     login_submissions: 0,
+    mfa_submissions: 0,
+    sso_submissions: 0,
     successful_logins: 0,
     requests: [],
   };
@@ -204,6 +206,94 @@ async function startAuthFixture() {
   </form>
 </body>
 </html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/mfa-login" && req.method === "POST") {
+      state.mfa_submissions += 1;
+      res.writeHead(400, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end("<!doctype html><title>fixture mfa blocked</title><p>mfa should not submit automatically</p>");
+      return;
+    }
+    if (requestUrl.pathname === "/mfa-login") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture mfa login</title></head>
+<body>
+  <form method="post" action="/mfa-login">
+    <label>Username <input id="mfa-username" name="username" autocomplete="username"></label>
+    <label>Password <input id="mfa-password" name="password" type="password" autocomplete="current-password"></label>
+    <label>Verification code <input id="mfa-code" name="otp" autocomplete="one-time-code"></label>
+    <button type="submit">Login</button>
+  </form>
+</body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/sso-login" && req.method === "POST") {
+      state.sso_submissions += 1;
+      res.writeHead(400, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end("<!doctype html><title>fixture sso blocked</title><p>sso should not submit automatically</p>");
+      return;
+    }
+    if (requestUrl.pathname === "/sso-login") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture sso login</title></head>
+<body>
+  <main>
+    <p>Single sign-on required</p>
+    <button type="button">Continue with SSO</button>
+  </main>
+</body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/oauth-login") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture oauth login</title></head>
+<body>
+  <main>
+    <p>OAuth popup required</p>
+    <button type="button" data-oauth-popup="true" onclick="window.open('/oauth-popup', 'fixture-oauth')">Continue with OAuth Popup</button>
+  </main>
+</body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/oauth-popup") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end("<!doctype html><title>fixture oauth popup</title><p>manual oauth step</p>");
+      return;
+    }
+    if (requestUrl.pathname === "/oauth-callback") {
+      res.writeHead(302, {
+        "set-cookie": `${cookieName}=1; Path=/; SameSite=Lax`,
+        location: "/protected",
+        "cache-control": "no-store",
+      });
+      res.end();
       return;
     }
     res.writeHead(404, {
@@ -476,12 +566,125 @@ async function run() {
       action: "ensure_login",
       profile_id: "fixture-captcha",
       tab_id: captchaTabId,
+      workspace_key: workspaceKey,
     });
     assert.equal(captchaBlocked.status, "blocked", "captcha page should require manual intervention");
     assert.equal(captchaBlocked.reason, "manual_required_captcha");
     assert.equal(captchaBlocked.submitted, false, "captcha page should block before submit");
     assert.equal(fixture.state.login_submissions, 1, "captcha block should not submit credentials");
+    assert.equal(captchaBlocked.manual_required, true, "captcha block should expose manual_required");
+    assert.equal(captchaBlocked.manual_context?.kind, "captcha");
+    assert.equal(captchaBlocked.manual_context?.tab_id, captchaTabId);
+    assert.equal(captchaBlocked.manual_context?.workspace_key, workspaceKey);
+    assert.equal(captchaBlocked.manual_context?.resume_action, "ensure_login");
     assertNoSecretLeak(captchaBlocked, "captcha block result");
+
+    const mfaProfile = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "upsert_profile",
+      profile_id: "fixture-mfa",
+      origin: fixture.origin,
+      username: FIXTURE_USERNAME,
+      password: FIXTURE_PASSWORD,
+      login_path_pattern: "/mfa-login",
+      username_selector: "#mfa-username",
+      password_selector: "#mfa-password",
+      submit_selector: "button[type=\"submit\"]",
+      success_path_not: "/mfa-login",
+      confirm_write: true,
+    });
+    assert.equal(mfaProfile.status, "success");
+    assertNoSecretLeak(mfaProfile, "mfa upsert result");
+
+    const mfaManaged = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "select_or_create",
+      url: `${fixture.origin}/mfa-login`,
+      workspace_key: workspaceKey,
+      fresh: true,
+      active: false,
+      wait_until: "listed",
+      wait_timeout_ms: 5_000,
+      wait_poll_ms: 100,
+    });
+    const mfaTabId = String(mfaManaged?.managed_tab?.tab_id ?? "");
+    assert.ok(mfaTabId, "mfa managed tab did not return tab id");
+    const mfaBlocked = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "ensure_login",
+      profile_id: "fixture-mfa",
+      tab_id: mfaTabId,
+      workspace_key: workspaceKey,
+    });
+    assert.equal(mfaBlocked.status, "blocked", "mfa page should require manual intervention");
+    assert.equal(mfaBlocked.reason, "manual_required_mfa");
+    assert.equal(mfaBlocked.submitted, false, "mfa page should block before submit");
+    assert.equal(mfaBlocked.manual_required, true);
+    assert.equal(mfaBlocked.manual_context?.kind, "mfa");
+    assert.equal(mfaBlocked.manual_context?.tab_id, mfaTabId);
+    assert.equal(mfaBlocked.manual_context?.workspace_key, workspaceKey);
+    assert.equal(mfaBlocked.manual_context?.resume_action, "ensure_login");
+    assert.equal(fixture.state.mfa_submissions, 0, "mfa block should not submit credentials");
+    assertNoSecretLeak(mfaBlocked, "mfa block result");
+
+    const ssoManaged = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "select_or_create",
+      url: `${fixture.origin}/sso-login`,
+      workspace_key: workspaceKey,
+      fresh: true,
+      active: false,
+      wait_until: "listed",
+      wait_timeout_ms: 5_000,
+      wait_poll_ms: 100,
+    });
+    const ssoTabId = String(ssoManaged?.managed_tab?.tab_id ?? "");
+    assert.ok(ssoTabId, "sso managed tab did not return tab id");
+    const ssoBlocked = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "ensure_login",
+      tab_id: ssoTabId,
+      workspace_key: workspaceKey,
+    });
+    assert.equal(ssoBlocked.status, "blocked", "sso-only page should require manual intervention");
+    assert.equal(ssoBlocked.reason, "manual_required_sso");
+    assert.equal(ssoBlocked.submitted, false);
+    assert.equal(ssoBlocked.manual_required, true);
+    assert.equal(ssoBlocked.manual_context?.kind, "sso");
+    assert.equal(ssoBlocked.manual_context?.tab_id, ssoTabId);
+    assert.equal(ssoBlocked.manual_context?.workspace_key, workspaceKey);
+    assert.equal(ssoBlocked.manual_context?.resume_action, "ensure_login");
+    assert.equal(fixture.state.sso_submissions, 0, "sso block should not submit credentials");
+    assertNoSecretLeak(ssoBlocked, "sso block result");
+
+    const oauthManaged = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "select_or_create",
+      url: `${fixture.origin}/oauth-login`,
+      workspace_key: workspaceKey,
+      fresh: true,
+      active: false,
+      wait_until: "listed",
+      wait_timeout_ms: 5_000,
+      wait_poll_ms: 100,
+    });
+    const oauthTabId = String(oauthManaged?.managed_tab?.tab_id ?? "");
+    assert.ok(oauthTabId, "oauth managed tab did not return tab id");
+    const oauthBlocked = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "ensure_login",
+      tab_id: oauthTabId,
+      workspace_key: workspaceKey,
+    });
+    assert.equal(oauthBlocked.status, "blocked", "oauth popup page should require manual intervention");
+    assert.equal(oauthBlocked.reason, "manual_required_sso");
+    assert.equal(oauthBlocked.submitted, false);
+    assert.equal(oauthBlocked.manual_required, true);
+    assert.equal(oauthBlocked.manual_context?.kind, "oauth_popup");
+    assert.equal(oauthBlocked.manual_context?.tab_id, oauthTabId);
+    assert.equal(oauthBlocked.manual_context?.workspace_key, workspaceKey);
+    assert.equal(oauthBlocked.manual_context?.resume_action, "ensure_login");
+    assertNoSecretLeak(oauthBlocked, "oauth block result");
 
     const pageState = await callTool("browser_execute_js", {
       ...commonArgs(cli),
@@ -503,6 +706,18 @@ async function run() {
       true,
       "auth live finalize_task did not close the managed tab",
     );
+    for (const [label, tabId] of [
+      ["captcha", captchaTabId],
+      ["mfa", mfaTabId],
+      ["sso", ssoTabId],
+      ["oauth", oauthTabId],
+    ]) {
+      assert.equal(
+        finalize.close_unkept.closed.some((row) => String(row?.tab_id ?? "") === tabId && row.closed === true),
+        true,
+        `auth live finalize_task did not close the ${label} manual-required managed tab`,
+      );
+    }
 
     return {
       ok: true,
@@ -515,6 +730,9 @@ async function run() {
       already_authenticated: alreadyAuthenticated.already_authenticated,
       lifecycle_metadata_updated: liveProfileAfterAuth?.lifecycle?.last_status === "success",
       manual_required_captcha: captchaBlocked.reason === "manual_required_captcha",
+      manual_required_mfa: mfaBlocked.reason === "manual_required_mfa",
+      manual_required_sso: ssoBlocked.reason === "manual_required_sso",
+      manual_required_oauth_popup: oauthBlocked.manual_context?.kind === "oauth_popup",
       login_submissions: fixture.state.login_submissions,
       successful_logins: fixture.state.successful_logins,
       unknown_origin_blocked: unknownDryRun.status === "blocked",

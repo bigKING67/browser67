@@ -1,0 +1,625 @@
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { createToolError } from "../errors.mjs";
+import {
+  readProfileMetadata,
+  redactProfileMetadata,
+  writeProfileMetadata,
+} from "./profile-metadata.mjs";
+
+const DEFAULT_PROFILE_DIR = path.join(os.homedir(), ".codex", "secrets", "tmwd-login-profiles");
+const LEGACY_DATAHUB_PROFILE_PATH = path.join(os.homedir(), ".codex", "secrets", "datahub-groland-login.env");
+const PROFILE_FILE_EXTENSIONS = [".env", ".profile"];
+const DEFAULT_MAX_PROFILE_FILES = 200;
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+function expandUserPath(raw) {
+  const value = String(raw ?? "").trim();
+  if (value === "~") {
+    return os.homedir();
+  }
+  if (value.startsWith("~/")) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value;
+}
+
+function parseEnvContent(content) {
+  const values = {};
+  for (const rawLine of String(content ?? "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const normalizedLine = line.startsWith("export ") ? line.slice("export ".length).trim() : line;
+    const equalsIndex = normalizedLine.indexOf("=");
+    if (equalsIndex <= 0) {
+      continue;
+    }
+    const key = normalizedLine.slice(0, equalsIndex).trim();
+    let value = normalizedLine.slice(equalsIndex + 1).trim();
+    if (value.startsWith('"') && value.endsWith('"')) {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        value = value.slice(1, -1);
+      }
+    } else if (value.startsWith("'") && value.endsWith("'")) {
+      value = value.slice(1, -1);
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+function splitList(raw) {
+  if (Array.isArray(raw)) {
+    return raw.flatMap((item) => splitList(item));
+  }
+  return String(raw ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function fileBaseProfileId(fileName) {
+  let base = fileName;
+  for (const extension of PROFILE_FILE_EXTENSIONS) {
+    if (base.endsWith(extension)) {
+      base = base.slice(0, -extension.length);
+      break;
+    }
+  }
+  return base.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function normalizeOrigin(raw) {
+  try {
+    return new URL(String(raw ?? "").trim()).origin;
+  } catch {
+    return "";
+  }
+}
+
+function validateExactHttpOrigin(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    return { ok: false, origin: "", reason: "missing_origin" };
+  }
+  if (value.includes("*")) {
+    return { ok: false, origin: "", reason: "wildcard_origin_not_allowed" };
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return { ok: false, origin: "", reason: "invalid_origin" };
+  }
+  if (!["http:", "https:"].includes(url.protocol)) {
+    return { ok: false, origin: "", reason: "origin_protocol_not_allowed" };
+  }
+  return { ok: true, origin: url.origin, reason: "" };
+}
+
+function normalizePathPattern(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    return "";
+  }
+  return value.startsWith("/") ? value : `/${value}`;
+}
+
+function sanitizeProfileId(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) {
+    throw createToolError("INVALID_ARGUMENT", "profile_id is required", {
+      retryable: false,
+      details: { reason: "missing_profile_id" },
+    });
+  }
+  if (value === "." || value === ".." || !/^[a-zA-Z0-9._-]+$/.test(value)) {
+    throw createToolError("INVALID_ARGUMENT", "profile_id must use only letters, numbers, dot, underscore, and dash", {
+      retryable: false,
+      details: { reason: "invalid_profile_id" },
+    });
+  }
+  return value;
+}
+
+function profileIdFromOrigin(origin) {
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) {
+    return "login-profile";
+  }
+  const url = new URL(normalized);
+  const port = url.port ? `-${url.port}` : "";
+  const raw = `${url.hostname}${port}`.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return raw.replace(/^-+|-+$/g, "").slice(0, 96) || "login-profile";
+}
+
+function ensureRepoExternalProfileDir(profileDir) {
+  const resolved = path.resolve(profileDir);
+  const roots = [...new Set([path.resolve(process.cwd()), PROJECT_ROOT])];
+  const unsafeRoot = roots.find((root) => {
+    const relative = path.relative(root, resolved);
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  });
+  if (unsafeRoot) {
+    throw createToolError("INVALID_ARGUMENT", "login profile directory must be outside the repository", {
+      retryable: false,
+      details: { reason: "profile_dir_inside_repo", profiles_dir: resolved, blocked_root: unsafeRoot },
+    });
+  }
+  return resolved;
+}
+
+function envValue(value) {
+  return JSON.stringify(String(value ?? ""));
+}
+
+function serializeProfileEnv(profile) {
+  return [
+    `PROFILE_ID=${envValue(profile.profile_id)}`,
+    `ALLOWED_ORIGINS=${envValue(profile.allowed_origins.join(","))}`,
+    `USERNAME=${envValue(profile.username)}`,
+    `PASSWORD=${envValue(profile.password)}`,
+    `LOGIN_PATH_PATTERNS=${envValue(profile.login_path_patterns.join(","))}`,
+    `USERNAME_SELECTOR=${envValue(profile.username_selector)}`,
+    `PASSWORD_SELECTOR=${envValue(profile.password_selector)}`,
+    `SUBMIT_SELECTOR=${envValue(profile.submit_selector)}`,
+    `SUCCESS_PATH_NOT=${envValue(profile.success_path_not.join(","))}`,
+    `SUCCESS_TEXT=${envValue(profile.success_text)}`,
+    "",
+  ].join("\n");
+}
+
+function normalizeProfile(rawProfile) {
+  const profileId = String(rawProfile.profile_id ?? "").trim();
+  if (!profileId) {
+    return null;
+  }
+  const allowedOrigins = splitList(rawProfile.allowed_origins)
+    .map((origin) => normalizeOrigin(origin))
+    .filter((origin) => origin.length > 0);
+  const loginPathPatterns = splitList(rawProfile.login_path_patterns)
+    .map((item) => normalizePathPattern(item))
+    .filter((item) => item.length > 0);
+  const successPathNot = splitList(rawProfile.success_path_not)
+    .map((item) => normalizePathPattern(item))
+    .filter((item) => item.length > 0);
+  const normalizedLoginPathPatterns = loginPathPatterns.length > 0 ? loginPathPatterns : ["/login"];
+  return {
+    profile_id: profileId,
+    source: String(rawProfile.source ?? "profile_env"),
+    source_path: String(rawProfile.source_path ?? ""),
+    file_mode: rawProfile.file_mode,
+    insecure_file_permissions: rawProfile.insecure_file_permissions === true,
+    allowed_origins: [...new Set(allowedOrigins)],
+    login_path_patterns: normalizedLoginPathPatterns,
+    username_selector: String(rawProfile.username_selector ?? "#username").trim() || "#username",
+    password_selector: String(rawProfile.password_selector ?? "#password").trim() || "#password",
+    submit_selector: String(rawProfile.submit_selector ?? "button[type=\"submit\"]").trim() || "button[type=\"submit\"]",
+    success_path_not: successPathNot.length > 0 ? successPathNot : normalizedLoginPathPatterns,
+    success_text: String(rawProfile.success_text ?? "").trim(),
+    lifecycle: rawProfile.lifecycle && typeof rawProfile.lifecycle === "object" ? rawProfile.lifecycle : {},
+    username: String(rawProfile.username ?? ""),
+    password: String(rawProfile.password ?? ""),
+  };
+}
+
+function statModePayload(stat) {
+  if (!stat) {
+    return { mode: undefined, insecure: false };
+  }
+  const mode = stat.mode & 0o777;
+  return {
+    mode: mode.toString(8).padStart(3, "0"),
+    insecure: (mode & 0o077) !== 0,
+  };
+}
+
+function profileFromGenericEnv(filePath, fileName, env, stat) {
+  const mode = statModePayload(stat);
+  return normalizeProfile({
+    profile_id: env.PROFILE_ID || fileBaseProfileId(fileName),
+    source: "profile_env",
+    source_path: filePath,
+    file_mode: mode.mode,
+    insecure_file_permissions: mode.insecure,
+    allowed_origins: env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN,
+    username: env.USERNAME || env.LOGIN_USERNAME,
+    password: env.PASSWORD || env.LOGIN_PASSWORD,
+    login_path_patterns: env.LOGIN_PATH_PATTERNS || env.LOGIN_PATH_PATTERN || env.LOGIN_URL_PATTERN,
+    username_selector: env.USERNAME_SELECTOR,
+    password_selector: env.PASSWORD_SELECTOR,
+    submit_selector: env.SUBMIT_SELECTOR,
+    success_path_not: env.SUCCESS_PATH_NOT || env.SUCCESS_PATH_NOTS,
+    success_text: env.SUCCESS_TEXT,
+  });
+}
+
+function profileFromLegacyDatahub(filePath, env, stat) {
+  const mode = statModePayload(stat);
+  return normalizeProfile({
+    profile_id: "datahub-groland",
+    source: "legacy_datahub_env",
+    source_path: filePath,
+    file_mode: mode.mode,
+    insecure_file_permissions: mode.insecure,
+    allowed_origins: env.DATAHUB_GROLAND_ALLOWED_ORIGINS,
+    username: env.DATAHUB_GROLAND_USERNAME,
+    password: env.DATAHUB_GROLAND_PASSWORD,
+    login_path_patterns: "/login",
+    username_selector: "#username",
+    password_selector: "#password",
+    submit_selector: "button[type=\"submit\"]",
+    success_path_not: "/login",
+  });
+}
+
+async function maybeReadEnvFile(filePath) {
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile()) {
+    return null;
+  }
+  const content = await fs.readFile(filePath, "utf8");
+  return {
+    env: parseEnvContent(content),
+    stat,
+  };
+}
+
+function resolveProfileDir(args = {}) {
+  return path.resolve(expandUserPath(
+    args.profiles_dir
+    || process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR
+    || DEFAULT_PROFILE_DIR,
+  ));
+}
+
+async function loadLoginProfiles(args = {}) {
+  const profiles = new Map();
+  const legacy = await maybeReadEnvFile(LEGACY_DATAHUB_PROFILE_PATH);
+  if (legacy) {
+    const profile = profileFromLegacyDatahub(LEGACY_DATAHUB_PROFILE_PATH, legacy.env, legacy.stat);
+    if (profile) {
+      profiles.set(profile.profile_id, profile);
+    }
+  }
+
+  const profilesDir = resolveProfileDir(args);
+  try {
+    const entries = await fs.readdir(profilesDir, { withFileTypes: true });
+    const profileFileEntries = entries
+      .filter((entry) => entry.isFile() && PROFILE_FILE_EXTENSIONS.some((extension) => entry.name.endsWith(extension)))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (profileFileEntries.length > DEFAULT_MAX_PROFILE_FILES) {
+      throw createToolError("INVALID_ARGUMENT", "too many login profile files", {
+        retryable: false,
+        details: {
+          reason: "too_many_profile_files",
+          profiles_dir: profilesDir,
+          profile_file_count: profileFileEntries.length,
+          max_profile_files: DEFAULT_MAX_PROFILE_FILES,
+        },
+      });
+    }
+    const parsedProfiles = await Promise.all(profileFileEntries.map(async (entry) => {
+      const filePath = path.join(profilesDir, entry.name);
+      const parsed = await maybeReadEnvFile(filePath);
+      if (!parsed) {
+        return null;
+      }
+      const profile = profileFromGenericEnv(filePath, entry.name, parsed.env, parsed.stat);
+      if (profile) {
+        profile.lifecycle = await readProfileMetadata(filePath);
+      }
+      return profile;
+    }));
+    for (const profile of parsedProfiles) {
+      if (profile) {
+        profiles.set(profile.profile_id, profile);
+      }
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  return {
+    profiles: [...profiles.values()],
+    profiles_dir: profilesDir,
+    legacy_profile_path: LEGACY_DATAHUB_PROFILE_PATH,
+  };
+}
+
+function buildProfileFromUpsertArgs(args) {
+  const profileId = sanitizeProfileId(args?.profile_id);
+  const originInputs = splitList(args?.allowed_origins ?? args?.allowed_origin ?? args?.origin);
+  const normalizedOrigins = [];
+  for (const rawOrigin of originInputs) {
+    const validation = validateExactHttpOrigin(rawOrigin);
+    if (!validation.ok) {
+      throw createToolError("INVALID_ARGUMENT", `invalid allowed origin: ${validation.reason}`, {
+        retryable: false,
+        details: { reason: validation.reason, origin: String(rawOrigin ?? "") },
+      });
+    }
+    normalizedOrigins.push(validation.origin);
+  }
+  const uniqueOrigins = [...new Set(normalizedOrigins)];
+  if (uniqueOrigins.length === 0) {
+    throw createToolError("INVALID_ARGUMENT", "origin or allowed_origins is required", {
+      retryable: false,
+      details: { reason: "missing_allowed_origins" },
+    });
+  }
+
+  const loginPathPatterns = splitList(args?.login_path_patterns ?? args?.login_path_pattern)
+    .map((item) => normalizePathPattern(item))
+    .filter((item) => item.length > 0);
+  const successPathNot = splitList(args?.success_path_not)
+    .map((item) => normalizePathPattern(item))
+    .filter((item) => item.length > 0);
+  const username = String(args?.username ?? "");
+  const password = String(args?.password ?? "");
+  const profile = normalizeProfile({
+    profile_id: profileId,
+    source: "profile_env",
+    allowed_origins: uniqueOrigins,
+    username,
+    password,
+    login_path_patterns: loginPathPatterns.length > 0 ? loginPathPatterns : ["/login"],
+    username_selector: args?.username_selector,
+    password_selector: args?.password_selector,
+    submit_selector: args?.submit_selector,
+    success_path_not: successPathNot,
+    success_text: args?.success_text,
+  });
+  const validation = validateProfileShape(profile);
+  if (!validation.valid) {
+    throw createToolError("INVALID_ARGUMENT", "profile is missing required login fields", {
+      retryable: false,
+      details: { reason: "profile_invalid", validation },
+    });
+  }
+  return profile;
+}
+
+async function writeProfileAtomic(args, profile) {
+  if (args?.confirm_write !== true) {
+    throw createToolError("INVALID_ARGUMENT", "confirm_write=true is required to save login credentials", {
+      retryable: false,
+      details: { reason: "confirm_write_required" },
+    });
+  }
+  const profilesDir = ensureRepoExternalProfileDir(resolveProfileDir(args));
+  const filePath = path.join(profilesDir, `${profile.profile_id}.env`);
+  const relative = path.relative(profilesDir, filePath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw createToolError("INVALID_ARGUMENT", "profile path must stay within the profile directory", {
+      retryable: false,
+      details: { reason: "profile_path_escape" },
+    });
+  }
+
+  let existingStat = null;
+  try {
+    existingStat = await fs.stat(filePath);
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+  if (existingStat && args?.overwrite !== true) {
+    throw createToolError("INVALID_ARGUMENT", "profile already exists; pass overwrite=true to update it", {
+      retryable: false,
+      details: { reason: "profile_exists", profile_id: profile.profile_id },
+    });
+  }
+
+  await fs.mkdir(profilesDir, { recursive: true, mode: 0o700 });
+  try {
+    await fs.chmod(profilesDir, 0o700);
+  } catch {
+    // Best effort on filesystems that do not support POSIX mode changes.
+  }
+  const tmpPath = path.join(
+    profilesDir,
+    `.${profile.profile_id}.${process.pid}.${Date.now()}.${Math.floor(Math.random() * 1_000_000)}.tmp`,
+  );
+  try {
+    await fs.writeFile(tmpPath, serializeProfileEnv(profile), { mode: 0o600 });
+    try {
+      await fs.chmod(tmpPath, 0o600);
+    } catch {
+      // Best effort on non-POSIX filesystems.
+    }
+    await fs.rename(tmpPath, filePath);
+  } catch (error) {
+    await fs.rm(tmpPath, { force: true });
+    throw error;
+  }
+  try {
+    await fs.chmod(filePath, 0o600);
+  } catch {
+    // Best effort on non-POSIX filesystems.
+  }
+  const finalStat = await fs.stat(filePath);
+  const mode = statModePayload(finalStat);
+  return {
+    filePath,
+    created: !existingStat,
+    updated: Boolean(existingStat),
+    file_mode: mode.mode,
+    insecure_file_permissions: mode.insecure,
+  };
+}
+
+async function recordProfileAuthLifecycle(profile, details = {}) {
+  if (profile?.source !== "profile_env" || !profile?.source_path) {
+    return {};
+  }
+  try {
+    return await writeProfileMetadata(profile.source_path, {
+      profile_id: profile.profile_id,
+      last_used_at: details.last_used_at,
+      last_validated_at: details.last_validated_at,
+      last_status: details.last_status || "success",
+      last_reason: details.last_reason,
+      last_origin: details.last_origin,
+      last_path: details.last_path,
+    });
+  } catch (error) {
+    return {
+      metadata_write_error: String(error?.code ?? error?.message ?? error),
+    };
+  }
+}
+
+function redactProfile(profile) {
+  return {
+    profile_id: profile.profile_id,
+    source: profile.source,
+    source_path: profile.source_path,
+    file_mode: profile.file_mode,
+    insecure_file_permissions: profile.insecure_file_permissions,
+    allowed_origins: profile.allowed_origins,
+    login_path_patterns: profile.login_path_patterns,
+    username_selector: profile.username_selector,
+    password_selector: profile.password_selector,
+    submit_selector: profile.submit_selector,
+    success_path_not: profile.success_path_not,
+    success_text_configured: profile.success_text.length > 0,
+    lifecycle: redactProfileMetadata(profile.lifecycle),
+    has_username: profile.username.length > 0,
+    has_password: profile.password.length > 0,
+  };
+}
+
+function lifecycleMetadataWasUpdated(lifecycle) {
+  return Boolean(redactProfileMetadata(lifecycle));
+}
+
+function validateProfileShape(profile) {
+  const errors = [];
+  const warnings = [];
+  if (!profile.profile_id) {
+    errors.push("missing_profile_id");
+  }
+  if (!Array.isArray(profile.allowed_origins) || profile.allowed_origins.length === 0) {
+    errors.push("missing_allowed_origins");
+  }
+  if (!profile.username) {
+    errors.push("missing_username");
+  }
+  if (!profile.password) {
+    errors.push("missing_password");
+  }
+  if (!profile.username_selector) {
+    errors.push("missing_username_selector");
+  }
+  if (!profile.password_selector) {
+    errors.push("missing_password_selector");
+  }
+  if (!profile.submit_selector) {
+    warnings.push("missing_submit_selector");
+  }
+  if (profile.insecure_file_permissions === true) {
+    warnings.push("profile_file_permissions_are_not_private");
+  }
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+function pathMatchesPattern(pathname, pattern) {
+  const normalizedPath = normalizePathPattern(pathname);
+  const normalizedPattern = normalizePathPattern(pattern);
+  if (!normalizedPattern) {
+    return false;
+  }
+  return normalizedPath === normalizedPattern
+    || normalizedPath.startsWith(`${normalizedPattern}/`);
+}
+
+function pathMatchesAny(pathname, patterns) {
+  return (Array.isArray(patterns) ? patterns : []).some((pattern) => pathMatchesPattern(pathname, pattern));
+}
+
+function findProfileById(profiles, profileId) {
+  const normalized = String(profileId ?? "").trim();
+  if (!normalized || normalized === "auto") {
+    return null;
+  }
+  return profiles.find((profile) => profile.profile_id === normalized) ?? null;
+}
+
+function findProfileByOrigin(profiles, origin) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  return profiles.find((profile) => profile.allowed_origins.includes(normalizedOrigin)) ?? null;
+}
+
+function resolveProfileForOrigin(profiles, args, origin) {
+  const requestedProfileId = String(args?.profile_id ?? "auto").trim() || "auto";
+  const explicit = requestedProfileId !== "auto" ? findProfileById(profiles, requestedProfileId) : null;
+  if (requestedProfileId !== "auto" && !explicit) {
+    return {
+      profile: null,
+      blocked_reason: "profile_not_found",
+      requested_profile_id: requestedProfileId,
+    };
+  }
+  const profile = explicit ?? findProfileByOrigin(profiles, origin);
+  if (!profile) {
+    return {
+      profile: null,
+      blocked_reason: "no_matching_login_profile",
+      requested_profile_id: requestedProfileId,
+    };
+  }
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!profile.allowed_origins.includes(normalizedOrigin)) {
+    return {
+      profile,
+      blocked_reason: "origin_not_allowed_for_profile",
+      requested_profile_id: requestedProfileId,
+    };
+  }
+  return {
+    profile,
+    blocked_reason: "",
+    requested_profile_id: requestedProfileId,
+  };
+}
+
+export {
+  buildProfileFromUpsertArgs,
+  findProfileById,
+  findProfileByOrigin,
+  lifecycleMetadataWasUpdated,
+  loadLoginProfiles,
+  normalizeOrigin,
+  normalizePathPattern,
+  normalizeProfile,
+  pathMatchesAny,
+  profileIdFromOrigin,
+  redactProfile,
+  recordProfileAuthLifecycle,
+  resolveProfileForOrigin,
+  sanitizeProfileId,
+  validateExactHttpOrigin,
+  validateProfileShape,
+  writeProfileAtomic,
+};

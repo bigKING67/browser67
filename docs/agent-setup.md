@@ -121,9 +121,16 @@ then explicitly save the user-provided credentials with
 browser_auth_ops.upsert_profile and confirm_write=true; tab creation must never
 save credentials as a hidden side effect. Saved profiles may have a redacted
 <profile>.meta.json sidecar that records lifecycle timestamps/status only; it
-must not contain usernames, passwords, cookies, tokens, or session data.
-CAPTCHA, MFA, and SSO-only screens are manual-required states; ensure_login
-returns blocked with manual_required_* and must not keep guessing.
+must not contain usernames, passwords, cookies, tokens, or session data. Profile
+file scans are deterministic and bounded so secret directories cannot become an
+unbounded hot path.
+CAPTCHA, MFA, SSO-only, and OAuth popup screens are manual-required states;
+ensure_login returns blocked with manual_required_* and must not keep guessing.
+OAuth popup flows keep the compatible manual_required_sso reason and use
+manual_context.kind=oauth_popup. manual_context is a non-secret handoff hint
+only; it must not contain credentials, cookies, tokens, browser session data, or
+page content. After the user completes the manual step, call ensure_login again
+on the same managed tab/workspace to validate the resumed authenticated state.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
 auditing whether finalizers were missed. Managed tab creation results include
 finalize_hint; treat finalize_hint.required=true as a task-end cleanup
@@ -169,8 +176,9 @@ Chrome/Edge. If those fail, inspect `npm run doctor:json` before changing code.
 After auth/profile changes, run `npm run check:auth-live`; it uses an isolated
 local profile directory and managed tabs, verifies first-time profile suggestion
 and upsert, login submission, already-authenticated no-resubmit behavior,
-lifecycle sidecar updates, CAPTCHA manual-required blocking, unknown-origin
-blocking, redaction, and finalizer cleanup.
+lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking,
+unknown-origin blocking, redaction, manual handoff context, and finalizer
+cleanup.
 
 ## Operating boundary
 

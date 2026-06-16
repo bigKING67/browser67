@@ -35,6 +35,10 @@ for Codex, grobot, and JS reverse workflows.
 - Native input fallback for blocked browser-side automation
 - Doctor/live-gate contracts for reproducible readiness checks
 - JS reverse docs and skill material under `docs/js-reverse/` and `skills/js-reverse/`
+- Auth/profile lifecycle modules under `src/auth/`:
+  profile storage, login/manual-required detection, DOM submit/wait logic, and
+  MCP action handlers are kept separate so login behavior can evolve without a
+  single long-lived auth file becoming the maintenance bottleneck.
 
 ## Why TMWD first
 
@@ -180,6 +184,9 @@ Profiles live outside the repository by default:
 ~/.codex/secrets/tmwd-login-profiles/
 ```
 
+Profile scans are deterministic by filename and bounded to avoid unbounded
+secret-directory work in long-lived agent sessions.
+
 Each saved profile can have a non-secret lifecycle sidecar:
 
 ```text
@@ -188,8 +195,11 @@ Each saved profile can have a non-secret lifecycle sidecar:
 
 The sidecar records timestamps, last status/reason, and last origin/path only.
 It never stores usernames, passwords, cookies, tokens, or browser session data.
-CAPTCHA, MFA, and SSO-only flows are reported as `manual_required_*` and block
-automatic submission/continuation.
+CAPTCHA, MFA, SSO-only, and OAuth popup flows are reported as
+`manual_required_*` and block automatic submission/continuation. These blocked
+states include a non-secret `manual_context` with the manual flow kind and
+`resume_action:"ensure_login"`; it is a handoff hint, not a credential/session
+container.
 
 ## Quality gates
 

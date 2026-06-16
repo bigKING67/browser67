@@ -57,6 +57,23 @@ async function run() {
     `tmwd-tab-registry-contract-${process.pid}-${Date.now()}.json`,
   );
   const tmpLoginProfileDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-login-profiles-contract-"));
+  let tmpTooManyLoginProfileDir;
+  await fs.writeFile(
+    path.join(tmpLoginProfileDir, "alpha-site.env"),
+    [
+      "PROFILE_ID=alpha-site",
+      "ALLOWED_ORIGINS=http://alpha.example",
+      "USERNAME=alpha-user",
+      "PASSWORD=alpha-password",
+      "LOGIN_PATH_PATTERN=/sign-in",
+      "USERNAME_SELECTOR=#email",
+      "PASSWORD_SELECTOR=#password",
+      "SUBMIT_SELECTOR=button[type=\"submit\"]",
+      "SUCCESS_PATH_NOT=/sign-in",
+      "",
+    ].join("\n"),
+    { mode: 0o600 },
+  );
   await fs.writeFile(
     path.join(tmpLoginProfileDir, "contract-site.env"),
     [
@@ -73,6 +90,12 @@ async function run() {
     ].join("\n"),
     { mode: 0o600 },
   );
+  tmpTooManyLoginProfileDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-login-profiles-overflow-contract-"));
+  await Promise.all(Array.from({ length: 201 }, async (_item, index) => fs.writeFile(
+    path.join(tmpTooManyLoginProfileDir, `overflow-${String(index).padStart(3, "0")}.env`),
+    "",
+    { mode: 0o600 },
+  )));
   process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = tmpTabRegistryPath;
   process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR = tmpLoginProfileDir;
   const rpc = createRpcClient();
@@ -613,10 +636,17 @@ async function run() {
     assert.equal(authListPayload?.status, "success");
     assert.equal(authListPayload?.action, "list_profiles");
     assert.equal(authListPayload?.secrets_redacted, true);
+    const authProfileIds = authListPayload?.profiles?.map((entry) => entry?.profile_id) ?? [];
+    assert.equal(authProfileIds.includes("alpha-site"), true);
+    assert.ok(
+      authProfileIds.indexOf("alpha-site") < authProfileIds.indexOf("contract-site"),
+      "login profiles should be listed in deterministic filename order",
+    );
     const contractProfile = authListPayload?.profiles?.find((entry) => entry?.profile_id === "contract-site");
     assert.equal(contractProfile?.has_username, true);
     assert.equal(contractProfile?.has_password, true);
     assert.equal(JSON.stringify(authListPayload).includes("contract-password"), false);
+    assert.equal(JSON.stringify(authListPayload).includes("alpha-password"), false);
 
     const authDryRunCall = await rpc.call(
       "tools/call",
@@ -835,6 +865,23 @@ async function run() {
     assert.equal(onboardProfile?.lifecycle?.last_status, "saved");
     assert.equal(onboardProfile?.lifecycle?.last_reason, "updated");
     assert.equal(JSON.stringify(authListAfterUpsertPayload).includes("onboard-password-2"), false);
+
+    const authTooManyProfilesCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_auth_ops",
+        arguments: {
+          action: "list_profiles",
+          profiles_dir: tmpTooManyLoginProfileDir,
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(authTooManyProfilesCall?.result?.isError, true);
+    const authTooManyProfilesPayload = firstJsonContent(authTooManyProfilesCall.result);
+    assert.equal(authTooManyProfilesPayload?.error_code, "INVALID_ARGUMENT");
+    assert.equal(authTooManyProfilesPayload?.details?.reason, "too_many_profile_files");
+    assert.equal(authTooManyProfilesPayload?.details?.max_profile_files, 200);
 
     const invalidAuthWrites = [
       {
@@ -1341,6 +1388,9 @@ async function run() {
     }
     await fs.rm(tmpTabRegistryPath, { force: true });
     await fs.rm(tmpLoginProfileDir, { recursive: true, force: true });
+    if (tmpTooManyLoginProfileDir) {
+      await fs.rm(tmpTooManyLoginProfileDir, { recursive: true, force: true });
+    }
   }
 }
 

@@ -159,11 +159,34 @@ Known-site operational pattern:
 3. If the page is already authenticated, `ensure_login` returns `already_authenticated:true`.
 4. If the page is a login page and the origin matches a profile, it fills and submits the form.
 5. If no exact-origin profile matches, it returns `status:"blocked"` and does not fill anything.
-6. If CAPTCHA, MFA, or SSO-only UI is detected, `ensure_login` returns
+6. If CAPTCHA, MFA, SSO-only, or OAuth popup UI is detected, `ensure_login` returns
    `status:"blocked"` with `reason:"manual_required_captcha"`,
    `reason:"manual_required_mfa"`, or `reason:"manual_required_sso"` and does
-   not continue guessing.
+   not continue guessing. OAuth popup flows keep the compatible
+   `manual_required_sso` reason and use `manual_context.kind:"oauth_popup"` for
+   the more specific handoff type.
 7. Finish with `browser_tab_lifecycle.finalize_task` for the same `workspace_key`.
+
+Manual-required results may include:
+
+```json
+{
+  "manual_required": true,
+  "manual_context": {
+    "kind": "captcha|mfa|sso|oauth_popup",
+    "tab_id": "...",
+    "workspace_key": "...",
+    "resume_action": "ensure_login"
+  }
+}
+```
+
+`manual_context` is only a non-secret recovery hint. It must not contain
+username, password, cookies, tokens, browser session data, page body text, or
+captured DOM content. After the user completes the manual step, call
+`browser_auth_ops.ensure_login` again on the same managed tab/workspace; the
+expected successful path is already-authenticated validation, not replaying
+stored credentials across an external identity provider.
 
 First-time site onboarding pattern:
 
@@ -219,7 +242,7 @@ sites to use the generic profile directory above.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the TMWD websocket explicitly to avoid successful actions ending with a command timeout.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
-- Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA manual-required blocking, unknown-origin blocking, redaction, and finalizer cleanup.
+- Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.
 
 ## Codex host hard-finally contract
 
