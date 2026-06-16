@@ -161,6 +161,36 @@ Do not replace another user's global prompt blindly. Merge the routing and
 security rules from `docs/agent-setup.md` into that agent's own global/project
 instructions.
 
+## Login profile lifecycle
+
+`browser_auth_ops` handles opt-in, exact-origin login profiles for managed tabs:
+
+- `ensure_login` first inspects the selected TMWD tab. If it is already logged
+  in, it returns `already_authenticated:true` and does not resubmit a form.
+- If the tab is on a login page, credentials are used only when the current
+  origin exactly matches a repo-external local profile.
+- Unknown origins return `status:"blocked"` and are never auto-filled with a
+  guessed or unrelated profile.
+- First-time site onboarding is explicit: call `suggest_profile`, then
+  `upsert_profile(confirm_write:true)` with the user-provided credentials.
+
+Profiles live outside the repository by default:
+
+```text
+~/.codex/secrets/tmwd-login-profiles/
+```
+
+Each saved profile can have a non-secret lifecycle sidecar:
+
+```text
+<profile>.env -> <profile>.meta.json
+```
+
+The sidecar records timestamps, last status/reason, and last origin/path only.
+It never stores usernames, passwords, cookies, tokens, or browser session data.
+CAPTCHA, MFA, and SSO-only flows are reported as `manual_required_*` and block
+automatic submission/continuation.
+
 ## Quality gates
 
 ```bash
@@ -180,7 +210,7 @@ is not connected.
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
 all `.mjs` syntax, deterministic contracts, live doctor readiness, JS reverse
-live readiness, auth-profile onboarding/live smoke, and npm audit.
+live readiness, auth-profile onboarding/lifecycle/live smoke, and npm audit.
 
 ## Source alignment
 

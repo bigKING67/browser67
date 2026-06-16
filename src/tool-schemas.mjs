@@ -306,7 +306,7 @@ const TOOL_SCHEMAS = {
     },
   },
   browser_auth_ops: {
-    description: "Profile-driven login helpers for TMWD managed tabs: list/validate local login profiles, inspect login pages, suggest or save repo-external login profiles, or ensure an already-open tab is authenticated. Credentials are loaded from/saved to repo-external local profiles and never returned.",
+    description: "Profile-driven login helpers for TMWD managed tabs: list/validate local login profiles, inspect login pages, suggest or save repo-external login profiles, or ensure an already-open tab is authenticated. Credentials are loaded from/saved to repo-external local profiles and never returned. Redacted lifecycle metadata may be stored in sidecar files; CAPTCHA/MFA/SSO-only pages return manual_required_* instead of continued automatic guessing.",
     inputSchema: {
       type: "object",
       properties: {

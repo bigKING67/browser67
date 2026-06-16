@@ -119,7 +119,11 @@ and returns blocked for unknown origins instead of guessing credentials. For a
 first-time site, use browser_auth_ops.suggest_profile on the managed login tab,
 then explicitly save the user-provided credentials with
 browser_auth_ops.upsert_profile and confirm_write=true; tab creation must never
-save credentials as a hidden side effect.
+save credentials as a hidden side effect. Saved profiles may have a redacted
+<profile>.meta.json sidecar that records lifecycle timestamps/status only; it
+must not contain usernames, passwords, cookies, tokens, or session data.
+CAPTCHA, MFA, and SSO-only screens are manual-required states; ensure_login
+returns blocked with manual_required_* and must not keep guessing.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
 auditing whether finalizers were missed. Managed tab creation results include
 finalize_hint; treat finalize_hint.required=true as a task-end cleanup
@@ -163,9 +167,10 @@ npm run skills:check
 `check:live:*` requires the local hub and unpacked extension to be connected to
 Chrome/Edge. If those fail, inspect `npm run doctor:json` before changing code.
 After auth/profile changes, run `npm run check:auth-live`; it uses an isolated
-local profile directory and managed tab, verifies first-time profile suggestion
+local profile directory and managed tabs, verifies first-time profile suggestion
 and upsert, login submission, already-authenticated no-resubmit behavior,
-unknown-origin blocking, redaction, and finalizer cleanup.
+lifecycle sidecar updates, CAPTCHA manual-required blocking, unknown-origin
+blocking, redaction, and finalizer cleanup.
 
 ## Operating boundary
 

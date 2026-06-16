@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 import { normalizeTimeoutMs } from "../common.mjs";
 import { createToolError } from "../errors.mjs";
 import { executeTmwdJsWithFallback, resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+import {
+  readProfileMetadata,
+  redactProfileMetadata,
+  writeProfileMetadata,
+} from "./profile-metadata.mjs";
 
 const DEFAULT_PROFILE_DIR = path.join(os.homedir(), ".codex", "secrets", "tmwd-login-profiles");
 const LEGACY_DATAHUB_PROFILE_PATH = path.join(os.homedir(), ".codex", "secrets", "datahub-groland-login.env");
@@ -220,6 +225,7 @@ function normalizeProfile(rawProfile) {
     submit_selector: String(rawProfile.submit_selector ?? "button[type=\"submit\"]").trim() || "button[type=\"submit\"]",
     success_path_not: successPathNot.length > 0 ? successPathNot : normalizedLoginPathPatterns,
     success_text: String(rawProfile.success_text ?? "").trim(),
+    lifecycle: rawProfile.lifecycle && typeof rawProfile.lifecycle === "object" ? rawProfile.lifecycle : {},
     username: String(rawProfile.username ?? ""),
     password: String(rawProfile.password ?? ""),
   };
@@ -322,7 +328,11 @@ async function loadLoginProfiles(args = {}) {
       if (!parsed) {
         return null;
       }
-      return profileFromGenericEnv(filePath, entry.name, parsed.env, parsed.stat);
+      const profile = profileFromGenericEnv(filePath, entry.name, parsed.env, parsed.stat);
+      if (profile) {
+        profile.lifecycle = await readProfileMetadata(filePath);
+      }
+      return profile;
     }));
     for (const profile of parsedProfiles) {
       if (profile) {
@@ -465,6 +475,27 @@ async function writeProfileAtomic(args, profile) {
   };
 }
 
+async function recordProfileAuthLifecycle(profile, details = {}) {
+  if (profile?.source !== "profile_env" || !profile?.source_path) {
+    return {};
+  }
+  try {
+    return await writeProfileMetadata(profile.source_path, {
+      profile_id: profile.profile_id,
+      last_used_at: details.last_used_at,
+      last_validated_at: details.last_validated_at,
+      last_status: details.last_status || "success",
+      last_reason: details.last_reason,
+      last_origin: details.last_origin,
+      last_path: details.last_path,
+    });
+  } catch (error) {
+    return {
+      metadata_write_error: String(error?.code ?? error?.message ?? error),
+    };
+  }
+}
+
 function redactProfile(profile) {
   return {
     profile_id: profile.profile_id,
@@ -479,9 +510,14 @@ function redactProfile(profile) {
     submit_selector: profile.submit_selector,
     success_path_not: profile.success_path_not,
     success_text_configured: profile.success_text.length > 0,
+    lifecycle: redactProfileMetadata(profile.lifecycle),
     has_username: profile.username.length > 0,
     has_password: profile.password.length > 0,
   };
+}
+
+function lifecycleMetadataWasUpdated(lifecycle) {
+  return Boolean(redactProfileMetadata(lifecycle));
 }
 
 function validateProfileShape(profile) {
@@ -624,6 +660,19 @@ function detectLoginPage(pageState, profile) {
   };
 }
 
+function manualRequirementFromPageState(pageState) {
+  if (pageState?.captcha_detected === true) {
+    return "manual_required_captcha";
+  }
+  if (pageState?.mfa_detected === true || Number(pageState?.mfa_input_count ?? 0) > 0) {
+    return "manual_required_mfa";
+  }
+  if (pageState?.sso_detected === true && Number(pageState?.password_input_count ?? 0) === 0) {
+    return "manual_required_sso";
+  }
+  return "";
+}
+
 function wrapPageFunction(body, input) {
   return `return await (async (input) => {\n${body}\n})(${JSON.stringify(input ?? {})});`;
 }
@@ -695,6 +744,10 @@ async function inspectCurrentPage(args, profile = null) {
     };
     const passwordInputs = Array.from(document.querySelectorAll('input[type="password"]'));
     const usernameLikeInputs = Array.from(document.querySelectorAll('input[type="text"], input[type="email"], input[name*="user" i], input[name*="email" i]'));
+    const mfaInputs = Array.from(document.querySelectorAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]'));
+    const captchaDetected = Boolean(document.querySelector('[class*="captcha" i], [id*="captcha" i], iframe[src*="captcha" i], iframe[src*="recaptcha" i]'));
+    const ssoDetected = Array.from(document.querySelectorAll('a, button')).some((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
+    const bodyText = String(document.body?.innerText || "");
     return {
       url: location.href,
       origin: location.origin,
@@ -703,6 +756,10 @@ async function inspectCurrentPage(args, profile = null) {
       ready_state: document.readyState,
       password_input_count: passwordInputs.length,
       username_like_input_count: usernameLikeInputs.length,
+      mfa_input_count: mfaInputs.length,
+      captcha_detected: captchaDetected,
+      sso_detected: ssoDetected,
+      mfa_detected: mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText),
       profile_selectors: {
         username: hasSelector(profile.username_selector),
         password: hasSelector(profile.password_selector),
@@ -790,6 +847,8 @@ async function suggestProfileFromCurrentPage(args) {
     const passwordSelector = selectorFor(passwordInput, ['input[type="password"]']);
     const submitSelector = selectorFor(submitButton, ['button[type="submit"]', 'input[type="submit"]', 'button']);
     const captchaDetected = Boolean(document.querySelector('[class*="captcha" i], [id*="captcha" i], iframe[src*="captcha" i], iframe[src*="recaptcha" i]'));
+    const mfaInputs = queryAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]');
+    const bodyText = String(document.body?.innerText || "");
     const ssoDetected = queryAll('a, button').some((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
     return {
       url: location.href,
@@ -804,6 +863,8 @@ async function suggestProfileFromCurrentPage(args) {
       username_like_input_count: formInputs.length,
       form_detected: Boolean(form),
       captcha_detected: captchaDetected,
+      mfa_detected: mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText),
+      mfa_input_count: mfaInputs.length,
       sso_detected: ssoDetected
     };
   `);
@@ -872,6 +933,22 @@ async function submitLoginForm(args, profile) {
     };
     const successPathNot = Array.isArray(profile.success_path_not) ? profile.success_path_not : [];
     const isStillBlockedPath = () => successPathNot.some((pattern) => pathMatches(location.pathname, pattern));
+    const detectManualRequirement = () => {
+      const bodyText = String(document.body?.innerText || "");
+      const captchaDetected = Boolean(document.querySelector('[class*="captcha" i], [id*="captcha" i], iframe[src*="captcha" i], iframe[src*="recaptcha" i]'));
+      const mfaInputs = Array.from(document.querySelectorAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]'));
+      const ssoDetected = Array.from(document.querySelectorAll('a, button')).some((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
+      const mfaDetected = mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText);
+      return {
+        captcha_detected: captchaDetected,
+        mfa_detected: mfaDetected,
+        mfa_input_count: mfaInputs.length,
+        sso_detected: ssoDetected,
+        manual_required_reason: captchaDetected
+          ? "manual_required_captcha"
+          : (mfaDetected ? "manual_required_mfa" : (ssoDetected && !document.querySelector('input[type="password"]') ? "manual_required_sso" : ""))
+      };
+    };
     let successTextMatched = profile.success_text ? String(document.body?.innerText || "").includes(profile.success_text) : true;
     const refreshSuccessText = () => {
       successTextMatched = profile.success_text ? String(document.body?.innerText || "").includes(profile.success_text) : true;
@@ -893,9 +970,10 @@ async function submitLoginForm(args, profile) {
       await waitForAuthReady(started);
       const blockedPath = isStillBlockedPath();
       refreshSuccessText();
+      const manualRequirement = detectManualRequirement();
       return {
-        ok: !blockedPath && successTextMatched,
-        reason: !blockedPath && successTextMatched ? "already_authenticated" : "authenticated_state_not_confirmed",
+        ok: !blockedPath && successTextMatched && !manualRequirement.manual_required_reason,
+        reason: manualRequirement.manual_required_reason || (!blockedPath && successTextMatched ? "already_authenticated" : "authenticated_state_not_confirmed"),
         submitted: false,
         waited_ms: Date.now() - started,
         final_url: location.href,
@@ -904,6 +982,7 @@ async function submitLoginForm(args, profile) {
         title: document.title,
         blocked_path: blockedPath,
         success_text_matched: successTextMatched,
+        ...manualRequirement,
         missing_selectors: missingSelectors.filter(Boolean)
       };
     }
@@ -958,9 +1037,10 @@ async function submitLoginForm(args, profile) {
     await waitForAuthReady(started);
     const blockedPath = isStillBlockedPath();
     refreshSuccessText();
+    const manualRequirement = detectManualRequirement();
     return {
-      ok: !blockedPath && successTextMatched,
-      reason: !blockedPath && successTextMatched ? "logged_in" : "login_not_completed",
+      ok: !blockedPath && successTextMatched && !manualRequirement.manual_required_reason,
+      reason: manualRequirement.manual_required_reason || (!blockedPath && successTextMatched ? "logged_in" : "login_not_completed"),
       submitted: true,
       submit_method,
       waited_ms: Date.now() - started,
@@ -970,6 +1050,7 @@ async function submitLoginForm(args, profile) {
       title: document.title,
       blocked_path: blockedPath,
       success_text_matched: successTextMatched,
+      ...manualRequirement,
       missing_selectors: missingSelectors.filter(Boolean)
     };
   `, {
@@ -1092,6 +1173,11 @@ async function handleInspectLoginPage(args) {
     profile_selectors: pageState.profile_selectors,
     password_input_count: pageState.password_input_count,
     username_like_input_count: pageState.username_like_input_count,
+    mfa_input_count: pageState.mfa_input_count,
+    captcha_detected: pageState.captcha_detected === true,
+    mfa_detected: pageState.mfa_detected === true,
+    sso_detected: pageState.sso_detected === true,
+    manual_required_reason: manualRequirementFromPageState(pageState) || undefined,
     secrets_redacted: true,
   };
 }
@@ -1161,7 +1247,10 @@ async function handleSuggestProfile(args) {
     profile: redactProfile(suggestion.profile),
     confidence: suggestion.confidence,
     captcha_detected: pageState.captcha_detected === true,
+    mfa_detected: pageState.mfa_detected === true,
+    mfa_input_count: pageState.mfa_input_count,
     sso_detected: pageState.sso_detected === true,
+    manual_required_reason: manualRequirementFromPageState(pageState) || undefined,
     form_detected: pageState.form_detected === true,
     password_input_count: pageState.password_input_count,
     username_like_input_count: pageState.username_like_input_count,
@@ -1172,12 +1261,18 @@ async function handleSuggestProfile(args) {
 async function handleUpsertProfile(args) {
   const profile = buildProfileFromUpsertArgs(args);
   const writeResult = await writeProfileAtomic(args, profile);
+  const lifecycle = await writeProfileMetadata(writeResult.filePath, {
+    profile_id: profile.profile_id,
+    last_status: "saved",
+    last_reason: writeResult.created ? "created" : "updated",
+  });
   const storedProfile = {
     ...profile,
     source: "profile_env",
     source_path: writeResult.filePath,
     file_mode: writeResult.file_mode,
     insecure_file_permissions: writeResult.insecure_file_permissions,
+    lifecycle,
   };
   return {
     status: "success",
@@ -1229,12 +1324,24 @@ async function handleEnsureLogin(args) {
   const firstState = await inspectCurrentPage(args, null);
   const genericDetection = detectLoginPage(firstState, null);
   if (!genericDetection.login_detected) {
+    const optionalResolved = resolveProfileForOrigin(loaded.profiles, args, firstState.origin);
+    const optionalProfile = optionalResolved.blocked_reason ? null : optionalResolved.profile;
+    const lifecycle = optionalProfile
+      ? await recordProfileAuthLifecycle(optionalProfile, {
+        last_used_at: new Date().toISOString(),
+        last_validated_at: new Date().toISOString(),
+        last_status: "success",
+        last_reason: "already_authenticated",
+        last_origin: firstState.origin,
+        last_path: firstState.pathname,
+      })
+      : {};
     return {
       status: "success",
       action: "ensure_login",
       already_authenticated: true,
       submitted: false,
-      reason: "profile_missing_but_not_needed",
+      reason: optionalProfile ? "already_authenticated" : "profile_missing_but_not_needed",
       url: firstState.url,
       origin: firstState.origin,
       pathname: firstState.pathname,
@@ -1242,7 +1349,9 @@ async function handleEnsureLogin(args) {
       transport: firstState.transport,
       transport_attempts: firstState.transport_attempts,
       page: firstState.page,
+      profile: optionalProfile ? redactProfile({ ...optionalProfile, lifecycle: { ...optionalProfile.lifecycle, ...lifecycle } }) : undefined,
       ...genericDetection,
+      metadata_updated: lifecycleMetadataWasUpdated(lifecycle),
       secrets_redacted: true,
     };
   }
@@ -1286,12 +1395,41 @@ async function handleEnsureLogin(args) {
   const pageState = await inspectCurrentPage(args, profile);
   const detection = detectLoginPage(pageState, profile);
   if (!detection.login_detected) {
+    const lifecycle = await recordProfileAuthLifecycle(profile, {
+      last_used_at: new Date().toISOString(),
+      last_validated_at: new Date().toISOString(),
+      last_status: "success",
+      last_reason: "already_authenticated",
+      last_origin: pageState.origin,
+      last_path: pageState.pathname,
+    });
     return {
       status: "success",
       action: "ensure_login",
       already_authenticated: true,
       submitted: false,
-      reason: "login_not_detected",
+      url: pageState.url,
+      origin: pageState.origin,
+      pathname: pageState.pathname,
+      title: pageState.title,
+      transport: pageState.transport,
+      transport_attempts: pageState.transport_attempts,
+      page: pageState.page,
+      profile: redactProfile({ ...profile, lifecycle: { ...profile.lifecycle, ...lifecycle } }),
+      ...detection,
+      reason: "already_authenticated",
+      metadata_updated: lifecycleMetadataWasUpdated(lifecycle),
+      secrets_redacted: true,
+    };
+  }
+
+  const manualRequiredReason = manualRequirementFromPageState(pageState);
+  if (manualRequiredReason) {
+    return {
+      status: "blocked",
+      action: "ensure_login",
+      reason: manualRequiredReason,
+      submitted: false,
       url: pageState.url,
       origin: pageState.origin,
       pathname: pageState.pathname,
@@ -1301,6 +1439,10 @@ async function handleEnsureLogin(args) {
       page: pageState.page,
       profile: redactProfile(profile),
       ...detection,
+      captcha_detected: pageState.captcha_detected === true,
+      mfa_detected: pageState.mfa_detected === true,
+      mfa_input_count: pageState.mfa_input_count,
+      sso_detected: pageState.sso_detected === true,
       secrets_redacted: true,
     };
   }
@@ -1342,14 +1484,28 @@ async function handleEnsureLogin(args) {
 
   const submitted = await submitLoginForm(args, profile);
   const payload = submitted.result ?? {};
+  const reason = String(payload.reason ?? (payload.ok === true ? "logged_in" : "login_failed"));
+  const lifecycle = payload.ok === true
+    ? await recordProfileAuthLifecycle(profile, {
+      last_used_at: new Date().toISOString(),
+      last_validated_at: new Date().toISOString(),
+      last_status: "success",
+      last_reason: reason,
+      last_origin: payload.final_origin,
+      last_path: payload.final_path,
+    })
+    : {};
+  const status = payload.ok === true
+    ? "success"
+    : (reason.startsWith("manual_required_") ? "blocked" : "failed");
   return {
-    status: payload.ok === true ? "success" : "failed",
+    status,
     action: "ensure_login",
-    profile: redactProfile(profile),
+    profile: redactProfile({ ...profile, lifecycle: { ...profile.lifecycle, ...lifecycle } }),
     login_detected: true,
     detection_source: detection.detection_source,
     submitted: payload.submitted === true,
-    reason: String(payload.reason ?? (payload.ok === true ? "logged_in" : "login_failed")),
+    reason,
     transport: submitted.transport,
     transport_attempts: submitted.transport_attempts,
     page: submitted.page,
@@ -1361,6 +1517,11 @@ async function handleEnsureLogin(args) {
     title: payload.title,
     blocked_path: payload.blocked_path,
     success_text_matched: payload.success_text_matched,
+    captcha_detected: payload.captcha_detected === true,
+    mfa_detected: payload.mfa_detected === true,
+    mfa_input_count: payload.mfa_input_count,
+    sso_detected: payload.sso_detected === true,
+    metadata_updated: lifecycleMetadataWasUpdated(lifecycle),
     missing_selectors: Array.isArray(payload.missing_selectors) ? payload.missing_selectors : [],
     secrets_redacted: true,
   };

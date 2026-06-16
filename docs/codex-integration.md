@@ -96,7 +96,7 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
 - `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, preserves `keep:true`, and ignores unmanaged user tabs.
-- `browser_auth_ops`: `list_profiles`, `validate_profile`, `inspect_login_page`, `suggest_profile`, `upsert_profile`, `ensure_login`. Use after `browser_tab_lifecycle.select_or_create` when a TMWD-owned tab lands on a login page. Profiles are exact-origin allowlisted, stored only in repo-external local secret files, and outputs are redacted; unknown origins are reported as blocked and are never auto-filled.
+- `browser_auth_ops`: `list_profiles`, `validate_profile`, `inspect_login_page`, `suggest_profile`, `upsert_profile`, `ensure_login`. Use after `browser_tab_lifecycle.select_or_create` when a TMWD-owned tab lands on a login page. Profiles are exact-origin allowlisted, stored only in repo-external local secret files, and outputs are redacted; unknown origins are reported as blocked and are never auto-filled. Profile lifecycle metadata is kept in a separate redacted sidecar file.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
 ## Login profiles
@@ -114,6 +114,20 @@ Default profile directory:
 ```text
 ~/.codex/secrets/tmwd-login-profiles/
 ```
+
+Each saved profile may have a non-secret lifecycle sidecar:
+
+```text
+<profile>.env       -> <profile>.meta.json
+<profile>.profile   -> <profile>.meta.json
+```
+
+The sidecar records only operational metadata such as `created_at`,
+`updated_at`, `last_used_at`, `last_validated_at`, `last_status`,
+`last_reason`, `last_origin`, and `last_path`. It never stores username,
+password, cookies, tokens, browser session data, or page content. Profile and
+sidecar writes use atomic temp-file rename and mode `0600` when the filesystem
+supports POSIX modes.
 
 Override for tests or isolated runs:
 
@@ -145,7 +159,11 @@ Known-site operational pattern:
 3. If the page is already authenticated, `ensure_login` returns `already_authenticated:true`.
 4. If the page is a login page and the origin matches a profile, it fills and submits the form.
 5. If no exact-origin profile matches, it returns `status:"blocked"` and does not fill anything.
-6. Finish with `browser_tab_lifecycle.finalize_task` for the same `workspace_key`.
+6. If CAPTCHA, MFA, or SSO-only UI is detected, `ensure_login` returns
+   `status:"blocked"` with `reason:"manual_required_captcha"`,
+   `reason:"manual_required_mfa"`, or `reason:"manual_required_sso"` and does
+   not continue guessing.
+7. Finish with `browser_tab_lifecycle.finalize_task` for the same `workspace_key`.
 
 First-time site onboarding pattern:
 
@@ -163,7 +181,10 @@ First-time site onboarding pattern:
 
 Already-authenticated pages are a fast path: `ensure_login` inspects the page
 first. If it is not a login page, it returns success with
-`already_authenticated:true` and does not require or load a matching profile.
+`already_authenticated:true` and does not require a matching profile or resubmit
+a form. If an exact-origin profile is available, it updates that profile's
+non-secret sidecar with `last_reason:"already_authenticated"` so later
+`list_profiles` calls show the current lifecycle state.
 
 `browser_auth_ops` also recognizes the older DataHub local profile at
 `~/.codex/secrets/datahub-groland-login.env` for compatibility. Prefer new
@@ -198,7 +219,7 @@ sites to use the generic profile directory above.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the TMWD websocket explicitly to avoid successful actions ending with a command timeout.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
-- Run `npm run check:auth-live` after auth/profile changes. It opens a temporary managed tab, uses an isolated local profile, verifies `ensure_login` submits and reaches a protected page, asserts unknown origins are blocked, and finalizes the managed tab.
+- Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA manual-required blocking, unknown-origin blocking, redaction, and finalizer cleanup.
 
 ## Codex host hard-finally contract
 

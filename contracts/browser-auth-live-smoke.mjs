@@ -187,6 +187,25 @@ async function startAuthFixture() {
 </html>`);
       return;
     }
+    if (requestUrl.pathname === "/captcha-login") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture captcha login</title></head>
+<body>
+  <form method="post" action="/captcha-login">
+    <label>Username <input id="captcha-username" name="username" autocomplete="username"></label>
+    <label>Password <input id="captcha-password" name="password" type="password" autocomplete="current-password"></label>
+    <div id="captcha-box">captcha required</div>
+    <button type="submit">Login</button>
+  </form>
+</body>
+</html>`);
+      return;
+    }
     res.writeHead(404, {
       "content-type": "text/plain; charset=utf-8",
       "cache-control": "no-store",
@@ -411,6 +430,59 @@ async function run() {
     assert.equal(fixture.state.login_submissions, 1, "already authenticated ensure_login should not resubmit");
     assertNoSecretLeak(alreadyAuthenticated, "already authenticated result");
 
+    const profilesAfterAuth = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "list_profiles",
+    });
+    const liveProfileAfterAuth = profilesAfterAuth?.profiles?.find((entry) => entry?.profile_id === "fixture-live");
+    assert.equal(liveProfileAfterAuth?.lifecycle?.last_status, "success", "successful auth should update lifecycle metadata");
+    assert.equal(liveProfileAfterAuth?.lifecycle?.last_reason, "already_authenticated");
+    assert.equal(typeof liveProfileAfterAuth?.lifecycle?.last_used_at, "string");
+    assert.equal(typeof liveProfileAfterAuth?.lifecycle?.last_validated_at, "string");
+    assertNoSecretLeak(profilesAfterAuth, "profile lifecycle result");
+
+    const captchaProfile = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "upsert_profile",
+      profile_id: "fixture-captcha",
+      origin: fixture.origin,
+      username: FIXTURE_USERNAME,
+      password: FIXTURE_PASSWORD,
+      login_path_pattern: "/captcha-login",
+      username_selector: "#captcha-username",
+      password_selector: "#captcha-password",
+      submit_selector: "button[type=\"submit\"]",
+      success_path_not: "/captcha-login",
+      confirm_write: true,
+    });
+    assert.equal(captchaProfile.status, "success");
+    assertNoSecretLeak(captchaProfile, "captcha upsert result");
+
+    const captchaManaged = await callTool("browser_tab_lifecycle", {
+      ...commonArgs(cli),
+      action: "select_or_create",
+      url: `${fixture.origin}/captcha-login`,
+      workspace_key: workspaceKey,
+      fresh: true,
+      active: false,
+      wait_until: "listed",
+      wait_timeout_ms: 5_000,
+      wait_poll_ms: 100,
+    });
+    const captchaTabId = String(captchaManaged?.managed_tab?.tab_id ?? "");
+    assert.ok(captchaTabId, "captcha managed tab did not return tab id");
+    const captchaBlocked = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "ensure_login",
+      profile_id: "fixture-captcha",
+      tab_id: captchaTabId,
+    });
+    assert.equal(captchaBlocked.status, "blocked", "captcha page should require manual intervention");
+    assert.equal(captchaBlocked.reason, "manual_required_captcha");
+    assert.equal(captchaBlocked.submitted, false, "captcha page should block before submit");
+    assert.equal(fixture.state.login_submissions, 1, "captcha block should not submit credentials");
+    assertNoSecretLeak(captchaBlocked, "captcha block result");
+
     const pageState = await callTool("browser_execute_js", {
       ...commonArgs(cli),
       tab_id: managedTabId,
@@ -441,6 +513,8 @@ async function run() {
       suggested_profile: suggested.profile?.profile_id,
       upsert_created: upserted.created,
       already_authenticated: alreadyAuthenticated.already_authenticated,
+      lifecycle_metadata_updated: liveProfileAfterAuth?.lifecycle?.last_status === "success",
+      manual_required_captcha: captchaBlocked.reason === "manual_required_captcha",
       login_submissions: fixture.state.login_submissions,
       successful_logins: fixture.state.successful_logins,
       unknown_origin_blocked: unknownDryRun.status === "blocked",

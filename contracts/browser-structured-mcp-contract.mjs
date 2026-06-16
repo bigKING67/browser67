@@ -763,11 +763,17 @@ async function run() {
     assert.equal(authUpsertPayload?.profile?.allowed_origins?.[0], "https://onboard.example");
     assert.equal(authUpsertPayload?.profile?.file_mode, "600");
     assert.equal(authUpsertPayload?.profile?.insecure_file_permissions, false);
+    assert.equal(authUpsertPayload?.profile?.lifecycle?.last_status, "saved");
+    assert.equal(authUpsertPayload?.profile?.lifecycle?.last_reason, "created");
+    assert.equal(typeof authUpsertPayload?.profile?.lifecycle?.created_at, "string");
     assert.equal(JSON.stringify(authUpsertPayload).includes("onboard-user"), false);
     assert.equal(JSON.stringify(authUpsertPayload).includes("onboard-password"), false);
     const writtenProfilePath = path.join(tmpLoginProfileDir, "onboard-site.env");
     const writtenProfileStat = await fs.stat(writtenProfilePath);
     assert.equal((writtenProfileStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
+    const writtenMetadataPath = path.join(tmpLoginProfileDir, "onboard-site.meta.json");
+    const writtenMetadataStat = await fs.stat(writtenMetadataPath);
+    assert.equal((writtenMetadataStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
 
     const authUpsertExistsCall = await rpc.call(
       "tools/call",
@@ -810,7 +816,25 @@ async function run() {
     assert.equal(authUpsertOverwritePayload?.status, "success");
     assert.equal(authUpsertOverwritePayload?.created, false);
     assert.equal(authUpsertOverwritePayload?.updated, true);
+    assert.equal(authUpsertOverwritePayload?.profile?.lifecycle?.last_reason, "updated");
     assert.equal(JSON.stringify(authUpsertOverwritePayload).includes("onboard-password-2"), false);
+
+    const authListAfterUpsertCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_auth_ops",
+        arguments: {
+          action: "list_profiles",
+        },
+      },
+      cli.timeout_ms,
+    );
+    assert.equal(authListAfterUpsertCall?.result?.isError, undefined);
+    const authListAfterUpsertPayload = firstJsonContent(authListAfterUpsertCall.result);
+    const onboardProfile = authListAfterUpsertPayload?.profiles?.find((entry) => entry?.profile_id === "onboard-site");
+    assert.equal(onboardProfile?.lifecycle?.last_status, "saved");
+    assert.equal(onboardProfile?.lifecycle?.last_reason, "updated");
+    assert.equal(JSON.stringify(authListAfterUpsertPayload).includes("onboard-password-2"), false);
 
     const invalidAuthWrites = [
       {
