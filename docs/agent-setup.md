@@ -168,9 +168,12 @@ ljqCtrl.Click or clipped window-region capture artifact creation. Slider
 challenges additionally require screen destination coordinates (explicit or
 estimated) and physical drag capability, otherwise they remain manual handoff.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
-auditing whether finalizers were missed. Managed tab creation results include
-finalize_hint; treat finalize_hint.required=true as a task-end cleanup
-obligation unless the user explicitly asked to keep the page open.
+auditing whether finalizers were missed. The full npm run verify flow writes a
+temporary managed-tab baseline and fails only on newly leaked unkept records, so
+unrelated pre-existing workspaces stay visible but do not make repository
+verification flaky. Managed tab creation results include finalize_hint; treat
+finalize_hint.required=true as a task-end cleanup obligation unless the user
+explicitly asked to keep the page open.
 
 If the host can run a turn-end finally block, wire
 src/codex-host-finalizer.mjs into the MCP client layer. Register every MCP tool

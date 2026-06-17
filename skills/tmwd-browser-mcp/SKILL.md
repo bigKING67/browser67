@@ -94,7 +94,7 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - `browser_download_ops` only observes the prepared token/directory window; do not read Chrome history DB.
 - `browser_tab_lifecycle.close_unkept` must never close unmanaged existing user tabs; it only closes TMWD-owned managed tabs that are not marked `keep:true`.
 - `browser_tab_lifecycle.finalize_task` is the normal finalizer for Codex tasks that used TMWD managed tabs. Run it before final response/handoff for the current `workspace_key` or `task_id`, and report whether tabs were closed or intentionally kept.
-- `npm run check:managed-tabs-clean` is a registry-only hygiene gate for missed finalizers; run it after lifecycle changes or when diagnosing tab buildup.
+- `npm run check:managed-tabs-clean` is a registry-only hygiene gate for missed finalizers; run it after lifecycle changes or when diagnosing tab buildup. `npm run verify` snapshots a temporary managed-tab baseline first and fails only on newly leaked unkept records, while the standalone gate remains globally strict.
 - `browser_tab_lifecycle` dry-runs are planning-only: do not depend on dry-run calls to select, persist, touch, or clean managed tabs.
 - `browser_clipboard_ops` has no clipboard-read action by design.
 - OpenAI tool registration rejects top-level JSON Schema composition keywords

@@ -336,7 +336,10 @@ contracts, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
 popup resume paths), diagnostic-only `ljqCtrl` probing, and npm audit.
 It also runs the optional proof audit in non-blocking mode so missing external
-proofs stay visible in the full local gate.
+proofs stay visible in the full local gate. For managed-tab hygiene, `verify`
+captures a temporary baseline before live checks and then fails only on newly
+leaked unkept records; `npm run check:managed-tabs-clean` remains the strict
+global audit for all currently registered TMWD workspaces.
 
 ## Source alignment
 
