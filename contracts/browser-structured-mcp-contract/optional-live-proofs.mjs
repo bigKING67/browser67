@@ -11,6 +11,7 @@ import {
 } from "../../scripts/optional-live-proof-audit.mjs";
 import { buildOptionalLiveProofPlan } from "../../scripts/optional-live-proof-plan.mjs";
 import { buildOptionalLiveProofRecord } from "../../scripts/optional-live-proof-record.mjs";
+import { buildOptionalLiveProofStatus } from "../../scripts/optional-live-proof-status.mjs";
 import { createProofTemplate } from "../../scripts/optional-live-proof-template.mjs";
 
 function requirement(id) {
@@ -281,6 +282,20 @@ async function assertOptionalLiveProofContract() {
     assert.equal(idpPlan?.commands.local_fixture_baseline, "npm run check:auth-live");
     assert.equal(idpPlan?.evidence_requirements.includes("manual_required_verified=true"), true);
     assert.equal(idpPlan?.collection_steps.includes("Resume ensure_login and record sanitized proof JSON."), true);
+
+    const status = await buildOptionalLiveProofStatus({ proof_dir: tmpDir });
+    assert.equal(status.action, "optional-live-proof-status");
+    assert.equal(status.status, "needs_local_action");
+    assert.equal(status.safe_defaults.includes("This status output does not execute any listed command."), true);
+    assert.equal(status.accepted.some((item) => item.id === "native-live-win32"), true);
+    assert.equal(status.checklist.some((item) => item.id === "native-live-linux"), true);
+    const linuxChecklist = status.checklist.find((item) => item.id === "native-live-linux");
+    assert.equal(linuxChecklist?.owner, "linux_gui_operator");
+    assert.equal(linuxChecklist?.record_write_command, "npm run proof:optional-live-record -- --id native-live-linux --from-json <sanitized.json> --write");
+    const idpChecklist = status.checklist.find((item) => item.id === "idp-oauth-popup");
+    assert.equal(idpChecklist?.scope, "external_approved_idp");
+    assert.equal(idpChecklist?.owner, "oauth_popup_test_tenant_operator");
+    assert.equal(status.completion_policy.forbidden.some((item) => item.includes("Do not fabricate")), true);
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

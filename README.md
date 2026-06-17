@@ -288,6 +288,7 @@ npm run check:native-pointer
 npm run check:ljqctrl
 npm run check:optional-live-proofs
 npm run plan:optional-live-proofs
+npm run proof:optional-live-status
 npm run proof:optional-live-template
 npm run proof:optional-live-record
 npm run check:js-reverse-mcp
@@ -345,8 +346,11 @@ per-proof status, required host/platform, safe commands, blockers, and evidence
 requirements. The plan also surfaces accepted proof freshness
 (`expires_at`/`expires_in_days`), `next_command`, `collection_steps`, and
 `commands.record_replace` so agents can continue from readiness gaps without
-recomputing the collection path. Use `proof:optional-live-template` to generate
-safe `ok:false` starter templates before recording real external proofs. Use
+recomputing the collection path. Use `proof:optional-live-status` for the
+operator-facing summary: accepted proofs, missing checklist, owner/host, next
+command, record/write commands, validation command, and the non-negotiable
+completion policy. Use `proof:optional-live-template` to generate safe
+`ok:false` starter templates before recording real external proofs. Use
 `proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` to
 dry-run validate a collected proof without writing it; add `--write` to persist
 the canonical proof under the repo-external proof directory, and `--replace`
@@ -399,7 +403,8 @@ contracts, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
 popup resume paths), diagnostic-only `ljqCtrl` probing, and npm audit.
 It also runs the optional proof audit in non-blocking mode so missing external
-proofs stay visible in the full local gate. For managed-tab hygiene, `verify`
+proofs stay visible in the full local gate, prints the optional proof collection
+plan, and prints the operator status checklist. For managed-tab hygiene, `verify`
 captures a temporary baseline before live checks and then fails only on newly
 leaked unkept records; `npm run check:managed-tabs-clean` remains the strict
 global audit for all currently registered TMWD workspaces.

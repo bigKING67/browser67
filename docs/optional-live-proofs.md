@@ -51,6 +51,20 @@ to resume collection directly from a readiness gap:
 - `commands.record_replace`: the audited refresh command for replacing an
   existing canonical proof after a newer sanitized run is available.
 
+Print an operator-facing status/checklist without executing any listed command:
+
+```bash
+npm run proof:optional-live-status
+npm run proof:optional-live-status -- --json
+```
+
+The status output is optimized for near-100 proof collection handoff. It groups
+accepted proofs and missing checklist entries, assigns each missing item to the
+required host/provider owner, repeats the dry-run/write/replace record commands,
+and includes a completion policy that explicitly forbids fabricated cross-OS or
+external IdP proofs. Like the plan command, it does not move the mouse, open
+Chrome, create tabs, read browser private state, or write proof files.
+
 Generate safe starter templates instead of hand-writing JSON:
 
 ```bash
