@@ -10,6 +10,7 @@ const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|au
 const PLACEHOLDER_COMMAND_PATTERN = /(?:replace with exact|placeholder|template-only|template only)/i;
 const SAFE_REDACTION_STATUS_KEYS = new Set(["secrets_redacted", "credentials_redacted"]);
 const VALID_IDP_PROVIDER_KINDS = new Set(["oauth_popup", "cross_domain_sso", "mfa"]);
+const MIN_CAPTCHA_SLIDER_VISUAL_OFFSET = 180;
 
 const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
   {
@@ -170,6 +171,15 @@ function validIsoTimestamp(value) {
   return Number.isFinite(parsed);
 }
 
+function numericField(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function validTranslateX(value) {
+  return typeof value === "string" && /^translateX\(-?\d+(?:\.\d+)?px\)$/.test(value.trim());
+}
+
 function proofMatchesRequirement(proof, requirement) {
   if (!isPlainObject(proof)) {
     return false;
@@ -277,8 +287,21 @@ function validateProof(proof, requirement) {
     }
     if (!isPlainObject(proof.evidence)) {
       errors.push("evidence_object_required");
-    } else if (proof.evidence.browser_private_state_access !== false) {
-      errors.push("browser_private_state_access_must_be_false");
+    } else {
+      if (proof.evidence.browser_private_state_access !== false) {
+        errors.push("browser_private_state_access_must_be_false");
+      }
+      const sliderVisualOffset = numericField(proof.evidence.slider_visual_offset);
+      if (sliderVisualOffset === undefined || sliderVisualOffset < MIN_CAPTCHA_SLIDER_VISUAL_OFFSET) {
+        errors.push("slider_visual_offset_must_be_at_least_180");
+      }
+      const sliderDeltaLive = numericField(proof.evidence.slider_delta_live);
+      if (sliderDeltaLive === undefined || sliderDeltaLive < MIN_CAPTCHA_SLIDER_VISUAL_OFFSET) {
+        errors.push("slider_delta_live_must_be_at_least_180");
+      }
+      if (!validTranslateX(proof.evidence.handle_transform)) {
+        errors.push("handle_transform_translatex_required");
+      }
     }
   }
   if (requirement.type === "idp_live") {
