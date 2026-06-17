@@ -15,6 +15,7 @@ import {
 import { assertExecuteJsFallbackPolicy } from "./browser-structured-mcp-contract/fallback-policy.mjs";
 import { assertNativeCapabilitySurface } from "./browser-structured-mcp-contract/native-surface.mjs";
 import { assertNativeInputOpsContract } from "./browser-structured-mcp-contract/native-input-ops.mjs";
+import { assertPhysicalLiveGateContract } from "./browser-structured-mcp-contract/physical-live-gate.mjs";
 import { assertFileDownloadClipboardOpsContract } from "./browser-structured-mcp-contract/file-download-clipboard-ops.mjs";
 import { assertTabLifecycleOpsContract } from "./browser-structured-mcp-contract/tab-lifecycle-ops.mjs";
 import { assertAuthOpsContract } from "./browser-structured-mcp-contract/auth-ops.mjs";
@@ -59,6 +60,7 @@ function parseArgs(argv) {
 async function run() {
   const cli = parseArgs(process.argv.slice(2));
   await assertNativeCapabilitySurface();
+  await assertPhysicalLiveGateContract();
   await assertReadinessLjqCtrlProbeContract();
   await assertManagedTabCleanupBaselineContract();
 
