@@ -79,6 +79,18 @@ async function runSliderMatrixCase({
   assert.equal(matrixPlan.coordinate_transform?.vision_correction?.artifact?.fullscreen, false);
   assert.equal(typeof matrixPlan.coordinate_transform?.vision_correction?.artifact?.sha256, "string");
   assert.equal(typeof matrixPlan.coordinate_transform?.vision_correction?.screen_estimate?.drag?.from?.x, "number");
+  const correctedFrom = matrixPlan.coordinate_transform?.vision_correction?.corrected_coordinates?.drag?.from;
+  const targetRect = matrixPlan.target?.rect;
+  assert.equal(
+    correctedFrom?.x >= targetRect?.left && correctedFrom?.x <= targetRect?.right,
+    true,
+    `${testCase.name} vision-corrected drag x should stay inside target rect: ${JSON.stringify({ correctedFrom, targetRect })}`,
+  );
+  assert.equal(
+    correctedFrom?.y >= targetRect?.top && correctedFrom?.y <= targetRect?.bottom,
+    true,
+    `${testCase.name} vision-corrected drag y should stay inside target rect: ${JSON.stringify({ correctedFrom, targetRect })}`,
+  );
   if (testCase.expect_scroll_adjusted_cdp_clip) {
     assert.equal(
       matrixPlan.coordinate_transform.vision_correction.artifact.cdp_clip.y

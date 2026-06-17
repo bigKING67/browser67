@@ -71,6 +71,23 @@ function bestSliderHandleCandidate(image) {
   return best;
 }
 
+function imageToViewportScale(image, clip) {
+  const fallbackScale = finiteNumber(clip.scale) ?? 1;
+  const clipWidth = finiteNumber(clip.width);
+  const clipHeight = finiteNumber(clip.height);
+  const imageWidth = finiteNumber(image.width);
+  const imageHeight = finiteNumber(image.height);
+  const scaleX = clipWidth && imageWidth ? imageWidth / clipWidth : fallbackScale;
+  const scaleY = clipHeight && imageHeight ? imageHeight / clipHeight : fallbackScale;
+  return {
+    x: scaleX > 0 ? scaleX : fallbackScale,
+    y: scaleY > 0 ? scaleY : fallbackScale,
+    source: clipWidth && clipHeight && imageWidth && imageHeight
+      ? "captured_image_pixels_per_viewport_css_pixel"
+      : "cdp_clip_scale_fallback",
+  };
+}
+
 function detectSliderCorrection(image, clip, pageState = {}, planned = {}) {
   const candidate = bestSliderHandleCandidate(image);
   const component = candidate?.component;
@@ -83,12 +100,12 @@ function detectSliderCorrection(image, clip, pageState = {}, planned = {}) {
       minimum_confidence_to_execute: MIN_EXECUTION_CONFIDENCE,
     };
   }
-  const clipScale = finiteNumber(clip.scale) ?? 1;
+  const imageScale = imageToViewportScale(image, clip);
   const viewportFrom = {
-    x: roundCoordinate(clip.x + (component.center_x / clipScale)),
-    y: roundCoordinate(clip.y + (component.center_y / clipScale)),
+    x: roundCoordinate(clip.x + (component.center_x / imageScale.x)),
+    y: roundCoordinate(clip.y + (component.center_y / imageScale.y)),
   };
-  const viewportTo = computeViewportTo({ component, pageState, planned, viewportFrom });
+  const viewportTo = computeViewportTo({ component, imageScale, pageState, planned, viewportFrom });
   const screenFrom = clientPointToScreenEstimate(viewportFrom, pageState.viewport ?? {});
   const screenTo = viewportTo ? clientPointToScreenEstimate(viewportTo, pageState.viewport ?? {}) : null;
   return {
@@ -98,6 +115,7 @@ function detectSliderCorrection(image, clip, pageState = {}, planned = {}) {
     confidence,
     minimum_confidence_to_execute: MIN_EXECUTION_CONFIDENCE,
     component,
+    image_to_viewport_scale: imageScale,
     corrected_coordinates: {
       coordinate_system: "viewport_css_pixels",
       drag: viewportTo
@@ -119,7 +137,7 @@ function detectSliderCorrection(image, clip, pageState = {}, planned = {}) {
   };
 }
 
-function computeViewportTo({ component, pageState, planned, viewportFrom }) {
+function computeViewportTo({ component, imageScale, pageState, planned, viewportFrom }) {
   const fallbackTo = planned.slider_drag_hint?.to_client;
   const targetRect = pageState.target?.rect;
   if (fallbackTo) {
@@ -131,8 +149,9 @@ function computeViewportTo({ component, pageState, planned, viewportFrom }) {
   if (!targetRect) {
     return undefined;
   }
+  const componentWidthCss = component.width / Math.max(1, imageScale?.x ?? 1);
   return {
-    x: roundCoordinate(targetRect.right - Math.max(8, component.width / 2)),
+    x: roundCoordinate(targetRect.right - Math.max(8, componentWidthCss / 2)),
     y: roundCoordinate(viewportFrom.y),
   };
 }
@@ -149,5 +168,6 @@ function unsupportedCorrection(target = "auto") {
 
 export {
   detectSliderCorrection,
+  imageToViewportScale,
   unsupportedCorrection,
 };

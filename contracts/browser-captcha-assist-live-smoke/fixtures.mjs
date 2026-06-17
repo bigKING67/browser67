@@ -313,7 +313,11 @@ function envEnabled(name) {
 }
 
 function envNumber(name, fallback) {
-  const value = Number(process.env[name] ?? "");
+  const raw = process.env[name];
+  if (raw === undefined || String(raw).trim() === "") {
+    return fallback;
+  }
+  const value = Number(raw);
   return Number.isFinite(value) ? value : fallback;
 }
 

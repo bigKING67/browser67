@@ -12,9 +12,65 @@ import {
   startSliderFixture,
   waitFor,
 } from "./browser-captcha-assist-live-smoke/fixtures.mjs";
-import { runPhysicalAssistIfEnabled } from "./browser-captcha-assist-live-smoke/physical-gate.mjs";
+import {
+  compactPhysicalAssist,
+  runPhysicalAssistIfEnabled,
+} from "./browser-captcha-assist-live-smoke/physical-gate.mjs";
 import { createCaptchaSmokeRpc } from "./browser-captcha-assist-live-smoke/rpc.mjs";
 import { runSliderMatrixCase } from "./browser-captcha-assist-live-smoke/slider-cases.mjs";
+
+function compactCoordinateSummary(plan = {}) {
+  return {
+    target: plan.target
+      ? {
+        role: plan.target.role,
+        confidence: plan.target.confidence,
+        rect: plan.target.rect,
+        frame_path: plan.target.frame_path,
+      }
+      : undefined,
+    viewport: plan.viewport,
+    slider_drag_hint: plan.slider_drag_hint,
+    coordinate_transform: plan.coordinate_transform
+      ? {
+        viewport_origin_screen_estimate: plan.coordinate_transform.viewport_origin_screen_estimate,
+        screen_estimate: plan.coordinate_transform.screen_estimate,
+        vision_correction_plan: plan.coordinate_transform.vision_correction_plan
+          ? {
+            status: plan.coordinate_transform.vision_correction_plan.status,
+            correction_status: plan.coordinate_transform.vision_correction_plan.correction_status,
+            screenshot_clip: plan.coordinate_transform.vision_correction_plan.screenshot_clip,
+            fullscreen_allowed: plan.coordinate_transform.vision_correction_plan.fullscreen_allowed,
+            executable_region_capture_available: plan.coordinate_transform.vision_correction_plan.executable_region_capture_available,
+          }
+          : undefined,
+        vision_correction: plan.coordinate_transform.vision_correction
+          ? {
+            correction_status: plan.coordinate_transform.vision_correction.correction_status,
+            confidence: plan.coordinate_transform.vision_correction.confidence,
+            detector: plan.coordinate_transform.vision_correction.detector,
+            detector_kind: plan.coordinate_transform.vision_correction.detector_kind,
+            component: plan.coordinate_transform.vision_correction.component,
+            image_to_viewport_scale: plan.coordinate_transform.vision_correction.image_to_viewport_scale,
+            corrected_coordinates: plan.coordinate_transform.vision_correction.corrected_coordinates,
+            screen_estimate: plan.coordinate_transform.vision_correction.screen_estimate,
+            artifact: plan.coordinate_transform.vision_correction.artifact
+              ? {
+                path: plan.coordinate_transform.vision_correction.artifact.path,
+                sha256: plan.coordinate_transform.vision_correction.artifact.sha256,
+                clip: plan.coordinate_transform.vision_correction.artifact.clip,
+                cdp_clip: plan.coordinate_transform.vision_correction.artifact.cdp_clip,
+                fullscreen: plan.coordinate_transform.vision_correction.artifact.fullscreen,
+                width: plan.coordinate_transform.vision_correction.artifact.width,
+                height: plan.coordinate_transform.vision_correction.artifact.height,
+              }
+              : undefined,
+          }
+          : undefined,
+      }
+      : undefined,
+  };
+}
 
 async function run() {
   const cli = parseArgs(process.argv.slice(2));
@@ -143,6 +199,18 @@ async function run() {
     assert.equal(
       typeof visionPlan.coordinate_transform?.vision_correction?.screen_estimate?.drag?.from?.x,
       "number",
+    );
+    const correctedFrom = visionPlan.coordinate_transform?.vision_correction?.corrected_coordinates?.drag?.from;
+    const targetRect = visionPlan.target?.rect;
+    assert.equal(
+      correctedFrom?.x >= targetRect?.left && correctedFrom?.x <= targetRect?.right,
+      true,
+      `main slider vision-corrected drag x should stay inside target rect: ${JSON.stringify({ correctedFrom, targetRect })}`,
+    );
+    assert.equal(
+      correctedFrom?.y >= targetRect?.top && correctedFrom?.y <= targetRect?.bottom,
+      true,
+      `main slider vision-corrected drag y should stay inside target rect: ${JSON.stringify({ correctedFrom, targetRect })}`,
     );
     await stat(visionPlan.coordinate_transform.vision_correction.artifact.path);
 
@@ -314,6 +382,8 @@ async function run() {
       vision_clip_planned: plan.coordinate_transform?.vision_correction_plan?.status === "planned",
       vision_correction_status: visionPlan.coordinate_transform?.vision_correction_plan?.correction_status,
       vision_artifact_sha256: visionPlan.coordinate_transform?.vision_correction?.artifact?.sha256,
+      planning_coordinate_summary: compactCoordinateSummary(plan),
+      vision_coordinate_summary: compactCoordinateSummary(visionPlan),
       assist_safety_blocks: {
         confirm_physical_input: confirmBlocked.reason,
         confirm_auto_coordinates: autoCoordinateConfirmBlocked.reason,
@@ -326,6 +396,7 @@ async function run() {
       physical_assist_provider_id: physicalAssist.physical_input_provider?.provider_id ?? null,
       physical_assist_provider_selection_reason: physicalAssist.physical_input_provider_selection?.reason ?? null,
       physical_assist_coordinates_source: physicalAssist.screen_coordinates?.source ?? null,
+      physical_assist_diagnostics: compactPhysicalAssist(physicalAssist),
       physical_completion: physicalCompletion?.js_return ?? physicalCompletion,
       finalized_closed: finalize.close_unkept.closed.length,
     };
@@ -360,6 +431,10 @@ try {
   if (error instanceof Error && error.stack) {
     process.stderr.write(`${error.stack}\n`);
   }
-  process.stdout.write(`${JSON.stringify({ ok: false, error: message })}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: false,
+    error: message,
+    ...(error && typeof error === "object" && error.details ? error.details : {}),
+  })}\n`);
   process.exitCode = 1;
 }
