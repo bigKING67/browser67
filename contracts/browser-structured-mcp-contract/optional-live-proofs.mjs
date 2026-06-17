@@ -129,11 +129,41 @@ async function assertOptionalLiveProofContract() {
     js_cdp_widget_click: false,
     secrets_redacted: true,
     evidence: {
+      slider_visual_offset: 260,
+      slider_delta_live: "260",
+      handle_transform: "translateX(260px)",
       browser_private_state_access: true,
     },
   }, localCaptcha);
   assert.equal(captchaUnsafeState.ok, false);
   assert.ok(captchaUnsafeState.errors.includes("browser_private_state_access_must_be_false"));
+
+  const captchaMissingVisualProof = validateProof({
+    type: "captcha_physical_live",
+    ok: true,
+    platform: process.platform,
+    provider_id: "native-os",
+    actions: ["drag"],
+    checked_at: "2026-06-17T00:00:00.000Z",
+    expires_at: "2099-06-17T00:00:00.000Z",
+    command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+    managed_tab_only: true,
+    fixture: "local TMWD-owned managed tab",
+    slider_completed: true,
+    fullscreen_screenshot: false,
+    js_cdp_widget_click: false,
+    secrets_redacted: true,
+    evidence: {
+      slider_visual_offset: 0,
+      slider_delta_live: "0",
+      handle_transform: "none",
+      browser_private_state_access: false,
+    },
+  }, localCaptcha);
+  assert.equal(captchaMissingVisualProof.ok, false);
+  assert.ok(captchaMissingVisualProof.errors.includes("slider_visual_offset_must_be_at_least_180"));
+  assert.ok(captchaMissingVisualProof.errors.includes("slider_delta_live_must_be_at_least_180"));
+  assert.ok(captchaMissingVisualProof.errors.includes("handle_transform_translatex_required"));
 
   const recordTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-optional-proof-record-contract-"));
   try {
