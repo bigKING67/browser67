@@ -12,7 +12,7 @@ import {
 } from "../../native-core.mjs";
 
 const PROVIDER_ID = "ljq-ctrl";
-const DEFAULT_PYTHON_CANDIDATES = ["python3", "python"];
+const DEFAULT_PYTHON_CANDIDATES = process.platform === "win32" ? ["py", "python", "python3"] : ["python3", "python"];
 const LJQ_BRIDGE_TIMEOUT_MS = 5_000;
 const CAPTURE_DIR = path.join(tmpdir(), "tmwd-physical-input-captures");
 const DEFAULT_CAPABILITY_CACHE_TTL_MS = 5_000;
@@ -23,18 +23,103 @@ function envEnabled(name) {
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
-function configuredPythonCandidates() {
-  const configured = String(process.env.TMWD_LJQCTRL_PYTHON ?? "").trim();
-  return configured ? [configured] : DEFAULT_PYTHON_CANDIDATES;
+function normalizeCandidate(raw) {
+  const value = String(raw ?? "").trim();
+  if (
+    value.length >= 2
+    && ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'")))
+  ) {
+    return value.slice(1, -1).trim();
+  }
+  return value;
 }
 
-async function firstAvailablePython() {
-  const candidates = configuredPythonCandidates();
-  const checks = await Promise.all(candidates.map(async (binary) => ({
-    binary,
-    exists: await commandExists(binary, 1_200),
-  })));
-  return checks.find((entry) => entry.exists)?.binary ?? null;
+function uniqueCandidates(candidates = []) {
+  const seen = new Set();
+  const normalized = [];
+  for (const candidate of candidates) {
+    const value = normalizeCandidate(candidate);
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    normalized.push(value);
+  }
+  return normalized;
+}
+
+function configuredPythonCandidates() {
+  const configured = normalizeCandidate(process.env.TMWD_LJQCTRL_PYTHON);
+  if (configured) {
+    return {
+      source: "TMWD_LJQCTRL_PYTHON",
+      candidates: [configured],
+    };
+  }
+  const configuredCandidates = uniqueCandidates(
+    String(process.env.TMWD_LJQCTRL_PYTHON_CANDIDATES ?? "")
+      .split(path.delimiter),
+  );
+  if (configuredCandidates.length > 0) {
+    return {
+      source: "TMWD_LJQCTRL_PYTHON_CANDIDATES",
+      candidates: configuredCandidates,
+    };
+  }
+  return {
+    source: "default",
+    candidates: uniqueCandidates(DEFAULT_PYTHON_CANDIDATES),
+  };
+}
+
+function compactReason(reason) {
+  return String(reason ?? "unknown").slice(0, 300);
+}
+
+function summarizePythonCandidate(row = {}, selectedBinary = null) {
+  const probe = row.probe && typeof row.probe === "object" ? row.probe : {};
+  return {
+    python: row.binary,
+    exists: row.exists === true,
+    importable: row.importable === true,
+    selected: Boolean(selectedBinary && row.binary === selectedBinary),
+    reason: row.importable === true ? undefined : compactReason(probe.reason),
+    has_click: probe.has_click === true ? true : undefined,
+    has_press: probe.has_press === true ? true : undefined,
+    has_find_block: probe.has_find_block === true ? true : undefined,
+    has_grab_window: probe.has_grab_window === true ? true : undefined,
+    has_grab_window_bg: probe.has_grab_window_bg === true ? true : undefined,
+    dpi_scale: probe.dpi_scale ?? undefined,
+  };
+}
+
+async function probePythonCandidates() {
+  const configured = configuredPythonCandidates();
+  const rows = await Promise.all(configured.candidates.map(async (binary) => {
+    const exists = await commandExists(binary, 1_200);
+    const probe = exists ? await probeLjqCtrlApi(binary) : { ok: false, reason: "python_unavailable" };
+    return {
+      binary,
+      exists,
+      importable: probe.ok === true,
+      probe,
+    };
+  }));
+  const selected = rows.find((entry) => entry.importable)
+    ?? rows.find((entry) => entry.exists)
+    ?? rows[0]
+    ?? null;
+  const selectedBinary = selected?.binary ?? null;
+  return {
+    source: configured.source,
+    rows,
+    selected,
+    selected_binary: selectedBinary,
+    summaries: rows.map((row) => summarizePythonCandidate(row, selectedBinary)),
+    selection_reason: selected?.importable === true
+      ? "first_importable_candidate"
+      : (selected?.exists === true ? "first_available_candidate_without_ljqctrl" : "no_available_python_candidate"),
+  };
 }
 
 function executionBridgeEnabled(options = {}) {
@@ -58,6 +143,7 @@ function capabilityCacheKey(options = {}) {
     platform: process.platform,
     path: process.env.PATH ?? "",
     python: process.env.TMWD_LJQCTRL_PYTHON ?? "",
+    python_candidates: process.env.TMWD_LJQCTRL_PYTHON_CANDIDATES ?? "",
     probe: options?.probe === true || envEnabled("TMWD_LJQCTRL_PROBE"),
     execute: executionBridgeEnabled(options),
   });
@@ -145,8 +231,20 @@ async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
   }
   const executeEnabled = executionBridgeEnabled(options);
   const probeEnabled = options?.probe === true || envEnabled("TMWD_LJQCTRL_PROBE") || executeEnabled;
-  const python = probeEnabled ? await firstAvailablePython() : null;
-  const apiProbe = probeEnabled ? await probeLjqCtrlApi(python) : { ok: false, reason: "probe_disabled" };
+  const pythonProbe = probeEnabled
+    ? await probePythonCandidates()
+    : {
+      source: "probe_disabled",
+      rows: [],
+      selected: null,
+      selected_binary: null,
+      summaries: [],
+      selection_reason: "probe_disabled",
+    };
+  const python = pythonProbe.selected_binary;
+  const apiProbe = probeEnabled
+    ? (pythonProbe.selected?.probe ?? { ok: false, reason: "python_unavailable" })
+    : { ok: false, reason: "probe_disabled" };
   const supportedActions = supportedActionsFromProbe(apiProbe, executeEnabled);
   const importable = apiProbe.ok === true;
   const captureAvailable = importable && (apiProbe.has_grab_window === true || apiProbe.has_grab_window_bg === true);
@@ -166,7 +264,7 @@ async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
     requirements: probeEnabled
       ? (importable
         ? (executeEnabled ? [] : ["Set TMWD_LJQCTRL_EXECUTE=1 to enable the guarded ljqCtrl execution bridge."])
-        : ["Install Python with ljqCtrl importable, or set TMWD_LJQCTRL_PYTHON."])
+        : ["Install Python with ljqCtrl importable, or set TMWD_LJQCTRL_PYTHON/TMWD_LJQCTRL_PYTHON_CANDIDATES."])
       : ["Set TMWD_LJQCTRL_PROBE=1 to probe local ljqCtrl availability."],
     permission_notes: [
       "Use physical pixels only.",
@@ -176,6 +274,9 @@ async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
     checks: {
       probe_enabled: probeEnabled,
       python: python ?? undefined,
+      python_candidate_source: pythonProbe.source,
+      python_selection_reason: pythonProbe.selection_reason,
+      python_candidates: pythonProbe.summaries,
       ljqctrl_importable: importable,
       ljqctrl_probe: apiProbe,
       execution_bridge_enabled: executeEnabled && importable,

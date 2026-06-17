@@ -22,13 +22,19 @@ import ljqCtrl
 npm run check:ljqctrl
 ```
 
-默认只做诊断：探测 `python3`/`python` 是否能 `import ljqCtrl`，并报告
+默认只做诊断：按候选顺序探测默认 Python 命令是否能 `import ljqCtrl`，并报告
 `Click`、`Press`、`FindBlock`、`GrabWindow`、`GrabWindowBg` 和 `dpi_scale`
-能力；不会激活窗口、点击、拖拽、截图或读写剪贴板。如果 `ljqCtrl` 安装在
-非默认 Python 环境，设置：
+能力以及每个候选解释器的 import 结果；不会激活窗口、点击、拖拽、截图或读写
+剪贴板。如果 `ljqCtrl` 安装在非默认 Python 环境，设置单个解释器：
 
 ```bash
 TMWD_LJQCTRL_PYTHON=/path/to/python npm run check:ljqctrl
+```
+
+或设置按系统 `PATH` 分隔符拆分的多个候选解释器：
+
+```bash
+TMWD_LJQCTRL_PYTHON_CANDIDATES="/path/a/python:/path/b/python" npm run check:ljqctrl
 ```
 
 需要把诊断变成机器本地硬门禁时才使用：

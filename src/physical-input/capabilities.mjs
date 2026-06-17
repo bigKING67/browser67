@@ -25,7 +25,7 @@ function cloneProvider(provider = {}) {
     planned_actions: Array.isArray(provider.planned_actions) ? [...provider.planned_actions] : undefined,
     requirements: Array.isArray(provider.requirements) ? [...provider.requirements] : [],
     permission_notes: Array.isArray(provider.permission_notes) ? [...provider.permission_notes] : [],
-    checks: provider.checks && typeof provider.checks === "object" ? { ...provider.checks } : {},
+    checks: provider.checks && typeof provider.checks === "object" ? structuredClone(provider.checks) : {},
   };
 }
 
