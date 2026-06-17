@@ -24,6 +24,7 @@ function buildCommands(managedTabBaselineFile) {
     { command: "npm", args: ["run", "check:managed-tab-live"] },
     { command: "npm", args: ["run", "check:auth-live"] },
     { command: "npm", args: ["run", "check:captcha-assist-live"] },
+    { command: "npm", args: ["run", "check:native-pointer"] },
     { command: "npm", args: ["run", "check:ljqctrl"] },
     { command: "npm", args: ["run", "check:optional-live-proofs"] },
     {
