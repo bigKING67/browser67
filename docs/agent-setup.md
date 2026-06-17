@@ -168,7 +168,12 @@ ljqCtrl.Click or clipped window-region capture artifact creation. Slider
 challenges additionally require screen destination coordinates (explicit or
 estimated) and physical drag capability, otherwise they remain manual handoff.
 On macOS, native-os drag capability requires `cliclick` and Accessibility
-permission for the current terminal/Codex host.
+permission for the current terminal/Codex host. The optional local physical
+proof gate remains opt-in and supports bounded local-fixture retry/tuning via
+`TMWD_CAPTCHA_ASSIST_MAX_ATTEMPTS`, `TMWD_CAPTCHA_ASSIST_PRE_INPUT_SETTLE_MS`,
+drag overshoot/offset env vars, or exact `TMWD_CAPTCHA_ASSIST_DRAG_FROM_X/Y`
+and `TMWD_CAPTCHA_ASSIST_DRAG_TO_X/Y` screen coordinates; this does not weaken
+real-site CAPTCHA handoff boundaries.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
 auditing whether finalizers were missed. The full npm run verify flow writes a
 temporary managed-tab baseline and fails only on newly leaked unkept records, so

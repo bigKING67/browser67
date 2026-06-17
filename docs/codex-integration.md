@@ -252,7 +252,15 @@ CAPTCHA tokens/cookies. Slider CAPTCHA planning returns a viewport-space drag
 hint and estimated screen start/end coordinates; execution requires physical `drag` support
 plus explicit or estimated `screen_x`/`screen_y` and
 `screen_to_x`/`screen_to_y`. If those are missing, it returns a manual handoff
-instead of guessing.
+instead of guessing. The optional `check:captcha-assist-physical-live` local
+fixture gate may use up to three bounded attempts when explicitly enabled:
+attempt 1 uses vision-corrected coordinates, retry attempts use prior
+diagnostics plus conservative overshoot/settle timing, and all attempts retain
+the 5s post-input wait. Tune only that local proof path with
+`TMWD_CAPTCHA_ASSIST_MAX_ATTEMPTS`, `TMWD_CAPTCHA_ASSIST_PRE_INPUT_SETTLE_MS`,
+`TMWD_CAPTCHA_ASSIST_DRAG_OVERSHOOT_X`, `TMWD_CAPTCHA_ASSIST_DRAG_*_OFFSET_*`,
+or exact `TMWD_CAPTCHA_ASSIST_DRAG_FROM_X/Y` and
+`TMWD_CAPTCHA_ASSIST_DRAG_TO_X/Y` screen coordinates.
 
 First-time site onboarding pattern:
 

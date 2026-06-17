@@ -261,7 +261,15 @@ candidate list when the module is installed outside the default Python path;
 CAPTCHA, planning returns a viewport-space drag hint and estimated screen
 start/end coordinates; execution also requires destination coordinates
 (explicit or estimated) plus physical `drag` capability. If those gates are
-missing, it hands off instead of guessing.
+missing, it hands off instead of guessing. The optional local physical live gate
+keeps real input opt-in and now uses a bounded local-fixture retry path:
+`TMWD_CAPTCHA_ASSIST_MAX_ATTEMPTS` is clamped to 1-3, retry attempts are slower,
+wait at least 5 seconds between attempts via `assist_captcha`, and can be tuned
+with `TMWD_CAPTCHA_ASSIST_PRE_INPUT_SETTLE_MS`,
+`TMWD_CAPTCHA_ASSIST_DRAG_OVERSHOOT_X`, `*_OFFSET_X/Y`, or exact
+`TMWD_CAPTCHA_ASSIST_DRAG_FROM_X/Y` and `TMWD_CAPTCHA_ASSIST_DRAG_TO_X/Y`
+screen coordinates. These knobs are for the local proof fixture only; real
+site challenges still use explicit confirmation and manual handoff boundaries.
 
 ## Quality gates
 
