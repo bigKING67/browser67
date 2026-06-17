@@ -309,6 +309,7 @@ sites to use the generic profile directory above.
 - Run `npm run check:captcha-assist-live` after CAPTCHA assist changes. It opens isolated local slider fixtures, validates dry-run coordinate transforms, region-only screenshot artifact creation, scroll-adjusted CDP clips, same-origin iframe coordinate conversion, cross-origin iframe degraded/manual handoff, first-pass slider vision correction, and finalizes the managed tabs. It is planning-only.
 - Run `npm run check:captcha-assist-physical-live` only for the optional local GUI gate. It is skipped by default and runs the physical slider drag only when `TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set. Add `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when the local gate should fail instead of skip.
 - Run `npm run check:ljqctrl` after `ljq-ctrl` provider changes. It is a diagnostic-only default gate and exits successfully when the local driver is not configured; use `TMWD_LJQCTRL_REQUIRE=1`, `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` for machine-local hard gates.
+- Run `npm run check:optional-live-proofs` when collecting near-100 optional evidence from Linux/Windows native-input hosts or approved external OAuth/SSO/MFA providers. Proof files live outside the repo by default under `~/.tmwd-browser-mcp/optional-live-proofs`, must be sanitized, and are documented in `docs/optional-live-proofs.md`.
 
 ## Codex host hard-finally contract
 

@@ -219,6 +219,10 @@ planning-only. Use `npm run check:captcha-assist-physical-live` for the optional
 local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with
 TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1.
+For near-100 external coverage, run `npm run check:optional-live-proofs` after
+collecting sanitized Linux/Windows native-input or approved OAuth/SSO/MFA proof
+JSON under `~/.tmwd-browser-mcp/optional-live-proofs`; use `--strict` only when
+those optional proofs are required for a local release gate.
 
 ## Operating boundary
 

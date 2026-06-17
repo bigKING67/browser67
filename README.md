@@ -274,6 +274,7 @@ npm run check:auth-live
 npm run check:captcha-assist-live
 npm run check:captcha-assist-physical-live
 npm run check:ljqctrl
+npm run check:optional-live-proofs
 npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
@@ -296,6 +297,11 @@ available, but it does not activate windows, click, drag, capture screenshots,
 or access clipboard. Use `TMWD_LJQCTRL_REQUIRE=1`,
 `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` only for a
 machine-local hard gate.
+`check:optional-live-proofs` validates sanitized JSON proof artifacts under
+`~/.tmwd-browser-mcp/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. It is
+non-blocking by default and exists for optional cross-OS native-input and
+approved external IdP live coverage; use `--strict` only when a local release
+gate should require every optional proof. See `docs/optional-live-proofs.md`.
 
 `npm run check:change-set` is a read-only review hygiene gate for large refactors.
 It groups the current `git status --porcelain` paths by architecture area and
@@ -312,8 +318,10 @@ unconfigured `ljqCtrl`, skipped physical CAPTCHA gate, cross-OS native live
 proof, and provider-specific OAuth/SSO/MFA live gates. The local auth smoke
 already covers OAuth popup, SSO, and MFA manual handoff/resume fixtures; the
 remaining IdP gap is explicitly about approved external provider coverage. The
-readiness audit is read-only; use `--strict` when a local release gate should
-fail on optional gaps too.
+readiness audit also consumes `check:optional-live-proofs` results so collected
+cross-OS/provider evidence can remove those optional gaps without storing
+secrets in the repository. It is read-only; use `--strict` when a local release
+gate should fail on optional gaps too.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
@@ -321,6 +329,8 @@ all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
 contracts, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
 popup resume paths), diagnostic-only `ljqCtrl` probing, and npm audit.
+It also runs the optional proof audit in non-blocking mode so missing external
+proofs stay visible in the full local gate.
 
 ## Source alignment
 
