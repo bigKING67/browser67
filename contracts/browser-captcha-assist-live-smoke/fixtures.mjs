@@ -20,18 +20,22 @@ function sliderFixtureHtml(options = {}) {
     ? `
     const canvas = document.getElementById("slider-captcha");
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#f4f4f4";
-    ctx.fillRect(0, 0, 320, 52);
-    ctx.strokeStyle = "#888";
-    ctx.strokeRect(0.5, 0.5, 319, 51);
-    ctx.fillStyle = "${gray ? "#6b7280" : "#2b6cb0"}";
-    ctx.fillRect(2, 2, 48, 48);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "16px sans-serif";
-    ctx.fillText("||", 18, 31);
-    ctx.fillStyle = "#333333";
-    ctx.font = "14px sans-serif";
-    ctx.fillText("slide to verify", 68, 31);
+    const drawSliderCanvas = (offset = 0) => {
+      ctx.clearRect(0, 0, 320, 52);
+      ctx.fillStyle = "#f4f4f4";
+      ctx.fillRect(0, 0, 320, 52);
+      ctx.strokeStyle = "#888";
+      ctx.strokeRect(0.5, 0.5, 319, 51);
+      ctx.fillStyle = "${gray ? "#6b7280" : "#2b6cb0"}";
+      ctx.fillRect(2 + offset, 2, 48, 48);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "16px sans-serif";
+      ctx.fillText("||", 18 + offset, 31);
+      ctx.fillStyle = "#333333";
+      ctx.font = "14px sans-serif";
+      ctx.fillText("slide to verify", 68, 31);
+    };
+    drawSliderCanvas(0);
     `
     : "";
   return `<!doctype html>
@@ -43,7 +47,7 @@ function sliderFixtureHtml(options = {}) {
     body { font-family: sans-serif; margin: ${embedded ? "8px" : "48px"}; zoom: ${zoom}; }
     .slider-captcha { width: 320px; height: 52px; border: 1px solid #888; border-radius: 8px; position: relative; user-select: none; background: #f4f4f4; }
     canvas.slider-captcha { box-sizing: border-box; display: block; }
-    .slider-handle { width: 48px; height: 48px; margin: 2px; border-radius: 6px; ${handleStyle} display: flex; align-items: center; justify-content: center; cursor: grab; }
+    .slider-handle { width: 48px; height: 48px; position: absolute; left: 2px; top: 2px; margin: 0; border-radius: 6px; ${handleStyle} display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; transform: translateX(0); will-change: transform; }
     .slider-label { position: absolute; left: 68px; top: 16px; color: #333; pointer-events: none; }
   </style>
 </head>
@@ -61,26 +65,67 @@ function sliderFixtureHtml(options = {}) {
     const root = document.getElementById("slider-captcha");
     const handle = document.getElementById("slider-handle") || root;
     const status = document.getElementById("slider-status");
+    const isCanvas = root instanceof HTMLCanvasElement;
     let startX = null;
     let tracking = false;
+    let currentDelta = 0;
+    const handleWidth = () => isCanvas ? 48 : handle.getBoundingClientRect().width;
+    const maxDelta = () => Math.max(0, Math.round(root.getBoundingClientRect().width - handleWidth() - 4));
     const clientX = (event) => event.clientX ?? (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
+    const setVisualDelta = (delta) => {
+      currentDelta = Math.max(0, Math.min(Math.round(delta), maxDelta()));
+      document.body.dataset.sliderDeltaLive = String(currentDelta);
+      if (isCanvas && typeof drawSliderCanvas === "function") {
+        drawSliderCanvas(currentDelta);
+      } else {
+        handle.style.transform = "translateX(" + currentDelta + "px)";
+      }
+    };
     const begin = (event) => {
+      event.preventDefault();
       tracking = true;
-      startX = clientX(event);
+      startX = clientX(event) - currentDelta;
+      delete document.body.dataset.sliderCompleted;
       document.body.dataset.sliderStarted = "true";
+      status.textContent = "dragging";
+      if (!isCanvas) {
+        handle.style.cursor = "grabbing";
+      }
+      if (event.pointerId !== undefined && typeof handle.setPointerCapture === "function") {
+        try {
+          handle.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is best-effort in this local fixture.
+        }
+      }
+    };
+    const move = (event) => {
+      if (!tracking) return;
+      event.preventDefault();
+      setVisualDelta(clientX(event) - startX);
     };
     const end = (event) => {
       if (!tracking) return;
+      event.preventDefault();
       tracking = false;
-      const delta = clientX(event) - startX;
-      document.body.dataset.sliderDelta = String(Math.round(delta));
-      if (delta >= 180) {
+      const delta = Math.max(currentDelta, clientX(event) - startX);
+      setVisualDelta(delta);
+      document.body.dataset.sliderDelta = String(currentDelta);
+      if (currentDelta >= 180) {
         document.body.dataset.sliderCompleted = "true";
         status.textContent = "completed";
+      } else {
+        setVisualDelta(0);
+        status.textContent = "pending";
+      }
+      if (!isCanvas) {
+        handle.style.cursor = "grab";
       }
     };
     handle.addEventListener("pointerdown", begin);
     handle.addEventListener("mousedown", begin);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("mousemove", move);
     window.addEventListener("pointerup", end);
     window.addEventListener("mouseup", end);
     root.addEventListener("dragstart", (event) => event.preventDefault());

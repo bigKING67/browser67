@@ -285,7 +285,26 @@ async function runSinglePhysicalAttempt({
   const nextPhysicalCompletion = await callTool("browser_execute_js", {
     ...toolArgs,
     tab_id: tabId,
-    script: "return { checked: true, slider_completed: document.body.dataset.sliderCompleted === 'true', slider_started: document.body.dataset.sliderStarted === 'true', slider_delta: document.body.dataset.sliderDelta || null, status_text: document.querySelector('#slider-status')?.textContent || null, active_element_id: document.activeElement?.id || null };",
+    script: `
+      const root = document.querySelector("#slider-captcha");
+      const handle = document.querySelector("#slider-handle");
+      const rootRect = root?.getBoundingClientRect();
+      const handleRect = handle?.getBoundingClientRect();
+      const domVisualOffset = rootRect && handleRect
+        ? Math.round(handleRect.left - rootRect.left - 2)
+        : null;
+      return {
+        checked: true,
+        slider_completed: document.body.dataset.sliderCompleted === "true",
+        slider_started: document.body.dataset.sliderStarted === "true",
+        slider_delta: document.body.dataset.sliderDelta || null,
+        slider_delta_live: document.body.dataset.sliderDeltaLive || null,
+        slider_visual_offset: domVisualOffset ?? Number(document.body.dataset.sliderDeltaLive || 0),
+        handle_transform: handle?.style?.transform || null,
+        status_text: document.querySelector("#slider-status")?.textContent || null,
+        active_element_id: document.activeElement?.id || null,
+      };
+    `,
   });
   const nextPhysicalAttempts = [
     ...physicalAttempts,
@@ -358,6 +377,13 @@ async function runPhysicalAssistIfEnabled({
     }));
     if (physicalCompletion?.js_return?.slider_completed !== true) {
       throw physicalGateError("physical drag did not complete local slider fixture", physicalAssist, physicalCompletion, physicalAttempts);
+    }
+    const visualOffset = Number(
+      physicalCompletion?.js_return?.slider_visual_offset
+        ?? physicalCompletion?.js_return?.slider_delta_live,
+    );
+    if (!Number.isFinite(visualOffset) || visualOffset < 180) {
+      throw physicalGateError("physical drag completed but slider visual movement was not observed", physicalAssist, physicalCompletion, physicalAttempts);
     }
   }
 

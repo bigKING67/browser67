@@ -104,10 +104,12 @@ async function assertReadinessLjqCtrlProbeContract() {
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-readiness-ljqctrl-"));
   try {
+    const defaultProofDir = path.join(tmpDir, "default-empty-proofs");
     const defaultAudit = runReadinessAudit({
       TMWD_LJQCTRL_PYTHON: "",
       TMWD_LJQCTRL_PYTHON_CANDIDATES: "",
       TMWD_LJQCTRL_EXECUTE: "",
+      TMWD_OPTIONAL_PROOF_DIR: defaultProofDir,
     });
     if (process.platform === "win32") {
       assert.ok(

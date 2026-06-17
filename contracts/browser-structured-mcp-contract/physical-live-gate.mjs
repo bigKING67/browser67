@@ -39,7 +39,12 @@ function successfulChildPayload(overrides = {}) {
     physical_assist_coordinates_source: "vision_corrected_region_capture",
     physical_attempt_count: 1,
     physical_attempts: [{ attempt: 1, strategy: "vision_corrected_primary" }],
-    physical_completion: { slider_completed: true },
+    physical_completion: {
+      slider_completed: true,
+      slider_visual_offset: 260,
+      slider_delta_live: "260",
+      handle_transform: "translateX(260px)",
+    },
     matrix_results: [{ case: "slider" }],
     finalized_closed: 1,
     workspace_key: "contract-captcha",
@@ -207,6 +212,9 @@ async function assertPhysicalLiveGateContract() {
   });
   assert.equal(proof.platform, "contract-os");
   assert.equal(proof.slider_completed, true);
+  assert.equal(proof.evidence.slider_visual_offset, 260);
+  assert.equal(proof.evidence.slider_delta_live, "260");
+  assert.equal(proof.evidence.handle_transform, "translateX(260px)");
   assert.equal(proof.evidence.physical_attempt_count, 1);
   assert.equal(proof.managed_tab_only, true);
   assert.equal(proof.fullscreen_screenshot, false);
