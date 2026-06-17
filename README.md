@@ -322,10 +322,13 @@ readiness audit: it verifies required governance/docs/skill gates, reports a
 score, and lists optional hardening gaps such as pending scoped commits,
 unconfigured or invalid `ljqCtrl`, skipped physical CAPTCHA gate, cross-OS
 native live proof, and provider-specific OAuth/SSO/MFA live gates. The
-`ljqCtrl` readiness row is based on the same diagnostic-only Python capability
-probe as `npm run check:ljqctrl`, not just the presence of environment
-variables; an importable driver becomes an informational execution-gated row
-until `TMWD_LJQCTRL_EXECUTE=1` is explicitly supplied. The local auth smoke
+`ljqCtrl` readiness row is platform-aware and based on the same diagnostic-only
+Python capability probe as `npm run check:ljqctrl`, not just the presence of
+environment variables. The bundled GenericAgent `ljqCtrl` implementation is
+Windows-oriented; on non-Windows hosts, default absence is informational while
+explicitly configured interpreters are still validated and can fail as invalid.
+An importable driver becomes an informational execution-gated row until
+`TMWD_LJQCTRL_EXECUTE=1` is explicitly supplied. The local auth smoke
 already covers OAuth popup, SSO, and MFA manual handoff/resume fixtures; the
 remaining IdP gap is explicitly about approved external provider coverage. The
 readiness audit also consumes `check:optional-live-proofs` results so collected

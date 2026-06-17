@@ -99,6 +99,8 @@ function buildLjqCtrlEvidence(probe = {}) {
   const candidateText = candidates.slice(0, 4).map(summarizeLjqCtrlCandidate).join("; ") || "none";
   const moreText = candidates.length > 4 ? `; more=${candidates.length - 4}` : "";
   return [
+    `platform=${probe.platform ?? process.platform}`,
+    `platform_supported=${probe.platform_supported === true}`,
     `source=${probe.python_candidate_source ?? "unknown"}`,
     `selected=${probe.python ?? "none"}`,
     `importable=${probe.ljqctrl_importable === true}`,
@@ -117,6 +119,9 @@ async function probeLjqCtrlReadiness() {
     const checks = capabilities.checks ?? {};
     return {
       status: capabilities.status,
+      platform: capabilities.platform ?? process.platform,
+      supported_platforms: Array.isArray(capabilities.supported_platforms) ? capabilities.supported_platforms : [],
+      platform_supported: capabilities.platform_supported === true,
       python: checks.python,
       python_candidate_source: checks.python_candidate_source,
       python_selection_reason: checks.python_selection_reason,
@@ -149,6 +154,16 @@ function buildLjqCtrlGap(probe = {}) {
   const configuredExternally = probe.python_candidate_source !== "default"
     || envEnabled("TMWD_LJQCTRL_EXECUTE");
   const evidence = buildLjqCtrlEvidence(probe);
+
+  if (probe.platform_supported !== true && !configuredExternally && probe.ljqctrl_importable !== true) {
+    return createGap(
+      "ljqctrl_platform_not_applicable",
+      "informational",
+      0,
+      evidence,
+      "Use the native-os physical-input provider on this platform; validate ljqCtrl on a Windows host or set an explicit interpreter if one is intentionally available.",
+    );
+  }
 
   if (probe.ljqctrl_importable === true) {
     if (probe.execution_bridge_enabled === true) {

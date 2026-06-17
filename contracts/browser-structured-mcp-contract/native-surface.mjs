@@ -63,6 +63,10 @@ async function assertLjqCtrlPythonCandidateSelection() {
     });
     const ljq = capabilities.providers.find((provider) => provider.provider_id === "ljq-ctrl");
     assert.equal(ljq?.status, "available");
+    assert.equal(ljq?.platform, process.platform);
+    assert.equal(Array.isArray(ljq?.supported_platforms), true);
+    assert.equal(ljq.supported_platforms.includes("win32"), true);
+    assert.equal(ljq?.platform_supported, process.platform === "win32");
     assert.equal(ljq?.checks?.python, workingPython);
     assert.equal(ljq?.checks?.python_candidate_source, "TMWD_LJQCTRL_PYTHON_CANDIDATES");
     assert.equal(ljq?.checks?.python_selection_reason, "first_importable_candidate");

@@ -45,6 +45,24 @@ async function assertReadinessLjqCtrlProbeContract() {
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-readiness-ljqctrl-"));
   try {
+    const defaultAudit = runReadinessAudit({
+      TMWD_LJQCTRL_PYTHON: "",
+      TMWD_LJQCTRL_PYTHON_CANDIDATES: "",
+      TMWD_LJQCTRL_EXECUTE: "",
+    });
+    if (process.platform === "win32") {
+      assert.ok(
+        findGap(defaultAudit, "ljqctrl_not_configured")
+        || findGap(defaultAudit, "ljqctrl_probe_available_execution_gated")
+        || findGap(defaultAudit, "ljqctrl_execution_bridge_available"),
+      );
+    } else {
+      const platformGap = findGap(defaultAudit, "ljqctrl_platform_not_applicable");
+      assert.equal(platformGap?.deduction, 0);
+      assert.match(platformGap?.evidence ?? "", /platform_supported=false/);
+      assert.equal(findGap(defaultAudit, "ljqctrl_not_configured"), undefined);
+    }
+
     const failingPython = await writeFakePythonProbe(tmpDir, "python-no-ljqctrl", {
       ok: false,
       reason: "No module named 'ljqCtrl'",

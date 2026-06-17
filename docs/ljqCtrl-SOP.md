@@ -25,7 +25,10 @@ npm run check:ljqctrl
 默认只做诊断：按候选顺序探测默认 Python 命令是否能 `import ljqCtrl`，并报告
 `Click`、`Press`、`FindBlock`、`GrabWindow`、`GrabWindowBg` 和 `dpi_scale`
 能力以及每个候选解释器的 import 结果；不会激活窗口、点击、拖拽、截图或读写
-剪贴板。如果 `ljqCtrl` 安装在非默认 Python 环境，设置单个解释器：
+剪贴板。GenericAgent 随附的 `ljqCtrl` 实现依赖 Win32/WGC 能力，默认面向
+Windows；macOS/Linux 上通常应走 `native-os` provider。若非 Windows 机器显式
+配置了可 import 的兼容实现，doctor 仍会照常识别。如果 `ljqCtrl` 安装在非默认
+Python 环境，设置单个解释器：
 
 ```bash
 TMWD_LJQCTRL_PYTHON=/path/to/python npm run check:ljqctrl

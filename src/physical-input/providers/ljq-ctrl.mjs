@@ -12,6 +12,7 @@ import {
 } from "../../native-core.mjs";
 
 const PROVIDER_ID = "ljq-ctrl";
+const SUPPORTED_PLATFORMS = ["win32"];
 const DEFAULT_PYTHON_CANDIDATES = process.platform === "win32" ? ["py", "python", "python3"] : ["python3", "python"];
 const LJQ_BRIDGE_TIMEOUT_MS = 5_000;
 const CAPTURE_DIR = path.join(tmpdir(), "tmwd-physical-input-captures");
@@ -126,6 +127,10 @@ function executionBridgeEnabled(options = {}) {
   return options?.execute === true || envEnabled("TMWD_LJQCTRL_EXECUTE");
 }
 
+function platformSupported() {
+  return SUPPORTED_PLATFORMS.includes(process.platform);
+}
+
 function cloneJson(value) {
   return structuredClone(value);
 }
@@ -211,6 +216,21 @@ function unsupportedActionsFromSupported(supportedActions = []) {
     .filter((action) => !supported.has(action));
 }
 
+function buildRequirements({ importable, executeEnabled, probeEnabled, pythonProbe }) {
+  if (!probeEnabled) {
+    return ["Set TMWD_LJQCTRL_PROBE=1 to probe local ljqCtrl availability."];
+  }
+  if (importable) {
+    return executeEnabled
+      ? []
+      : ["Set TMWD_LJQCTRL_EXECUTE=1 to enable the guarded ljqCtrl execution bridge."];
+  }
+  if (!platformSupported() && pythonProbe?.source === "default") {
+    return ["Use native-os on non-Windows hosts, or validate ljqCtrl on Windows / an explicitly configured compatible interpreter."];
+  }
+  return ["Install Python with ljqCtrl importable, or set TMWD_LJQCTRL_PYTHON/TMWD_LJQCTRL_PYTHON_CANDIDATES."];
+}
+
 async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
   const cacheTtlMs = normalizeCacheTtlMs(options?.cache_ttl_ms);
   const cacheKey = capabilityCacheKey(options);
@@ -251,6 +271,9 @@ async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
   const payload = {
     provider_id: PROVIDER_ID,
     provider_name: "ljqCtrl physical input",
+    platform: process.platform,
+    supported_platforms: SUPPORTED_PLATFORMS,
+    platform_supported: platformSupported(),
     status: importable ? (executeEnabled ? "available" : "probe_available") : "not_configured",
     execution_mode: executeEnabled && importable ? "ljqctrl_physical_input" : "planned_provider",
     coordinate_system: "physical_screen_pixels",
@@ -261,11 +284,12 @@ async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
     supported_actions: supportedActions,
     unsupported_actions: unsupportedActionsFromSupported(supportedActions),
     planned_actions: ["activate_window", "click", "drag", "capture_window_region"],
-    requirements: probeEnabled
-      ? (importable
-        ? (executeEnabled ? [] : ["Set TMWD_LJQCTRL_EXECUTE=1 to enable the guarded ljqCtrl execution bridge."])
-        : ["Install Python with ljqCtrl importable, or set TMWD_LJQCTRL_PYTHON/TMWD_LJQCTRL_PYTHON_CANDIDATES."])
-      : ["Set TMWD_LJQCTRL_PROBE=1 to probe local ljqCtrl availability."],
+    requirements: buildRequirements({
+      importable,
+      executeEnabled,
+      probeEnabled,
+      pythonProbe,
+    }),
     permission_notes: [
       "Use physical pixels only.",
       "Activate the target browser window before input.",
