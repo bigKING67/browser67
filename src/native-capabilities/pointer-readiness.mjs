@@ -26,6 +26,42 @@ function buildNativePointerNextSteps(capabilities, options = {}) {
   ];
 }
 
+function buildNativePointerRecoveryPlan(capabilities, options = {}) {
+  const platform = capabilities?.platform ?? options.platform ?? process.platform;
+  const checks = capabilities?.checks ?? {};
+  const verifyCommand = options.verify_command ?? "npm run check:native-pointer";
+  const physicalGateCommand = options.physical_gate_command
+    ?? "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live";
+  if (platform !== "darwin") {
+    return null;
+  }
+  const hasCliclick = checks.cliclick === true;
+  const needsAccessibility = hasCliclick && checks.cliclick_accessibility !== true;
+  if (!needsAccessibility) {
+    return null;
+  }
+  return {
+    platform: "darwin",
+    status: "permission_required",
+    blocker: "macos_accessibility_for_current_terminal",
+    affected_actions: ["click", "drag"],
+    settings_path: "System Settings -> Privacy & Security -> Accessibility",
+    open_settings_command: "open \"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility\"",
+    manual_steps: [
+      "Open Accessibility settings for this Mac user.",
+      "Enable the current Terminal, iTerm, or Codex host application.",
+      "Restart the terminal/Codex host if macOS keeps the old permission state.",
+      `Verify with: ${verifyCommand}`,
+      `Only then run the physical gate with explicit opt-in: ${physicalGateCommand}`,
+    ],
+    safe_defaults: [
+      "This report does not move the mouse.",
+      "This report does not open Chrome or create a managed tab.",
+      "This report does not read browser private state.",
+    ],
+  };
+}
+
 function buildNativePointerReadinessReport(capabilities, options = {}) {
   const clickReady = supportsNativePointerAction(capabilities, "click");
   const dragReady = supportsNativePointerAction(capabilities, "drag");
@@ -42,6 +78,7 @@ function buildNativePointerReadinessReport(capabilities, options = {}) {
     requirements: nativePointerRequirements(capabilities),
     permission_notes: Array.isArray(capabilities?.permission_notes) ? capabilities.permission_notes : [],
     next_steps: buildNativePointerNextSteps(capabilities, options),
+    permission_recovery: buildNativePointerRecoveryPlan(capabilities, options),
   };
   if (options.check) {
     report.check = options.check;
@@ -51,6 +88,7 @@ function buildNativePointerReadinessReport(capabilities, options = {}) {
 
 export {
   buildNativePointerNextSteps,
+  buildNativePointerRecoveryPlan,
   buildNativePointerReadinessReport,
   supportsNativePointerAction,
 };

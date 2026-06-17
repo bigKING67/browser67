@@ -65,6 +65,14 @@ Accessibility privileges for the current terminal/Codex host.
 `npm run check:native-pointer` is diagnostic-only by default and does not move
 the mouse; use `npm run check:native-pointer -- --require-pointer` only when a
 local release gate should fail until click/drag support is genuinely available.
+When macOS `cliclick` is installed but Accessibility permission is missing, the
+readiness JSON includes `permission_recovery` with:
+
+- `settings_path`: the exact System Settings pane to open.
+- `open_settings_command`: a copyable macOS `open` command.
+- `manual_steps`: the verify command and explicit physical-gate command.
+- `safe_defaults`: confirmation that the readiness report does not move the
+  mouse, open Chrome, create managed tabs, or read browser private state.
 
 Set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that automatic proof write, or
 `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail the gate if the sanitized proof

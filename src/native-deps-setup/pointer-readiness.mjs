@@ -55,6 +55,14 @@ function outputText(report) {
     const lines = report.next_steps.map((nextStep) => `  - ${nextStep}`).join("\n");
     process.stdout.write(`next_steps:\n${lines}\n`);
   }
+  if (report.permission_recovery) {
+    const plan = report.permission_recovery;
+    process.stdout.write(`permission_recovery=${plan.status} blocker=${plan.blocker}\n`);
+    process.stdout.write(`settings_path=${plan.settings_path}\n`);
+    process.stdout.write(`open_settings_command=${plan.open_settings_command}\n`);
+    const steps = plan.manual_steps.map((step) => `  - ${step}`).join("\n");
+    process.stdout.write(`manual_steps:\n${steps}\n`);
+  }
 }
 
 async function run() {

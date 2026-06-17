@@ -312,7 +312,10 @@ failure fail the gate.
 `check:native-pointer` is diagnostic-only by default and exits successfully when
 requirements are missing; use `npm run check:native-pointer -- --require-pointer`
 only as a local hard gate after installing OS dependencies and granting the
-required permissions.
+required permissions. On macOS, when `cliclick` is installed but Accessibility
+permission is missing, the report includes a `permission_recovery` plan with the
+System Settings path, a copyable `open` command, explicit verification command,
+and the physical CAPTCHA gate command to run only after pointer readiness passes.
 `check:ljqctrl` is diagnostic-only by default: it probes the local Python
 `ljqCtrl` module and reports whether click/window-region capture would be
 available, but it does not activate windows, click, drag, capture screenshots,

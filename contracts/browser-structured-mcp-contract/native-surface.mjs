@@ -146,6 +146,7 @@ function assertNativePointerReadinessReportContract() {
     "Run npm run check:native-pointer.",
     "grant contract permission",
   ]);
+  assert.equal(missingWithRequirement.permission_recovery, null);
 
   const missingWithoutRequirement = buildNativePointerReadinessReport({
     platform: "contract-os",
@@ -162,6 +163,40 @@ function assertNativePointerReadinessReportContract() {
   assert.equal(missingWithoutRequirement.supports_drag, false);
   assert.deepEqual(missingWithoutRequirement.requirements, []);
   assert.deepEqual(missingWithoutRequirement.next_steps, ["contract missing message"]);
+  assert.equal(missingWithoutRequirement.permission_recovery, null);
+
+  const darwinPermissionRecovery = buildNativePointerReadinessReport({
+    platform: "darwin",
+    driver: "macos-osascript-cliclick",
+    supported_actions: ["press"],
+    unsupported_actions: ["click", "drag"],
+    checks: {
+      cliclick: true,
+      cliclick_accessibility: false,
+    },
+    requirements: ["Grant Accessibility permission."],
+  }, {
+    verify_command: "npm run check:native-pointer",
+    physical_gate_command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+  });
+  assert.equal(darwinPermissionRecovery.permission_recovery?.status, "permission_required");
+  assert.equal(
+    darwinPermissionRecovery.permission_recovery?.blocker,
+    "macos_accessibility_for_current_terminal",
+  );
+  assert.deepEqual(darwinPermissionRecovery.permission_recovery?.affected_actions, ["click", "drag"]);
+  assert.equal(
+    darwinPermissionRecovery.permission_recovery?.settings_path,
+    "System Settings -> Privacy & Security -> Accessibility",
+  );
+  assert.match(
+    darwinPermissionRecovery.permission_recovery?.open_settings_command ?? "",
+    /Privacy_Accessibility/,
+  );
+  assert.equal(
+    darwinPermissionRecovery.permission_recovery?.safe_defaults.includes("This report does not move the mouse."),
+    true,
+  );
 }
 
 async function assertNativeCapabilitySurface() {
