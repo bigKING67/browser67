@@ -55,10 +55,13 @@ npm run check:captcha-assist-physical-live
 ```
 
 The gate only counts as executable when the selected physical provider can
-actually affect the browser window. On macOS, `native-os` pointer actions depend
-on `cliclick`; the readiness probe treats `cliclick` as unavailable for click and
-drag when its diagnostic output reports missing Accessibility privileges for the
-current terminal/Codex host.
+actually affect the browser window. The physical wrapper performs native pointer
+preflight before opening the GUI fixture or creating a managed tab; if click or
+drag is unavailable, it returns structured skipped/blocked output without
+foregrounding Chrome or attempting physical input. On macOS, `native-os` pointer
+actions depend on `cliclick`; the readiness probe treats `cliclick` as
+unavailable for click and drag when its diagnostic output reports missing
+Accessibility privileges for the current terminal/Codex host.
 `npm run check:native-pointer` is diagnostic-only by default and does not move
 the mouse; use `npm run check:native-pointer -- --require-pointer` only when a
 local release gate should fail until click/drag support is genuinely available.

@@ -294,13 +294,17 @@ correction, plus cross-origin iframe degraded/manual handoff behavior.
 skipped by default and only runs the local physical slider drag when both
 `TMWD_CAPTCHA_ASSIST_PHYSICAL=1` and `TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set;
 use `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when a local machine gate should
-fail instead of skip. The physical branch foregrounds its own TMWD-managed
-fixture tab before dragging. Native pointer actions must be genuinely available:
-run `npm run check:native-pointer` first to verify whether the current OS
-provider can actually click/drag without moving the mouse. On macOS, `cliclick`
-is treated as pointer-capable only when its diagnostic probe does not report
-missing Accessibility privileges for the current terminal/Codex host. When the
-physical branch passes, it writes a
+fail instead of skip. Before opening the GUI fixture or creating a managed tab,
+the wrapper now runs the same native pointer preflight as
+`npm run check:native-pointer`; if click/drag requirements are missing, it
+returns a structured skipped/blocked result without foregrounding Chrome or
+attempting physical input. The physical branch foregrounds its own TMWD-managed
+fixture tab before dragging only after that preflight passes. Native pointer
+actions must be genuinely available: run `npm run check:native-pointer` first to
+verify whether the current OS provider can actually click/drag without moving
+the mouse. On macOS, `cliclick` is treated as pointer-capable only when its
+diagnostic probe does not report missing Accessibility privileges for the
+current terminal/Codex host. When the physical branch passes, it writes a
 sanitized repo-external proof under `~/.tmwd-browser-mcp/optional-live-proofs`
 or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable
 that proof write, or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to make proof-write

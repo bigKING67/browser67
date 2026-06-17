@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEFAULT_OPTIONAL_LIVE_PROOF_DIR } from "../scripts/optional-live-proof-audit.mjs";
+import { detectNativeInputCapabilities } from "../src/native-capabilities.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const liveSmokePath = resolve(scriptDir, "browser-captcha-assist-live-smoke.mjs");
@@ -42,6 +43,46 @@ function expiresAtFrom(checkedAt) {
 
 function physicalGateCommand() {
   return "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live";
+}
+
+function supportsAction(capabilities, action) {
+  return Array.isArray(capabilities?.supported_actions) && capabilities.supported_actions.includes(action);
+}
+
+function buildPointerNextSteps(capabilities) {
+  const requirements = Array.isArray(capabilities?.requirements) ? capabilities.requirements : [];
+  if (requirements.length > 0) {
+    return [
+      "Run npm run check:native-pointer.",
+      ...requirements,
+    ];
+  }
+  return [
+    "Run npm run check:native-pointer to confirm native click/drag readiness before the physical CAPTCHA gate.",
+  ];
+}
+
+async function nativePointerPreflight() {
+  const capabilities = await detectNativeInputCapabilities({
+    refresh: true,
+    cache_ttl_ms: 0,
+  });
+  const clickReady = supportsAction(capabilities, "click");
+  const dragReady = supportsAction(capabilities, "drag");
+  return {
+    ok: clickReady && dragReady,
+    status: clickReady && dragReady ? "pointer_ready" : "requirements_missing",
+    platform: capabilities.platform ?? process.platform,
+    driver: capabilities.driver ?? "unknown",
+    supports_click: clickReady,
+    supports_drag: dragReady,
+    supported_actions: Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [],
+    unsupported_actions: Array.isArray(capabilities.unsupported_actions) ? capabilities.unsupported_actions : [],
+    checks: capabilities.checks ?? {},
+    requirements: Array.isArray(capabilities.requirements) ? capabilities.requirements : [],
+    permission_notes: Array.isArray(capabilities.permission_notes) ? capabilities.permission_notes : [],
+    next_steps: buildPointerNextSteps(capabilities),
+  };
 }
 
 function buildPhysicalProof(parsed) {
@@ -153,6 +194,25 @@ async function run() {
       reason: "TMWD_CAPTCHA_ASSIST_CONFIRM=1 is required before physical input",
     });
     return 1;
+  }
+
+  const nativePointer = await nativePointerPreflight();
+  if (!nativePointer.ok) {
+    const payload = {
+      ok: !requirePhysical,
+      status: requirePhysical ? "blocked" : "skipped",
+      check: "captcha-assist-physical-live",
+      reason: "native_pointer_requirements_missing",
+      require_physical: requirePhysical,
+      native_pointer: nativePointer,
+      planning_gate: "npm run check:captcha-assist-live",
+      readiness_gate: "npm run check:native-pointer",
+      gui_fixture_started: false,
+      managed_tab_created: false,
+      physical_input_attempted: false,
+    };
+    jsonLine(payload);
+    return payload.ok ? 0 : 1;
   }
 
   const child = await runChild(process.argv.slice(2));
