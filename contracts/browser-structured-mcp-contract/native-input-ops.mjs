@@ -1,10 +1,32 @@
 import assert from "node:assert/strict";
+
+import { buildCliclickDragCommands } from "../../src/native-macos/pointer.mjs";
+
 import {
   assertTextJsonContent,
   firstJsonContent,
 } from "./rpc-content.mjs";
 
 async function assertNativeInputOpsContract({ rpc, timeoutMs }) {
+  const macosDragPlan = buildCliclickDragCommands({
+    durationMs: 700,
+    fromX: 120,
+    fromY: 200,
+    steps: 12,
+    toX: 260,
+    toY: 200,
+  });
+  assert.deepEqual(
+    macosDragPlan.command_sequence.slice(0, 2),
+    ["m", "dd"],
+    "macOS cliclick drag should pre-move before mouse-down",
+  );
+  assert.equal(
+    macosDragPlan.command_sequence.at(-1),
+    "du",
+    "macOS cliclick drag should release at the destination",
+  );
+
   const nativeCapabilitiesCall = await rpc.call(
     "tools/call",
     {
