@@ -1,0 +1,13 @@
+const OWNERSHIP_POLICIES = new Set(["tmwd_only", "fresh"]);
+const REUSE_SCOPES = new Set(["exact", "origin_path", "origin", "none"]);
+const RECENT_MANAGED_TAB_LIVE_GRACE_MS = 30_000;
+const REGISTRY_LOCK_TIMEOUT_MS = 2_000;
+const REGISTRY_LOCK_STALE_MS = 10_000;
+
+export {
+  OWNERSHIP_POLICIES,
+  RECENT_MANAGED_TAB_LIVE_GRACE_MS,
+  REGISTRY_LOCK_STALE_MS,
+  REGISTRY_LOCK_TIMEOUT_MS,
+  REUSE_SCOPES,
+};

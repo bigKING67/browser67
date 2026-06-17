@@ -39,9 +39,9 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function run() {
+async function run() {
   const args = parseArgs(process.argv.slice(2));
-  const records = listManagedTabRecords();
+  const records = await listManagedTabRecords();
   const unkept = records.filter((record) => record.keep !== true);
   const kept = records.filter((record) => record.keep === true);
   const ok = unkept.length <= args.max_unkept;
@@ -66,11 +66,12 @@ function run() {
     process.stdout.write(`managed_tab_cleanup=ok unkept=${unkept.length} kept=${kept.length} total=${records.length}\n`);
   } else {
     process.stderr.write(`managed_tab_cleanup=fail unkept=${unkept.length} kept=${kept.length} total=${records.length}\n`);
-    for (const record of payload.unkept) {
-      process.stderr.write(`- ${record.tab_id} workspace=${record.workspace_key} url=${record.url}\n`);
-    }
+    process.stderr.write(payload.unkept
+      .map((record) => `- ${record.tab_id} workspace=${record.workspace_key} url=${record.url}`)
+      .join("\n"));
+    process.stderr.write(payload.unkept.length > 0 ? "\n" : "");
   }
   process.exitCode = ok ? 0 : 1;
 }
 
-run();
+await run();
