@@ -158,6 +158,7 @@ async function run() {
     });
 
     const tabLifecycleSummary = await assertTabLifecycleOpsContract({
+      registryPath: tmpTabRegistryPath,
       rpc,
       timeoutMs: cli.timeout_ms,
     });

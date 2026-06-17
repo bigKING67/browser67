@@ -1,10 +1,74 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import {
   assertTextJsonContent,
   firstJsonContent,
 } from "./rpc-content.mjs";
 
-export async function assertTabLifecycleOpsContract({ rpc, timeoutMs }) {
+async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
+  if (!registryPath) {
+    throw new Error("registryPath is required for external registry refresh contract");
+  }
+  const now = new Date().toISOString();
+  await writeFile(registryPath, `${JSON.stringify({
+    version: 1,
+    updated_at: now,
+    managed_tabs: [{
+      tab_id: "external-disk-tab",
+      owner: "tmwd",
+      source: "contract",
+      workspace_key: "external-disk-workspace",
+      reuse_key: "http://external.example/path",
+      url: "http://external.example/path/page",
+      title: "External disk tab",
+      origin: "http://external.example",
+      path_scope: "/path",
+      keep: false,
+      dry_run: false,
+      status: "open",
+      created_at: now,
+      updated_at: now,
+      last_used_at: now,
+    }],
+  }, null, 2)}\n`);
+  const externalListCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "list_managed",
+        include_disconnected: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(externalListCall?.result?.isError, undefined);
+  const externalListPayload = firstJsonContent(externalListCall.result);
+  assert.equal(externalListPayload?.summary?.registry_count, 1);
+  assert.equal(externalListPayload?.managed_tabs?.[0]?.tab_id, "external-disk-tab");
+
+  await writeFile(registryPath, `${JSON.stringify({
+    version: 1,
+    updated_at: new Date().toISOString(),
+    managed_tabs: [],
+  }, null, 2)}\n`);
+  const clearedListCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "list_managed",
+        include_disconnected: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(clearedListCall?.result?.isError, undefined);
+  const clearedListPayload = firstJsonContent(clearedListCall.result);
+  assert.equal(clearedListPayload?.summary?.registry_count, 0);
+}
+
+export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeoutMs }) {
   const tabCreateDryRunCall = await rpc.call(
     "tools/call",
     {
@@ -200,6 +264,8 @@ export async function assertTabLifecycleOpsContract({ rpc, timeoutMs }) {
   assert.equal(Array.isArray(tabListManagedPayload?.sessions), true);
   assert.equal(typeof tabListManagedPayload?.summary?.managed_total_count, "number");
   assert.equal(tabListManagedPayload?.result_limits?.max_items, 50);
+
+  await assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs });
 
   const tabPruneStaleCall = await rpc.call(
     "tools/call",
