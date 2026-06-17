@@ -5,6 +5,7 @@ Codex / MCP client
   -> src/server.mjs
   -> src/tmwd-runtime.mjs
   -> src/tmwd-hub.mjs
+     -> src/tmwd-hub/{config,sessions,relay,ws-server,link-server,shutdown}.mjs
   -> extension/background.js
   -> Chrome/Edge tab
 
@@ -12,6 +13,7 @@ Codex / MCP client
   -> src/js-reverse-server.mjs
   -> src/tmwd-runtime.mjs
   -> src/tmwd-hub.mjs
+     -> src/tmwd-hub/{config,sessions,relay,ws-server,link-server,shutdown}.mjs
   -> extension/background.js
   -> Chrome/Edge tab
   -> window.__TMWD_JS_REVERSE__ runtime hooks
@@ -48,3 +50,6 @@ native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
   produced by `src/js-reverse-server.mjs`.
 - `~/Library/LaunchAgents/com.browser67.tmwd-browser-mcp.plist` is optional
   user-level autostart state created by `npm run launchd:install`.
+- `src/tmwd-hub.mjs` and `src/tmwd-hub-control.mjs` are thin executable
+  entrypoints. Hub state, session TTL, WS relay, link HTTP commands, shutdown,
+  endpoint parsing, probing, and state-file IO live in sibling module folders.

@@ -174,6 +174,11 @@ Manual-required results may include:
   "manual_required": true,
   "manual_context": {
     "kind": "captcha|mfa|sso|oauth_popup",
+    "captcha_kind": "hcaptcha|recaptcha|turnstile|cloudflare|slider|generic",
+    "captcha_assist": {
+      "assist_mode": "manual_or_native_physical",
+      "next_step": "complete_challenge_then_ensure_login"
+    },
     "tab_id": "...",
     "workspace_key": "...",
     "resume_action": "ensure_login"
@@ -187,6 +192,64 @@ captured DOM content. After the user completes the manual step, call
 `browser_auth_ops.ensure_login` again on the same managed tab/workspace; the
 expected successful path is already-authenticated validation, not replaying
 stored credentials across an external identity provider.
+
+For CAPTCHA handoff, TMWD follows the Sophub physical-input pattern rather than
+token extraction: CDP is acceptable for bringing the managed tab to the
+foreground or window-scoped screenshots, but CAPTCHA widgets must not be clicked
+with JS/CDP. If visual assistance is required, capture only the relevant browser
+window/region before calling a vision backend; fullscreen screenshots are not
+part of this policy. If a challenge escalates into
+multi-round image/puzzle solving, stop and hand off to the user instead of
+rapidly retrying.
+
+For a CAPTCHA dry-run, call `browser_auth_ops` with
+`action:"plan_captcha_assist"` and the same managed `tab_id`/`workspace_key`.
+It returns a non-mutating plan plus candidate `getBoundingClientRect()` data in
+viewport CSS pixels, viewport/DPR metadata, native input capability status,
+physical-input provider selection (`native-os` plus planned `ljq-ctrl`
+integration), and the policy gates needed before any physical input. It also
+returns a
+`coordinate_transform` object with estimated screen pixels and a
+`vision_correction_plan` that is limited to browser window/region screenshot
+clips. Add `run_vision_correction:true` only when you need executable
+coordinate correction: it captures the planned viewport/region with CDP, stores
+a bounded temporary PNG artifact outside the repo, returns artifact metadata
+(`path`, `sha256`, dimensions, clip, TTL, `fullscreen:false`, and the
+scroll-adjusted CDP clip when needed), and runs a first-pass local slider
+detector. Same-origin iframe CAPTCHA controls are converted back to top
+viewport coordinates and include a `frame_path`. Cross-origin captcha-like
+iframes are degraded to manual handoff: the planner returns the iframe rect,
+clipped screenshot plan, `degraded_mode:true`, and
+`manual_handoff_required:true`; `assist_captcha` must block instead of inferring
+inner controls or sending physical input into the frame. Treat those estimates as review material:
+browser chrome, OS scaling,
+iframe offsets, DPR, and multi-monitor layout can shift the final physical
+pixels, so unattended execution remains disabled.
+
+`action:"assist_captcha"` is intentionally stricter: it only runs on a
+TMWD-owned managed tab, requires `confirm_physical_input:true`, requires a
+foreground window, and requires either caller-supplied screen coordinates or
+`auto_screen_coordinates:true` plus `confirm_auto_coordinates:true`, or
+`use_vision_corrected_coordinates:true` plus
+`confirm_corrected_coordinates:true`. For normal
+TMWD-owned tabs, it foregrounds the target with TMWD `tabs.switch` before
+physical provider input; `window_title`, `window_pid`, and
+`window_active_confirmed:true` are fallbacks for unusual window-manager cases.
+`physical_input_provider:"auto"` currently executes through `native-os` unless
+the guarded `ljq-ctrl` bridge is explicitly enabled and reports the needed
+action. `ljq-ctrl` probe results are TTL-cached to avoid repeated Python startup
+on planner/assist chains. Run `npm run check:ljqctrl` for a diagnostic-only
+probe of the local Python `ljqCtrl` import, click support, and window-region
+capture support; the doctor does not activate windows, click, drag, capture
+screenshots, or access clipboard. Set `TMWD_LJQCTRL_PYTHON=/path/to/python` when
+`ljqCtrl` is installed outside the default Python path. `TMWD_LJQCTRL_EXECUTE=1`
+is required before the guarded bridge may call `ljqCtrl.Click` or clipped
+window-region capture artifact creation. It does not use JS/CDP to click a CAPTCHA widget and does not read
+CAPTCHA tokens/cookies. Slider CAPTCHA planning returns a viewport-space drag
+hint and estimated screen start/end coordinates; execution requires physical `drag` support
+plus explicit or estimated `screen_x`/`screen_y` and
+`screen_to_x`/`screen_to_y`. If those are missing, it returns a manual handoff
+instead of guessing.
 
 First-time site onboarding pattern:
 
@@ -242,7 +305,10 @@ sites to use the generic profile directory above.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the TMWD websocket explicitly to avoid successful actions ending with a command timeout.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
-- Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.
+- Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, CAPTCHA assist dry-run planning, manual CAPTCHA completion resume, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.
+- Run `npm run check:captcha-assist-live` after CAPTCHA assist changes. It opens isolated local slider fixtures, validates dry-run coordinate transforms, region-only screenshot artifact creation, scroll-adjusted CDP clips, same-origin iframe coordinate conversion, cross-origin iframe degraded/manual handoff, first-pass slider vision correction, and finalizes the managed tabs. It is planning-only.
+- Run `npm run check:captcha-assist-physical-live` only for the optional local GUI gate. It is skipped by default and runs the physical slider drag only when `TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set. Add `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when the local gate should fail instead of skip.
+- Run `npm run check:ljqctrl` after `ljq-ctrl` provider changes. It is a diagnostic-only default gate and exits successfully when the local driver is not configured; use `TMWD_LJQCTRL_REQUIRE=1`, `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` for machine-local hard gates.
 
 ## Codex host hard-finally contract
 

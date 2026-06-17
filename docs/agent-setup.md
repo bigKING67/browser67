@@ -131,6 +131,40 @@ manual_context.kind=oauth_popup. manual_context is a non-secret handoff hint
 only; it must not contain credentials, cookies, tokens, browser session data, or
 page content. After the user completes the manual step, call ensure_login again
 on the same managed tab/workspace to validate the resumed authenticated state.
+CAPTCHA handoff may include captcha_kind and captcha_assist metadata. Treat it
+as a physical/manual flow: bring the TMWD-owned tab to the foreground if needed,
+capture only the browser window/region for vision assistance, never take
+fullscreen screenshots, never use JS/CDP to click CAPTCHA widgets, never extract
+CAPTCHA tokens/cookies, wait before retrying, and hand off to the user if the
+challenge becomes multi-round. Use browser_auth_ops.plan_captcha_assist for
+dry-run planning and coordinate diagnostics before any physical input. It can
+return candidate DOM client rects, viewport metadata, coordinate_transform screen
+estimates, slider drag hints, physical-input provider selection, and region-only
+vision correction clips. With run_vision_correction=true it captures only the
+planned viewport/region, writes a bounded temporary PNG artifact outside the
+repo, returns path/sha256/clip/TTL metadata plus scroll-adjusted CDP clip
+metadata when needed, and runs first-pass slider visual correction.
+Same-origin iframe CAPTCHA controls are converted to top viewport coordinates
+and include a frame_path. Estimates are not safe for unattended execution.
+browser_auth_ops.assist_captcha requires a managed tab,
+confirm_physical_input=true, and either supplied screen coordinates or
+auto_screen_coordinates=true plus confirm_auto_coordinates=true, or
+use_vision_corrected_coordinates=true plus confirm_corrected_coordinates=true.
+Cross-origin captcha-like iframes are degraded/manual-only: keep the iframe rect
+and clipped screenshot plan, but do not infer inner controls or send physical
+input into the frame.
+For normal
+TMWD-owned tabs it uses TMWD tabs.switch to foreground the target before
+physical provider input; explicit window_title/window_pid/window_active_confirmed
+are fallbacks. physical_input_provider=auto currently executes through native-os
+unless the guarded ljq-ctrl bridge is explicitly enabled and reports the
+requested action. Run `npm run check:ljqctrl` to diagnose local Python ljqCtrl
+availability and click/window-region capture support without physical input.
+TMWD_LJQCTRL_PYTHON selects a non-default Python. TMWD_LJQCTRL_EXECUTE=1 is
+required before the guarded bridge may call ljqCtrl.Click or clipped
+window-region capture artifact creation. Slider challenges additionally require
+screen destination coordinates (explicit or estimated) and physical drag
+capability, otherwise they remain manual handoff.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
 auditing whether finalizers were missed. Managed tab creation results include
 finalize_hint; treat finalize_hint.required=true as a task-end cleanup
@@ -179,6 +213,12 @@ and upsert, login submission, already-authenticated no-resubmit behavior,
 lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking,
 unknown-origin blocking, redaction, manual handoff context, and finalizer
 cleanup.
+After CAPTCHA assist changes, run `npm run check:captcha-assist-live`; it
+validates normal, scrolled, and same-origin iframe slider fixtures, is
+planning-only. Use `npm run check:captcha-assist-physical-live` for the optional
+local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
+TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with
+TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1.
 
 ## Operating boundary
 

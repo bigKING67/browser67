@@ -38,7 +38,21 @@ for Codex, grobot, and JS reverse workflows.
 - Auth/profile lifecycle modules under `src/auth/`:
   profile storage, login/manual-required detection, DOM submit/wait logic, and
   MCP action handlers are kept separate so login behavior can evolve without a
-  single long-lived auth file becoming the maintenance bottleneck.
+  single long-lived auth file becoming the maintenance bottleneck. Handler
+  orchestration lives under `src/auth/handlers/` and is split by action family
+  (`ensure-login`, profile actions, CAPTCHA actions, registry/shared helpers).
+- MCP tool JSON schemas under `src/tool-schemas/`, grouped by tool family and
+  re-exported through `src/tool-schemas.mjs` to keep the public server import
+  stable while avoiding a schema monolith.
+- Browser tool wrappers under `src/browser-wrappers/`, grouped by execution
+  surface (`file-ops`, `download-ops`, `tab-lifecycle`, `clipboard-ops`, shared
+  runtime helpers) and re-exported through `src/browser-wrappers.mjs` to keep
+  existing imports stable while removing the previous wrapper monolith.
+- JS reverse server internals under `src/js-reverse-server/`, grouped by MCP
+  tool schemas, shared utilities, TMWD adapter, managed-tab lifecycle,
+  script-source discovery, and injected runtime code. `src/js-reverse-server.mjs`
+  remains the executable MCP entrypoint while the long-lived implementation
+  details stay modular.
 
 ## Why TMWD first
 
@@ -199,28 +213,111 @@ CAPTCHA, MFA, SSO-only, and OAuth popup flows are reported as
 `manual_required_*` and block automatic submission/continuation. These blocked
 states include a non-secret `manual_context` with the manual flow kind and
 `resume_action:"ensure_login"`; it is a handoff hint, not a credential/session
-container.
+container. CAPTCHA contexts may include a `captcha_kind` and `captcha_assist`
+policy. The default policy is human/manual or native physical input only:
+bring the managed tab to the foreground, use window-scoped screenshots if
+vision is needed, and avoid JS/CDP clicks on CAPTCHA widgets, token/cookie
+extraction, fullscreen screenshots, and rapid retries.
+
+For CAPTCHA diagnostics, `browser_auth_ops.plan_captcha_assist` is a dry-run
+planner. It inspects the selected tab, returns non-secret challenge metadata,
+candidate DOM client rectangles, viewport coordinates, native input capability
+status, physical-input provider selection (`native-os` plus guarded `ljq-ctrl`
+metadata/execution bridge), `coordinate_transform` screen-pixel estimates, a window/region
+`vision_correction_plan`, and a replay plan without clicking or taking
+screenshots. Set `run_vision_correction:true` to capture only the planned
+browser viewport/region via CDP, write a bounded temporary PNG artifact under
+the OS temp directory, and return first-pass corrected slider coordinates with a
+confidence gate; the artifact metadata includes path, sha256, dimensions, clip,
+TTL, `fullscreen:false`, and the actual CDP capture clip when scroll offset had
+to be applied, but never base64 image data. Same-origin iframe targets are
+reported with top-viewport coordinates plus a `frame_path`. Cross-origin
+captcha-like iframes are degraded safely: the planner returns the iframe
+bounding rect, a clipped screenshot plan, `degraded_mode:true`, and
+`manual_handoff_required:true`; `assist_captcha` blocks with
+`cross_origin_frame_handoff_required` instead of sending a click/drag. The
+estimates are explicitly not safe for unattended execution:
+browser chrome, OS scaling, iframe nesting, DPR, and multi-monitor placement can
+shift final physical pixels.
+`browser_auth_ops.assist_captcha` is the guarded execution entry: it requires a
+TMWD-owned managed `tab_id`, `confirm_physical_input:true`, and either
+caller-supplied screen coordinates, `auto_screen_coordinates:true` plus
+`confirm_auto_coordinates:true`, or `use_vision_corrected_coordinates:true` plus
+`confirm_corrected_coordinates:true`. It uses TMWD `tabs.switch` to foreground the
+managed tab/window before physical provider input; `window_title`, `window_pid`,
+and `window_active_confirmed:true` are fallbacks for unusual window-manager
+cases. `physical_input_provider:"auto"` prefers `ljq-ctrl` once it becomes
+executable and otherwise selects `native-os`; the `ljq-ctrl` provider is
+diagnostic/planning metadata by default and only executes through its guarded
+bridge when explicitly enabled. Run `npm run check:ljqctrl` to probe the local
+Python `ljqCtrl` import and report click/capture capability without moving the
+mouse or taking screenshots. Set `TMWD_LJQCTRL_PYTHON=/path/to/python` when the
+module is installed outside the default `python3`/`python` path;
+`TMWD_LJQCTRL_EXECUTE=1` is required before the guarded bridge can use
+`ljqCtrl.Click` or clipped window-region capture. For slider
+CAPTCHA, planning returns a viewport-space drag hint and estimated screen
+start/end coordinates; execution also requires destination coordinates
+(explicit or estimated) plus physical `drag` capability. If those gates are
+missing, it hands off instead of guessing.
 
 ## Quality gates
 
 ```bash
 npm run verify
 npm run check:syntax
+npm run check:change-set
+npm run plan:scoped-commits
+npm run check:readiness
 npm run check
 npm run check:live:doctor
 npm run check:auth-live
+npm run check:captcha-assist-live
+npm run check:captcha-assist-physical-live
+npm run check:ljqctrl
 npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
 
 `npm run check` runs deterministic MCP/schema/hub-control contracts. `check:live:*`
 uses the current local browser environment and can fail when the extension or hub
-is not connected.
+is not connected. `check:captcha-assist-live` is planning-only by default and now
+also validates region-only screenshot artifact creation, scroll-adjusted CDP
+clips, same-origin iframe coordinate conversion, and first-pass slider vision
+correction, plus cross-origin iframe degraded/manual handoff behavior.
+`check:captcha-assist-physical-live` is the optional hard physical gate. It is
+skipped by default and only runs the local physical slider drag when both
+`TMWD_CAPTCHA_ASSIST_PHYSICAL=1` and `TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set;
+use `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when a local machine gate should
+fail instead of skip. The physical branch foregrounds its own TMWD-managed
+fixture tab before dragging.
+`check:ljqctrl` is diagnostic-only by default: it probes the local Python
+`ljqCtrl` module and reports whether click/window-region capture would be
+available, but it does not activate windows, click, drag, capture screenshots,
+or access clipboard. Use `TMWD_LJQCTRL_REQUIRE=1`,
+`TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` only for a
+machine-local hard gate.
+
+`npm run check:change-set` is a read-only review hygiene gate for large refactors.
+It groups the current `git status --porcelain` paths by architecture area and
+fails only when a changed path has no review/commit bucket. Use it before
+splitting scoped commits; it does not stage, commit, delete, or rewrite files.
+`npm run plan:scoped-commits` uses the same grouping contract to print a dry-run
+commit plan with exact `git add <paths...>` commands, suggested commit messages,
+risk notes, and per-slice verification commands. It is also plan-only and never
+stages files.
+`npm run check:readiness` turns the near-100 quality target into a deterministic
+readiness audit: it verifies required governance/docs/skill gates, reports a
+score, and lists optional hardening gaps such as pending scoped commits,
+unconfigured `ljqCtrl`, skipped physical CAPTCHA gate, cross-OS native live
+proof, and provider-specific OAuth/SSO/MFA live gates. It is read-only; use
+`--strict` when a local release gate should fail on optional gaps too.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
-all `.mjs` syntax, deterministic contracts, live doctor readiness, JS reverse
-live readiness, auth-profile onboarding/lifecycle/live smoke, and npm audit.
+all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
+contracts, live doctor readiness, JS reverse live readiness, auth-profile
+onboarding/lifecycle/live smoke, diagnostic-only `ljqCtrl` probing, and npm
+audit.
 
 ## Source alignment
 
