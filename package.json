@@ -69,6 +69,7 @@
     "check:optional-live-proofs": "node scripts/optional-live-proof-audit.mjs",
     "plan:optional-live-proofs": "node scripts/optional-live-proof-plan.mjs",
     "proof:optional-live-template": "node scripts/optional-live-proof-template.mjs",
+    "proof:optional-live-record": "node scripts/optional-live-proof-record.mjs",
     "launchd:install": "node scripts/install-launchd.mjs",
     "launchd:uninstall": "node scripts/uninstall-launchd.mjs",
     "verify": "node scripts/verify.mjs",

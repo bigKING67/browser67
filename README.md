@@ -281,6 +281,7 @@ npm run check:ljqctrl
 npm run check:optional-live-proofs
 npm run plan:optional-live-proofs
 npm run proof:optional-live-template
+npm run proof:optional-live-record
 npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
@@ -331,7 +332,11 @@ cross-OS native-input proof, and approved external IdP live coverage; use
 Use `plan:optional-live-proofs` to print the current proof collection runbook:
 per-proof status, required host/platform, safe commands, blockers, and evidence
 requirements. Use `proof:optional-live-template` to generate safe `ok:false`
-starter templates before recording real external proofs. See
+starter templates before recording real external proofs. Use
+`proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` to
+dry-run validate a collected proof without writing it; add `--write` to persist
+the canonical proof under the repo-external proof directory, and `--replace`
+only for an intentional audited refresh of an existing proof. See
 `docs/optional-live-proofs.md`.
 
 `npm run check:change-set` is a read-only review hygiene gate for large refactors.
@@ -365,7 +370,10 @@ distinguishes "native pointer is not ready", "physical gate was not run", and
 Accessibility blocks `cliclick`, the native-pointer and CAPTCHA-blocked JSON
 gaps also carry the same structured `permission_recovery` plan exposed by
 `check:native-pointer`, so callers can render the exact Settings path and
-copyable recovery commands without a second probe. It is
+copyable recovery commands without a second probe. Optional proof gaps also
+include a compact `proof_plan` pointer with `npm run plan:optional-live-proofs
+-- --json`, the active proof directory, and the missing proof ids, so callers
+can render the next collection command without recomputing the audit. It is
 read-only; use `--strict` when a local release gate should fail on optional
 gaps too.
 

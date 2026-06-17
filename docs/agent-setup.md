@@ -239,7 +239,9 @@ collecting sanitized local CAPTCHA physical, Linux/Windows native-input, or
 approved OAuth/SSO/MFA proof JSON under
 `~/.tmwd-browser-mcp/optional-live-proofs`; use `--strict` only when those
 optional proofs are required for a local release gate. Use
-`npm run proof:optional-live-template` for safe `ok:false` starter templates.
+`npm run proof:optional-live-template` for safe `ok:false` starter templates,
+then `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>`
+to dry-run validate a real sanitized proof before adding `--write`.
 
 ## Operating boundary
 

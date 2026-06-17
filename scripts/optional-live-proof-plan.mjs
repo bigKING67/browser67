@@ -57,12 +57,18 @@ function proofTemplateCommand(id) {
   return `npm run proof:optional-live-template -- --id ${id} --write`;
 }
 
+function proofRecordCommand(id) {
+  return `npm run proof:optional-live-record -- --id ${id} --from-json <sanitized.json>`;
+}
+
 function validateProofCommand(proofDir) {
   return `TMWD_OPTIONAL_PROOF_DIR=${proofDir} npm run check:optional-live-proofs`;
 }
 
 function baseCommands(requirement, proofDir) {
   return {
+    record: proofRecordCommand(requirement.id),
+    record_write: `${proofRecordCommand(requirement.id)} --write`,
     template: proofTemplateCommand(requirement.id),
     validate: validateProofCommand(proofDir),
   };
@@ -256,6 +262,7 @@ function outputText(plan) {
       process.stdout.write(`  permission_recovery=${item.permission_recovery.status} blocker=${item.permission_recovery.blocker}\n`);
     }
     process.stdout.write(`  template=${item.commands.template}\n`);
+    process.stdout.write(`  record=${item.commands.record}\n`);
     process.stdout.write(`  validate=${item.commands.validate}\n`);
   }
 }

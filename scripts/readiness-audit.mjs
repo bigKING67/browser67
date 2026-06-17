@@ -225,6 +225,16 @@ function recoveryDetails(pointerReadiness = {}) {
     : {};
 }
 
+function proofPlanDetails(optionalProofAudit = {}, missing = []) {
+  return {
+    proof_plan: {
+      command: "npm run plan:optional-live-proofs -- --json",
+      proof_dir: optionalProofAudit.proof_dir,
+      missing,
+    },
+  };
+}
+
 function buildNativePointerGap(capabilities = {}, pointerReadiness = {}) {
   if (nativePointerReady(capabilities)) {
     return null;
@@ -270,7 +280,10 @@ function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, poi
       0.006,
       `native pointer click/drag unavailable and no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
       "Fix native pointer requirements first, confirm with npm run check:native-pointer, then run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live.",
-      recoveryDetails(pointerReadiness),
+      {
+        ...recoveryDetails(pointerReadiness),
+        ...proofPlanDetails(optionalProofAudit, ["captcha-assist-physical-local"]),
+      },
     );
   }
 
@@ -281,6 +294,7 @@ function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, poi
       0.006,
       `physical gate env is not fully enabled and no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
       "Only after explicit local permission, run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live; a sanitized proof is written repo-externally on success.",
+      proofPlanDetails(optionalProofAudit, ["captcha-assist-physical-local"]),
     );
   }
 
@@ -290,6 +304,7 @@ function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, poi
     0.006,
     `physical gate env is enabled and native pointer click/drag appear available, but no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
     "Run npm run check:captcha-assist-physical-live with proof writing enabled, or inspect TMWD_CAPTCHA_ASSIST_WRITE_PROOF / TMWD_OPTIONAL_PROOF_DIR if the physical gate already passed.",
+    proofPlanDetails(optionalProofAudit, ["captcha-assist-physical-local"]),
   );
 }
 
@@ -308,6 +323,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "check:readiness",
     "plan:optional-live-proofs",
     "proof:optional-live-template",
+    "proof:optional-live-record",
     "verify",
   ];
 
@@ -362,8 +378,9 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run check:native-pointer",
         "npm run check:ljqctrl",
         "npm run plan:optional-live-proofs",
+        "npm run proof:optional-live-record",
       ]),
-      "README lists readiness, change-set, scoped commit, captcha, native pointer, ljqctrl, and optional proof planning gates",
+      "README lists readiness, change-set, scoped commit, captcha, native pointer, ljqctrl, and optional proof planning/recording gates",
     ),
     createCheck(
       "skill_documents_captcha_boundaries",
@@ -418,6 +435,7 @@ async function buildOptionalGaps({ report }) {
       0.004,
       `current_platform=${process.platform} missing_proofs=${missingNativeProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}`,
       "Run native provider live gates on Linux and Windows hosts, save sanitized proof JSON, then run npm run check:optional-live-proofs.",
+      proofPlanDetails(optionalProofAudit, missingNativeProofs),
     ));
   }
 
@@ -429,6 +447,7 @@ async function buildOptionalGaps({ report }) {
       0.001,
       `Local OAuth/SSO/MFA manual handoff/resume fixtures are covered; external provider-specific proofs missing=${missingIdpProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}.`,
       "Run optional live gates against approved representative OAuth popup, cross-domain SSO, and MFA providers, save sanitized proof JSON, then run npm run check:optional-live-proofs.",
+      proofPlanDetails(optionalProofAudit, missingIdpProofs),
     ));
   }
 

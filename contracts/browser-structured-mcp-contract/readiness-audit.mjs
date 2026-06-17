@@ -133,6 +133,16 @@ async function assertReadinessLjqCtrlProbeContract() {
         defaultNativePointerGap?.permission_recovery?.blocker,
       );
     }
+    assert.equal(defaultCaptchaBlockedGap?.proof_plan?.command, "npm run plan:optional-live-proofs -- --json");
+    assert.equal(
+      defaultCaptchaBlockedGap?.proof_plan?.missing.includes("captcha-assist-physical-local"),
+      true,
+    );
+    const crossOsGap = findGap(defaultAudit, "cross_os_native_live_not_proven");
+    assert.equal(crossOsGap?.proof_plan?.command, "npm run plan:optional-live-proofs -- --json");
+    assert.equal(crossOsGap?.proof_plan?.missing.includes("native-live-linux"), true);
+    const idpGap = findGap(defaultAudit, "complex_idp_optional_live_not_proven");
+    assert.equal(idpGap?.proof_plan?.missing.includes("idp-oauth-popup"), true);
 
     const proofDir = path.join(tmpDir, "proofs");
     await fs.mkdir(proofDir, { recursive: true });

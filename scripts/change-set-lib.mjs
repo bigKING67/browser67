@@ -211,7 +211,7 @@ const GROUPS = [
     ],
     patterns: [
       /^package\.json$/,
-      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-template)\.mjs$/,
+      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-template|optional-live-proof-record)\.mjs$/,
     ],
   },
 ];

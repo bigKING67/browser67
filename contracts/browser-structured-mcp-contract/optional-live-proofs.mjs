@@ -10,6 +10,7 @@ import {
   validateProof,
 } from "../../scripts/optional-live-proof-audit.mjs";
 import { buildOptionalLiveProofPlan } from "../../scripts/optional-live-proof-plan.mjs";
+import { buildOptionalLiveProofRecord } from "../../scripts/optional-live-proof-record.mjs";
 import { createProofTemplate } from "../../scripts/optional-live-proof-template.mjs";
 
 function requirement(id) {
@@ -134,6 +135,61 @@ async function assertOptionalLiveProofContract() {
   assert.equal(captchaUnsafeState.ok, false);
   assert.ok(captchaUnsafeState.errors.includes("browser_private_state_access_must_be_false"));
 
+  const recordTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-optional-proof-record-contract-"));
+  try {
+    const inputPath = path.join(recordTmpDir, "linux-proof-input.json");
+    await fs.writeFile(inputPath, `${JSON.stringify(validNativeProof("linux"), null, 2)}\n`);
+    const dryRunRecord = await buildOptionalLiveProofRecord({
+      id: "native-live-linux",
+      from_json: inputPath,
+      proof_dir: recordTmpDir,
+    });
+    assert.equal(dryRunRecord.ok, true);
+    assert.equal(dryRunRecord.status, "validated");
+    assert.equal(dryRunRecord.written, false);
+    await assert.rejects(
+      () => fs.stat(path.join(recordTmpDir, "native-live-linux.json")),
+      /ENOENT/,
+    );
+
+    const writtenRecord = await buildOptionalLiveProofRecord({
+      id: "native-live-linux",
+      from_json: inputPath,
+      proof_dir: recordTmpDir,
+      write: true,
+    });
+    assert.equal(writtenRecord.ok, true);
+    assert.equal(writtenRecord.status, "written");
+    assert.equal(writtenRecord.written, true);
+    assert.equal(writtenRecord.output.sha256.length, 64);
+    const persisted = JSON.parse(await fs.readFile(path.join(recordTmpDir, "native-live-linux.json"), "utf8"));
+    assert.equal(persisted.platform, "linux");
+
+    const blockedRecord = await buildOptionalLiveProofRecord({
+      id: "native-live-linux",
+      from_json: inputPath,
+      proof_dir: recordTmpDir,
+      write: true,
+    });
+    assert.equal(blockedRecord.ok, false);
+    assert.equal(blockedRecord.status, "blocked_existing_proof");
+
+    const templatePath = path.join(recordTmpDir, "linux-proof-template.json");
+    await fs.writeFile(templatePath, `${JSON.stringify(nativeTemplate, null, 2)}\n`);
+    const invalidRecord = await buildOptionalLiveProofRecord({
+      id: "native-live-linux",
+      from_json: templatePath,
+      proof_dir: recordTmpDir,
+      write: true,
+      replace: true,
+    });
+    assert.equal(invalidRecord.ok, false);
+    assert.equal(invalidRecord.status, "invalid");
+    assert.ok(invalidRecord.validation.errors.includes("template_only_not_accepted"));
+  } finally {
+    await fs.rm(recordTmpDir, { recursive: true, force: true });
+  }
+
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-optional-proof-contract-"));
   try {
     await fs.writeFile(
@@ -171,6 +227,14 @@ async function assertOptionalLiveProofContract() {
     assert.equal(linuxPlan?.collection_mode, "cross_os_native_physical_gate");
     assert.equal(linuxPlan?.target_platform, "linux");
     assert.equal(linuxPlan?.commands.template, "npm run proof:optional-live-template -- --id native-live-linux --write");
+    assert.equal(
+      linuxPlan?.commands.record,
+      "npm run proof:optional-live-record -- --id native-live-linux --from-json <sanitized.json>",
+    );
+    assert.equal(
+      linuxPlan?.commands.record_write,
+      "npm run proof:optional-live-record -- --id native-live-linux --from-json <sanitized.json> --write",
+    );
     const idpPlan = plan.items.find((item) => item.id === "idp-oauth-popup");
     assert.equal(idpPlan?.status, "requires_approved_external_provider");
     assert.equal(idpPlan?.commands.local_fixture_baseline, "npm run check:auth-live");

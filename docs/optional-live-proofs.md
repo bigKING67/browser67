@@ -40,7 +40,8 @@ npm run plan:optional-live-proofs -- --json
 
 The plan reports each proof id, current satisfaction status, required host or
 provider kind, safe commands, blockers such as macOS Accessibility permission,
-and the evidence fields that must be present before a proof is accepted.
+the dry-run/write record commands, and the evidence fields that must be present
+before a proof is accepted.
 
 Generate safe starter templates instead of hand-writing JSON:
 
@@ -57,6 +58,22 @@ sanitized passing artifact. Passing proofs must remove `template_only:true` and
 replace any placeholder command with the exact approved command or runbook entry
 that produced the sanitized evidence. The local CAPTCHA physical gate writes its
 passing proof automatically after a successful run:
+
+After a Linux/Windows host or approved external IdP live gate produces a
+sanitized JSON proof, record it through the validator instead of copying files
+by hand:
+
+```bash
+npm run proof:optional-live-record -- --id native-live-linux --from-json /path/to/sanitized.json
+npm run proof:optional-live-record -- --id native-live-linux --from-json /path/to/sanitized.json --write
+```
+
+The default record command is dry-run only. It accepts a JSON file path, validates
+the proof against the selected requirement, prints input/output SHA-256 hashes,
+and does not read environment secrets, browser state, cookies, tokens, or
+clipboard data. `--write` persists the canonical JSON to the repo-external proof
+directory as `<proof-id>.json`; it refuses to overwrite an existing proof unless
+`--replace` is also supplied for an intentional audited refresh.
 
 ```bash
 npm run check:native-pointer
@@ -86,6 +103,12 @@ When macOS `cliclick` is installed but Accessibility permission is missing, the
 - `manual_steps`: the verify command and explicit physical-gate command.
 - `safe_defaults`: confirmation that the readiness report does not move the
   mouse, open Chrome, create managed tabs, or read browser private state.
+
+Readiness optional proof gaps also include a compact `proof_plan` object with
+the active proof directory, missing proof ids, and the copyable
+`npm run plan:optional-live-proofs -- --json` command. This keeps agent/UI
+callers on the same collection path as the CLI without embedding the full plan
+in every readiness response.
 
 Set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that automatic proof write, or
 `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail the gate if the sanitized proof
