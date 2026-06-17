@@ -1,0 +1,354 @@
+import { randomBytes } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import {
+  commandExists,
+  ensureNativeCommandOk,
+  normalizeCoordinate,
+  parseJsonFromCommandOutput,
+  runNativeCommand,
+} from "../../native-core.mjs";
+
+const PROVIDER_ID = "ljq-ctrl";
+const DEFAULT_PYTHON_CANDIDATES = ["python3", "python"];
+const LJQ_BRIDGE_TIMEOUT_MS = 5_000;
+const CAPTURE_DIR = path.join(tmpdir(), "tmwd-physical-input-captures");
+const DEFAULT_CAPABILITY_CACHE_TTL_MS = 5_000;
+let capabilityCache = null;
+
+function envEnabled(name) {
+  const value = String(process.env[name] ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function configuredPythonCandidates() {
+  const configured = String(process.env.TMWD_LJQCTRL_PYTHON ?? "").trim();
+  return configured ? [configured] : DEFAULT_PYTHON_CANDIDATES;
+}
+
+async function firstAvailablePython() {
+  const candidates = configuredPythonCandidates();
+  const checks = await Promise.all(candidates.map(async (binary) => ({
+    binary,
+    exists: await commandExists(binary, 1_200),
+  })));
+  return checks.find((entry) => entry.exists)?.binary ?? null;
+}
+
+function executionBridgeEnabled(options = {}) {
+  return options?.execute === true || envEnabled("TMWD_LJQCTRL_EXECUTE");
+}
+
+function cloneJson(value) {
+  return structuredClone(value);
+}
+
+function normalizeCacheTtlMs(raw) {
+  const parsed = Number(raw ?? DEFAULT_CAPABILITY_CACHE_TTL_MS);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_CAPABILITY_CACHE_TTL_MS;
+  }
+  return Math.max(0, Math.min(60_000, Math.floor(parsed)));
+}
+
+function capabilityCacheKey(options = {}) {
+  return JSON.stringify({
+    platform: process.platform,
+    path: process.env.PATH ?? "",
+    python: process.env.TMWD_LJQCTRL_PYTHON ?? "",
+    probe: options?.probe === true || envEnabled("TMWD_LJQCTRL_PROBE"),
+    execute: executionBridgeEnabled(options),
+  });
+}
+
+async function probeLjqCtrlApi(pythonBinary) {
+  if (!pythonBinary) {
+    return {
+      ok: false,
+      reason: "python_unavailable",
+    };
+  }
+  const script = [
+    "import json",
+    "try:",
+    "    import ljqCtrl",
+    "    print(json.dumps({",
+    "        'ok': True,",
+    "        'has_click': hasattr(ljqCtrl, 'Click'),",
+    "        'has_press': hasattr(ljqCtrl, 'Press'),",
+    "        'has_find_block': hasattr(ljqCtrl, 'FindBlock'),",
+    "        'has_grab_window': hasattr(ljqCtrl, 'GrabWindow'),",
+    "        'has_grab_window_bg': hasattr(ljqCtrl, 'GrabWindowBg'),",
+    "        'has_mouse_dclick': hasattr(ljqCtrl, 'MouseDClick'),",
+    "        'dpi_scale': getattr(ljqCtrl, 'dpi_scale', None),",
+    "    }))",
+    "except Exception as exc:",
+    "    print(json.dumps({'ok': False, 'reason': str(exc)[:300]}))",
+  ].join("\n");
+  try {
+    const result = await runNativeCommand(pythonBinary, ["-c", script], { timeoutMs: LJQ_BRIDGE_TIMEOUT_MS });
+    const parsed = parseJsonFromCommandOutput(result.stdout);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+    return {
+      ok: false,
+      reason: "invalid_probe_output",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: String(error?.message ?? error).slice(0, 300),
+    };
+  }
+}
+
+function supportedActionsFromProbe(probe = {}, executeEnabled = false) {
+  if (!executeEnabled || probe.ok !== true) {
+    return [];
+  }
+  const supported = [];
+  if (probe.has_click === true) {
+    supported.push("click");
+  }
+  if (probe.has_grab_window === true || probe.has_grab_window_bg === true) {
+    supported.push("capture_window_region");
+  }
+  return supported;
+}
+
+function unsupportedActionsFromSupported(supportedActions = []) {
+  const supported = new Set(supportedActions);
+  return ["activate_window", "click", "drag", "capture_window_region"]
+    .filter((action) => !supported.has(action));
+}
+
+async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
+  const cacheTtlMs = normalizeCacheTtlMs(options?.cache_ttl_ms);
+  const cacheKey = capabilityCacheKey(options);
+  const now = Date.now();
+  if (
+    options?.refresh !== true
+    && cacheTtlMs > 0
+    && capabilityCache?.key === cacheKey
+    && capabilityCache.expires_at > now
+  ) {
+    return {
+      ...cloneJson(capabilityCache.value),
+      cache: {
+        status: "hit",
+        ttl_ms: cacheTtlMs,
+      },
+    };
+  }
+  const executeEnabled = executionBridgeEnabled(options);
+  const probeEnabled = options?.probe === true || envEnabled("TMWD_LJQCTRL_PROBE") || executeEnabled;
+  const python = probeEnabled ? await firstAvailablePython() : null;
+  const apiProbe = probeEnabled ? await probeLjqCtrlApi(python) : { ok: false, reason: "probe_disabled" };
+  const supportedActions = supportedActionsFromProbe(apiProbe, executeEnabled);
+  const importable = apiProbe.ok === true;
+  const captureAvailable = importable && (apiProbe.has_grab_window === true || apiProbe.has_grab_window_bg === true);
+  const payload = {
+    provider_id: PROVIDER_ID,
+    provider_name: "ljqCtrl physical input",
+    status: importable ? (executeEnabled ? "available" : "probe_available") : "not_configured",
+    execution_mode: executeEnabled && importable ? "ljqctrl_physical_input" : "planned_provider",
+    coordinate_system: "physical_screen_pixels",
+    supports_window_activation: false,
+    supports_window_rect: false,
+    supports_window_region_capture: captureAvailable,
+    supports_background_capture: importable && apiProbe.has_grab_window_bg === true,
+    supported_actions: supportedActions,
+    unsupported_actions: unsupportedActionsFromSupported(supportedActions),
+    planned_actions: ["activate_window", "click", "drag", "capture_window_region"],
+    requirements: probeEnabled
+      ? (importable
+        ? (executeEnabled ? [] : ["Set TMWD_LJQCTRL_EXECUTE=1 to enable the guarded ljqCtrl execution bridge."])
+        : ["Install Python with ljqCtrl importable, or set TMWD_LJQCTRL_PYTHON."])
+      : ["Set TMWD_LJQCTRL_PROBE=1 to probe local ljqCtrl availability."],
+    permission_notes: [
+      "Use physical pixels only.",
+      "Activate the target browser window before input.",
+      "Capture only browser window or clipped regions; fullscreen capture is prohibited for CAPTCHA assist.",
+    ],
+    checks: {
+      probe_enabled: probeEnabled,
+      python: python ?? undefined,
+      ljqctrl_importable: importable,
+      ljqctrl_probe: apiProbe,
+      execution_bridge_enabled: executeEnabled && importable,
+    },
+    cache: {
+      status: "miss",
+      ttl_ms: cacheTtlMs,
+    },
+  };
+  if (cacheTtlMs > 0) {
+    capabilityCache = {
+      key: cacheKey,
+      expires_at: now + cacheTtlMs,
+      value: cloneJson(payload),
+    };
+  }
+  return payload;
+}
+
+function normalizeWindowTarget(args = {}) {
+  const windowTitle = String(args.window_title ?? "").trim();
+  const pidParsed = Number(args.window_pid);
+  const windowPid = Number.isInteger(pidParsed) && pidParsed > 0 ? pidParsed : null;
+  if (windowPid !== null) {
+    return windowPid;
+  }
+  if (windowTitle) {
+    return windowTitle;
+  }
+  return null;
+}
+
+function normalizeCaptureClip(raw = {}) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const width = normalizeCoordinate(raw.width, "clip.width");
+  const height = normalizeCoordinate(raw.height, "clip.height");
+  if (width <= 0 || height <= 0) {
+    throw new Error("clip width/height must be positive");
+  }
+  const x = normalizeCoordinate(raw.x, "clip.x");
+  const y = normalizeCoordinate(raw.y, "clip.y");
+  return { x, y, width, height };
+}
+
+async function makeCaptureArtifactPath() {
+  await mkdir(CAPTURE_DIR, { recursive: true });
+  return path.join(CAPTURE_DIR, `ljq-region-${Date.now()}-${randomBytes(4).toString("hex")}.png`);
+}
+
+function buildBridgeScript() {
+  return [
+    "import hashlib, json, os, sys",
+    "payload = json.loads(sys.stdin.read() or '{}')",
+    "action = payload.get('action')",
+    "try:",
+    "    import ljqCtrl",
+    "    if action == 'click':",
+    "        ljqCtrl.Click(int(payload['x']), int(payload['y']))",
+    "        print(json.dumps({'ok': True, 'action': action}))",
+    "    elif action == 'capture_window_region':",
+    "        target = payload.get('window_pid') or payload.get('window_title')",
+    "        if not target:",
+    "            raise RuntimeError('window_title or window_pid is required')",
+    "        use_bg = bool(payload.get('background')) and hasattr(ljqCtrl, 'GrabWindowBg')",
+    "        img = ljqCtrl.GrabWindowBg(target, timeout=payload.get('timeout_s', 5)) if use_bg else ljqCtrl.GrabWindow(target)",
+    "        clip = payload.get('clip')",
+    "        original_size = getattr(img, 'size', [None, None])",
+    "        if clip:",
+    "            x = int(clip['x']); y = int(clip['y']); w = int(clip['width']); h = int(clip['height'])",
+    "            img = img.crop((x, y, x + w, y + h))",
+    "        else:",
+    "            raise RuntimeError('clip is required for window-region capture')",
+    "        size = getattr(img, 'size', [None, None])",
+    "        output_path = payload.get('output_path')",
+    "        artifact = None",
+    "        if output_path:",
+    "            os.makedirs(os.path.dirname(output_path), exist_ok=True)",
+    "            img.save(output_path, format='PNG')",
+    "            with open(output_path, 'rb') as fh:",
+    "                data = fh.read()",
+    "            artifact = {'path': output_path, 'sha256': hashlib.sha256(data).hexdigest(), 'mime_type': 'image/png', 'bytes': len(data), 'width': size[0], 'height': size[1], 'clip': clip, 'fullscreen': False, 'ttl_ms': 600000, 'created_at': payload.get('created_at'), 'expires_at': payload.get('expires_at')}",
+    "        print(json.dumps({'ok': True, 'action': action, 'background': use_bg, 'original_width': original_size[0], 'original_height': original_size[1], 'width': size[0], 'height': size[1], 'clip_applied': bool(clip), 'artifact': artifact}))",
+    "    else:",
+    "        raise RuntimeError('unsupported ljqCtrl action: %s' % action)",
+    "except Exception as exc:",
+    "    print(json.dumps({'ok': False, 'action': action, 'error': str(exc)[:500]}))",
+  ].join("\n");
+}
+
+async function runLjqCtrlPhysicalInputAction(action, args = {}, options = {}) {
+  const capabilities = await getLjqCtrlPhysicalInputProviderCapabilities({
+    ...options,
+    probe: true,
+  });
+  if (!capabilities.supported_actions.includes(action)) {
+    return {
+      status: "blocked",
+      action,
+      reason: "ljqctrl_action_not_supported_or_not_enabled",
+      provider_id: PROVIDER_ID,
+      capabilities,
+    };
+  }
+  const bridgePayload = { action };
+  if (action === "click") {
+    bridgePayload.x = normalizeCoordinate(args.x, "x");
+    bridgePayload.y = normalizeCoordinate(args.y, "y");
+  } else if (action === "capture_window_region") {
+    const target = normalizeWindowTarget(args);
+    if (target === null) {
+      return {
+        status: "blocked",
+        action,
+        reason: "window_target_required",
+        provider_id: PROVIDER_ID,
+      };
+    }
+    if (typeof target === "number") {
+      bridgePayload.window_pid = target;
+    } else {
+      bridgePayload.window_title = target;
+    }
+    bridgePayload.background = args.background === true;
+    bridgePayload.timeout_s = Math.max(1, Math.min(30, Math.round(Number(args.timeout_s ?? 5) || 5)));
+    if (!args.clip) {
+      return {
+        status: "blocked",
+        action,
+        reason: "clip_required",
+        provider_id: PROVIDER_ID,
+      };
+    }
+    bridgePayload.clip = normalizeCaptureClip(args.clip);
+    bridgePayload.output_path = await makeCaptureArtifactPath();
+    const createdAtMs = Date.now();
+    bridgePayload.created_at = new Date(createdAtMs).toISOString();
+    bridgePayload.expires_at = new Date(createdAtMs + 600_000).toISOString();
+  } else {
+    return {
+      status: "blocked",
+      action,
+      reason: "ljqctrl_action_not_implemented",
+      provider_id: PROVIDER_ID,
+    };
+  }
+  const python = capabilities.checks?.python;
+  const result = await runNativeCommand(python, ["-c", buildBridgeScript()], {
+    timeoutMs: LJQ_BRIDGE_TIMEOUT_MS,
+    input: JSON.stringify(bridgePayload),
+  });
+  ensureNativeCommandOk(result, "ljqCtrl bridge");
+  const parsed = parseJsonFromCommandOutput(result.stdout);
+  if (!parsed?.ok) {
+    return {
+      status: "blocked",
+      action,
+      reason: "ljqctrl_bridge_failed",
+      provider_id: PROVIDER_ID,
+      error: String(parsed?.error ?? "invalid ljqCtrl bridge output"),
+    };
+  }
+  return {
+    status: "success",
+    provider_id: PROVIDER_ID,
+    coordinate_system: "physical_screen_pixels",
+    ...parsed,
+  };
+}
+
+export {
+  PROVIDER_ID as LJQ_CTRL_PROVIDER_ID,
+  getLjqCtrlPhysicalInputProviderCapabilities,
+  runLjqCtrlPhysicalInputAction,
+};

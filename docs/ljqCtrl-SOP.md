@@ -14,6 +14,34 @@
 ## 1. 环境载入
 import ljqCtrl
 
+## 1.1 TMWD 诊断入口
+
+在 `tmwd-browser-mcp` 仓库内优先用项目内 doctor 验证本机 Python bridge：
+
+```bash
+npm run check:ljqctrl
+```
+
+默认只做诊断：探测 `python3`/`python` 是否能 `import ljqCtrl`，并报告
+`Click`、`Press`、`FindBlock`、`GrabWindow`、`GrabWindowBg` 和 `dpi_scale`
+能力；不会激活窗口、点击、拖拽、截图或读写剪贴板。如果 `ljqCtrl` 安装在
+非默认 Python 环境，设置：
+
+```bash
+TMWD_LJQCTRL_PYTHON=/path/to/python npm run check:ljqctrl
+```
+
+需要把诊断变成机器本地硬门禁时才使用：
+
+```bash
+TMWD_LJQCTRL_REQUIRE=1 npm run check:ljqctrl
+TMWD_LJQCTRL_REQUIRE_CAPTURE=1 npm run check:ljqctrl
+TMWD_LJQCTRL_REQUIRE_EXECUTE=1 npm run check:ljqctrl
+```
+
+`TMWD_LJQCTRL_EXECUTE=1` 只开启 guarded bridge 的能力判定；实际 CAPTCHA
+assist 仍要求 `confirm_physical_input:true` 和坐标确认参数。
+
 ## 2. 核心：High-DPI 物理坐标换算
 `ljqCtrl` 的 `Click/MoveTo` 接口接收的是**物理像素坐标**。
 当使用 `pygetwindow` 等其他工具获取窗口位置（逻辑坐标）时，必须除以缩放系数。
