@@ -3,6 +3,7 @@
 import process from "node:process";
 
 import { detectNativeInputCapabilities } from "../native-capabilities.mjs";
+import { buildNativePointerReadinessReport } from "../native-capabilities/pointer-readiness.mjs";
 
 function parseArgs(argv) {
   const parsed = {
@@ -27,47 +28,16 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function supports(capabilities, action) {
-  return Array.isArray(capabilities.supported_actions)
-    && capabilities.supported_actions.includes(action);
-}
-
-function buildNextSteps(capabilities) {
-  const requirements = Array.isArray(capabilities.requirements) ? capabilities.requirements : [];
-  if (requirements.length > 0) {
-    return requirements;
-  }
-  if (supports(capabilities, "click") && supports(capabilities, "drag")) {
-    return [
-      "Native pointer click/drag are ready; run physical CAPTCHA assist only after explicit confirmation.",
-    ];
-  }
-  return [
-    "Native pointer click/drag are not available on this platform/provider.",
-  ];
-}
-
 async function buildReport() {
   const capabilities = await detectNativeInputCapabilities({
     refresh: true,
     cache_ttl_ms: 0,
   });
-  const clickReady = supports(capabilities, "click");
-  const dragReady = supports(capabilities, "drag");
   return {
-    ok: clickReady && dragReady,
-    status: clickReady && dragReady ? "pointer_ready" : "requirements_missing",
-    check: "native-pointer-readiness",
-    platform: capabilities.platform ?? process.platform,
-    driver: capabilities.driver ?? "unknown",
-    supports_click: clickReady,
-    supports_drag: dragReady,
-    supported_actions: Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [],
-    unsupported_actions: Array.isArray(capabilities.unsupported_actions) ? capabilities.unsupported_actions : [],
-    checks: capabilities.checks ?? {},
-    requirements: Array.isArray(capabilities.requirements) ? capabilities.requirements : [],
-    permission_notes: Array.isArray(capabilities.permission_notes) ? capabilities.permission_notes : [],
-    next_steps: buildNextSteps(capabilities),
+    ...buildNativePointerReadinessReport(capabilities, {
+      check: "native-pointer-readiness",
+      platform: process.platform,
+    }),
     physical_gate_command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
     safe_default: "diagnostic_only_no_pointer_input",
   };

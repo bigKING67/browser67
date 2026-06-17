@@ -6,6 +6,7 @@ import {
   clearNativeInputCapabilitiesCache,
   detectNativeInputCapabilities,
 } from "../../src/native-capabilities.mjs";
+import { buildNativePointerReadinessReport } from "../../src/native-capabilities/pointer-readiness.mjs";
 import { detectPhysicalInputCapabilities } from "../../src/physical-input/index.mjs";
 
 async function writeFakePythonProbe(dir, name, payload) {
@@ -106,7 +107,65 @@ async function assertLjqCtrlPythonCandidateSelection() {
   }
 }
 
+function assertNativePointerReadinessReportContract() {
+  const ready = buildNativePointerReadinessReport({
+    platform: "contract-os",
+    driver: "contract-driver",
+    supported_actions: ["click", "drag", "press"],
+    unsupported_actions: ["scroll"],
+    checks: { contract_ready: true },
+    requirements: [],
+    permission_notes: ["contract note"],
+  }, {
+    check: "contract-pointer-readiness",
+    ready_message: "ready contract message",
+  });
+  assert.equal(ready.ok, true);
+  assert.equal(ready.status, "pointer_ready");
+  assert.equal(ready.check, "contract-pointer-readiness");
+  assert.equal(ready.supports_click, true);
+  assert.equal(ready.supports_drag, true);
+  assert.deepEqual(ready.next_steps, ["ready contract message"]);
+  assert.deepEqual(ready.permission_notes, ["contract note"]);
+
+  const missingWithRequirement = buildNativePointerReadinessReport({
+    platform: "contract-os",
+    driver: "contract-driver",
+    supported_actions: ["press"],
+    unsupported_actions: ["click", "drag"],
+    checks: { contract_ready: false },
+    requirements: ["grant contract permission"],
+  }, {
+    include_readiness_command: true,
+  });
+  assert.equal(missingWithRequirement.ok, false);
+  assert.equal(missingWithRequirement.status, "requirements_missing");
+  assert.equal(missingWithRequirement.supports_click, false);
+  assert.equal(missingWithRequirement.supports_drag, false);
+  assert.deepEqual(missingWithRequirement.next_steps, [
+    "Run npm run check:native-pointer.",
+    "grant contract permission",
+  ]);
+
+  const missingWithoutRequirement = buildNativePointerReadinessReport({
+    platform: "contract-os",
+    driver: "contract-driver",
+    supported_actions: ["click"],
+    unsupported_actions: ["drag"],
+    checks: {},
+  }, {
+    missing_message: "contract missing message",
+  });
+  assert.equal(missingWithoutRequirement.ok, false);
+  assert.equal(missingWithoutRequirement.status, "requirements_missing");
+  assert.equal(missingWithoutRequirement.supports_click, true);
+  assert.equal(missingWithoutRequirement.supports_drag, false);
+  assert.deepEqual(missingWithoutRequirement.requirements, []);
+  assert.deepEqual(missingWithoutRequirement.next_steps, ["contract missing message"]);
+}
+
 async function assertNativeCapabilitySurface() {
+  assertNativePointerReadinessReportContract();
   clearNativeInputCapabilitiesCache();
   const uncachedNativeCapabilities = await detectNativeInputCapabilities({
     cache_ttl_ms: 60_000,
