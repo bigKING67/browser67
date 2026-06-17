@@ -7,6 +7,7 @@ import {
   buildChangeSetReport,
 } from "./change-set-lib.mjs";
 import { buildOptionalLiveProofAudit } from "./optional-live-proof-audit.mjs";
+import { getLjqCtrlPhysicalInputProviderCapabilities } from "../src/physical-input/providers/ljq-ctrl.mjs";
 
 const DEFAULT_FAIL_BELOW = 99.0;
 
@@ -76,6 +77,115 @@ function createGap(id, severity, deduction, evidence, next_step) {
     evidence,
     next_step,
   };
+}
+
+function compactText(value, maxLength = 180) {
+  return String(value ?? "unknown").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function envEnabled(name) {
+  const value = String(process.env[name] ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function summarizeLjqCtrlCandidate(candidate = {}) {
+  const marker = candidate.selected === true ? "*" : "";
+  const reason = candidate.reason ? ` reason=${compactText(candidate.reason, 80)}` : "";
+  return `${marker}${candidate.python ?? "unknown"} exists=${candidate.exists === true} importable=${candidate.importable === true}${reason}`;
+}
+
+function buildLjqCtrlEvidence(probe = {}) {
+  const candidates = Array.isArray(probe.python_candidates) ? probe.python_candidates : [];
+  const candidateText = candidates.slice(0, 4).map(summarizeLjqCtrlCandidate).join("; ") || "none";
+  const moreText = candidates.length > 4 ? `; more=${candidates.length - 4}` : "";
+  return [
+    `source=${probe.python_candidate_source ?? "unknown"}`,
+    `selected=${probe.python ?? "none"}`,
+    `importable=${probe.ljqctrl_importable === true}`,
+    `execution_bridge_enabled=${probe.execution_bridge_enabled === true}`,
+    `candidates=${candidateText}${moreText}`,
+  ].join(" ");
+}
+
+async function probeLjqCtrlReadiness() {
+  try {
+    const capabilities = await getLjqCtrlPhysicalInputProviderCapabilities({
+      probe: true,
+      refresh: true,
+      cache_ttl_ms: 0,
+    });
+    const checks = capabilities.checks ?? {};
+    return {
+      status: capabilities.status,
+      python: checks.python,
+      python_candidate_source: checks.python_candidate_source,
+      python_selection_reason: checks.python_selection_reason,
+      python_candidates: Array.isArray(checks.python_candidates) ? checks.python_candidates : [],
+      ljqctrl_importable: checks.ljqctrl_importable === true,
+      execution_bridge_enabled: checks.execution_bridge_enabled === true,
+      supports_window_region_capture: capabilities.supports_window_region_capture === true,
+      supports_background_capture: capabilities.supports_background_capture === true,
+      supported_actions: Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [],
+      requirements: Array.isArray(capabilities.requirements) ? capabilities.requirements : [],
+    };
+  } catch (error) {
+    return {
+      error: compactText(error instanceof Error ? error.message : String(error), 300),
+    };
+  }
+}
+
+function buildLjqCtrlGap(probe = {}) {
+  if (probe.error) {
+    return createGap(
+      "ljqctrl_probe_failed",
+      "optional_live",
+      0.006,
+      `diagnostic probe failed: ${probe.error}`,
+      "Run npm run check:ljqctrl for the detailed diagnostic and fix the local probe path before using ljqCtrl assist.",
+    );
+  }
+
+  const configuredExternally = probe.python_candidate_source !== "default"
+    || envEnabled("TMWD_LJQCTRL_EXECUTE");
+  const evidence = buildLjqCtrlEvidence(probe);
+
+  if (probe.ljqctrl_importable === true) {
+    if (probe.execution_bridge_enabled === true) {
+      return createGap(
+        "ljqctrl_execution_bridge_available",
+        "informational",
+        0,
+        evidence,
+        "Keep ljqCtrl execution gated to trusted local CAPTCHA-assist live gates; run npm run check:ljqctrl after driver or Python changes.",
+      );
+    }
+    return createGap(
+      "ljqctrl_probe_available_execution_gated",
+      "informational",
+      0,
+      evidence,
+      "Set TMWD_LJQCTRL_EXECUTE=1 only for an approved local physical-input run; keep normal readiness diagnostic-only.",
+    );
+  }
+
+  if (configuredExternally) {
+    return createGap(
+      "ljqctrl_config_invalid",
+      "optional_live",
+      0.006,
+      evidence,
+      "Fix TMWD_LJQCTRL_PYTHON or TMWD_LJQCTRL_PYTHON_CANDIDATES so the selected interpreter can import ljqCtrl, then run npm run check:ljqctrl.",
+    );
+  }
+
+  return createGap(
+    "ljqctrl_not_configured",
+    "optional_live",
+    0.006,
+    evidence,
+    "Set TMWD_LJQCTRL_PYTHON or TMWD_LJQCTRL_PYTHON_CANDIDATES to interpreter(s) that can import ljqCtrl, then run npm run check:ljqctrl.",
+  );
 }
 
 function buildRequiredChecks({ packageJson, readme, skill, verifySource, report }) {
@@ -160,7 +270,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
 
 async function buildOptionalGaps({ report }) {
   const gaps = [];
-  const optionalProofAudit = await buildOptionalLiveProofAudit({});
+  const [optionalProofAudit, ljqCtrlProbe] = await Promise.all([
+    buildOptionalLiveProofAudit({}),
+    probeLjqCtrlReadiness(),
+  ]);
 
   if (report.changed_paths_count > 0) {
     gaps.push(createGap(
@@ -172,27 +285,7 @@ async function buildOptionalGaps({ report }) {
     ));
   }
 
-  if (
-    process.env.TMWD_LJQCTRL_PYTHON !== undefined
-    || process.env.TMWD_LJQCTRL_PYTHON_CANDIDATES !== undefined
-    || process.env.TMWD_LJQCTRL_EXECUTE === "1"
-  ) {
-    gaps.push(createGap(
-      "ljqctrl_config_external",
-      "informational",
-      0,
-      "ljqCtrl environment is externally supplied; use npm run check:ljqctrl for live proof.",
-      "Keep ljqCtrl execution gated by TMWD_LJQCTRL_EXECUTE=1.",
-    ));
-  } else {
-    gaps.push(createGap(
-      "ljqctrl_not_configured",
-      "optional_live",
-      0.006,
-      "TMWD_LJQCTRL_PYTHON/TMWD_LJQCTRL_PYTHON_CANDIDATES unset and TMWD_LJQCTRL_EXECUTE not enabled",
-      "Set TMWD_LJQCTRL_PYTHON or TMWD_LJQCTRL_PYTHON_CANDIDATES to interpreter(s) that can import ljqCtrl, then run npm run check:ljqctrl.",
-    ));
-  }
+  gaps.push(buildLjqCtrlGap(ljqCtrlProbe));
 
   if (process.env.TMWD_CAPTCHA_ASSIST_PHYSICAL !== "1" || process.env.TMWD_CAPTCHA_ASSIST_CONFIRM !== "1") {
     gaps.push(createGap(
