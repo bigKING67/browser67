@@ -358,7 +358,11 @@ readiness audit also consumes `check:optional-live-proofs` results so collected
 local physical/cross-OS/provider evidence can remove those optional gaps without
 storing secrets in the repository. When local CAPTCHA proof is missing, it
 distinguishes "native pointer is not ready", "physical gate was not run", and
-"physical gate appears runnable but no accepted proof was persisted". It is
+"physical gate appears runnable but no accepted proof was persisted". If macOS
+Accessibility blocks `cliclick`, the native-pointer and CAPTCHA-blocked JSON
+gaps also carry the same structured `permission_recovery` plan exposed by
+`check:native-pointer`, so callers can render the exact Settings path and
+copyable recovery commands without a second probe. It is
 read-only; use `--strict` when a local release gate should fail on optional
 gaps too.
 

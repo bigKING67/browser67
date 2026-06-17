@@ -66,7 +66,8 @@ Accessibility privileges for the current terminal/Codex host.
 the mouse; use `npm run check:native-pointer -- --require-pointer` only when a
 local release gate should fail until click/drag support is genuinely available.
 When macOS `cliclick` is installed but Accessibility permission is missing, the
-readiness JSON includes `permission_recovery` with:
+`check:native-pointer -- --json` report, plus the affected
+`check:readiness -- --json` optional gaps, include `permission_recovery` with:
 
 - `settings_path`: the exact System Settings pane to open.
 - `open_settings_command`: a copyable macOS `open` command.

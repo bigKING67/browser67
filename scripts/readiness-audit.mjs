@@ -7,6 +7,7 @@ import {
   buildChangeSetReport,
 } from "./change-set-lib.mjs";
 import { buildOptionalLiveProofAudit } from "./optional-live-proof-audit.mjs";
+import { buildNativePointerReadinessReport } from "../src/native-capabilities/pointer-readiness.mjs";
 import { detectNativeInputCapabilities } from "../src/native-input.mjs";
 import { getLjqCtrlPhysicalInputProviderCapabilities } from "../src/physical-input/providers/ljq-ctrl.mjs";
 
@@ -70,13 +71,22 @@ function createCheck(id, ok, evidence, required = true) {
   };
 }
 
-function createGap(id, severity, deduction, evidence, next_step) {
+function createGap(id, severity, deduction, evidence, next_step, details = {}) {
+  const {
+    id: _id,
+    severity: _severity,
+    deduction: _deduction,
+    evidence: _evidence,
+    next_step: _nextStep,
+    ...safeDetails
+  } = details;
   return {
     id,
     severity,
     deduction,
     evidence,
     next_step,
+    ...safeDetails,
   };
 }
 
@@ -209,7 +219,13 @@ function buildLjqCtrlGap(probe = {}) {
   );
 }
 
-function buildNativePointerGap(capabilities = {}) {
+function recoveryDetails(pointerReadiness = {}) {
+  return pointerReadiness.permission_recovery
+    ? { permission_recovery: pointerReadiness.permission_recovery }
+    : {};
+}
+
+function buildNativePointerGap(capabilities = {}, pointerReadiness = {}) {
   if (nativePointerReady(capabilities)) {
     return null;
   }
@@ -230,10 +246,11 @@ function buildNativePointerGap(capabilities = {}) {
     0,
     evidence,
     "Fix the native pointer provider requirements before running physical CAPTCHA assist; on macOS this usually means granting Accessibility permission to the current terminal/Codex host.",
+    recoveryDetails(pointerReadiness),
   );
 }
 
-function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities) {
+function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, pointerReadiness = {}) {
   const localCaptchaPhysicalProof = optionalProofAudit.local_requirements
     ?.find((requirement) => requirement.id === "captcha-assist-physical-local" && requirement.satisfied === true);
   if (localCaptchaPhysicalProof) {
@@ -253,6 +270,7 @@ function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities) {
       0.006,
       `native pointer click/drag unavailable and no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
       "Fix native pointer requirements first, confirm with npm run check:native-pointer, then run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live.",
+      recoveryDetails(pointerReadiness),
     );
   }
 
@@ -366,6 +384,10 @@ async function buildOptionalGaps({ report }) {
     probeLjqCtrlReadiness(),
     detectNativeInputCapabilities({ refresh: true, cache_ttl_ms: 0 }),
   ]);
+  const nativePointerReadiness = buildNativePointerReadinessReport(nativeCapabilities, {
+    verify_command: "npm run check:native-pointer",
+    physical_gate_command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+  });
 
   if (report.changed_paths_count > 0) {
     gaps.push(createGap(
@@ -378,12 +400,12 @@ async function buildOptionalGaps({ report }) {
   }
 
   gaps.push(buildLjqCtrlGap(ljqCtrlProbe));
-  const nativePointerGap = buildNativePointerGap(nativeCapabilities);
+  const nativePointerGap = buildNativePointerGap(nativeCapabilities, nativePointerReadiness);
   if (nativePointerGap) {
     gaps.push(nativePointerGap);
   }
 
-  gaps.push(buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities));
+  gaps.push(buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, nativePointerReadiness));
 
   const missingNativeProofs = optionalProofAudit.missing.filter((id) => id.startsWith("native-live-"));
   if (missingNativeProofs.length > 0) {

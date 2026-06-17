@@ -68,6 +68,35 @@ function findGap(audit, id) {
   return audit.optional_gaps.find((gap) => gap.id === id);
 }
 
+function assertPermissionRecoveryPlan(plan) {
+  assert.equal(plan?.status, "permission_required");
+  assert.equal(plan?.blocker, "macos_accessibility_for_current_terminal");
+  assert.deepEqual(plan?.affected_actions, ["click", "drag"]);
+  assert.equal(plan?.settings_path, "System Settings -> Privacy & Security -> Accessibility");
+  assert.match(plan?.open_settings_command ?? "", /Privacy_Accessibility/);
+  assert.equal(Array.isArray(plan?.manual_steps), true);
+  assert.equal(
+    plan?.manual_steps.some((step) => step.includes("npm run check:native-pointer")),
+    true,
+  );
+  assert.equal(
+    plan?.manual_steps.some((step) => step.includes("TMWD_CAPTCHA_ASSIST_PHYSICAL=1")),
+    true,
+  );
+  assert.equal(
+    plan?.safe_defaults.includes("This report does not move the mouse."),
+    true,
+  );
+  assert.equal(
+    plan?.safe_defaults.includes("This report does not open Chrome or create a managed tab."),
+    true,
+  );
+  assert.equal(
+    plan?.safe_defaults.includes("This report does not read browser private state."),
+    true,
+  );
+}
+
 async function assertReadinessLjqCtrlProbeContract() {
   if (process.platform === "win32") {
     return;
@@ -91,6 +120,18 @@ async function assertReadinessLjqCtrlProbeContract() {
       assert.equal(platformGap?.deduction, 0);
       assert.match(platformGap?.evidence ?? "", /platform_supported=false/);
       assert.equal(findGap(defaultAudit, "ljqctrl_not_configured"), undefined);
+    }
+    const defaultNativePointerGap = findGap(defaultAudit, "native_pointer_actions_unavailable");
+    if (defaultNativePointerGap?.permission_recovery) {
+      assertPermissionRecoveryPlan(defaultNativePointerGap.permission_recovery);
+    }
+    const defaultCaptchaBlockedGap = findGap(defaultAudit, "captcha_physical_live_gate_blocked_by_native_pointer");
+    if (defaultCaptchaBlockedGap?.permission_recovery) {
+      assertPermissionRecoveryPlan(defaultCaptchaBlockedGap.permission_recovery);
+      assert.equal(
+        defaultCaptchaBlockedGap.permission_recovery.blocker,
+        defaultNativePointerGap?.permission_recovery?.blocker,
+      );
     }
 
     const proofDir = path.join(tmpDir, "proofs");
