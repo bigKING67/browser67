@@ -233,7 +233,10 @@ foreground window, and requires either caller-supplied screen coordinates or
 `use_vision_corrected_coordinates:true` plus
 `confirm_corrected_coordinates:true`. For normal
 TMWD-owned tabs, it foregrounds the target with TMWD `tabs.switch` before
-physical provider input; `window_title`, `window_pid`, and
+physical provider input, waits for `pre_input_settle_ms`, then refreshes the
+planner/vision coordinates against the now-active window before sending native
+input. This post-activation refresh avoids stale Chrome toolbar/content inset
+estimates. `window_title`, `window_pid`, and
 `window_active_confirmed:true` are fallbacks for unusual window-manager cases.
 `physical_input_provider:"auto"` currently executes through `native-os` unless
 the guarded `ljq-ctrl` bridge is explicitly enabled and reports the needed

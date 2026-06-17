@@ -141,7 +141,9 @@ about these invariants:
 - Local CAPTCHA physical proofs set `evidence.browser_private_state_access:false`.
 - Local CAPTCHA physical proofs include visible slider movement evidence:
   `evidence.slider_visual_offset`, `evidence.slider_delta_live`, and
-  `evidence.handle_transform`.
+  `evidence.handle_transform`. The validator rejects local CAPTCHA proofs unless
+  both movement fields are at least `180` pixels and the transform is
+  `translateX(...px)`.
 
 Accepted proofs expose freshness metadata through `check:optional-live-proofs`,
 `plan:optional-live-proofs`, and `check:readiness`. This lets callers distinguish

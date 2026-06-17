@@ -155,8 +155,11 @@ and clipped screenshot plan, but do not infer inner controls or send physical
 input into the frame.
 For normal
 TMWD-owned tabs it uses TMWD tabs.switch to foreground the target before
-physical provider input; explicit window_title/window_pid/window_active_confirmed
-are fallbacks. physical_input_provider=auto currently executes through native-os
+physical provider input, waits for pre_input_settle_ms, and refreshes
+planner/vision coordinates against the active window before the native click or
+drag. This avoids stale Chrome toolbar/content inset estimates. Explicit
+window_title/window_pid/window_active_confirmed are fallbacks.
+physical_input_provider=auto currently executes through native-os
 unless the guarded ljq-ctrl bridge is explicitly enabled and reports the
 requested action. Run `npm run check:ljqctrl` to diagnose local Python ljqCtrl
 availability and click/window-region capture support without physical input.
