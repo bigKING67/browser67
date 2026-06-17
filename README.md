@@ -298,8 +298,9 @@ npm run check:js-reverse-live
 uses the current local browser environment and can fail when the extension or hub
 is not connected. `check:captcha-assist-live` is planning-only by default and now
 also validates region-only screenshot artifact creation, scroll-adjusted CDP
-clips, same-origin iframe coordinate conversion, and first-pass slider vision
-correction, plus cross-origin iframe degraded/manual handoff behavior.
+clips, same-origin iframe coordinate conversion, first-pass slider vision
+correction, synthetic slider visual movement, and cross-origin iframe
+degraded/manual handoff behavior.
 `check:captcha-assist-physical-live` is the optional hard physical gate. It is
 skipped by default and only runs the local physical slider drag when both
 `TMWD_CAPTCHA_ASSIST_PHYSICAL=1` and `TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set;
@@ -314,8 +315,10 @@ actions must be genuinely available: run `npm run check:native-pointer` first to
 verify whether the current OS provider can actually click/drag without moving
 the mouse. On macOS, `cliclick` is treated as pointer-capable only when its
 diagnostic probe does not report missing Accessibility privileges for the
-current terminal/Codex host. When the physical branch passes, it writes a
-sanitized repo-external proof under `~/.tmwd-browser-mcp/optional-live-proofs`
+current terminal/Codex host. When the physical branch passes, it asserts both
+the completion flag and visible slider movement (`slider_visual_offset` /
+`handle_transform`), then writes a sanitized repo-external proof under
+`~/.tmwd-browser-mcp/optional-live-proofs`
 or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable
 that proof write, or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to make proof-write
 failure fail the gate.

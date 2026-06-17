@@ -102,6 +102,9 @@ function createProofTemplate(requirement, now = new Date()) {
       secrets_redacted: true,
       evidence: {
         assist_target: "slider",
+        slider_visual_offset: null,
+        slider_delta_live: null,
+        handle_transform: null,
         browser_private_state_access: false,
         notes: "This template is intentionally not accepted. Run the physical gate to generate a sanitized passing proof automatically.",
       },

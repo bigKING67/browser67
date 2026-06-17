@@ -152,6 +152,9 @@ about these invariants:
   "secrets_redacted": true,
   "evidence": {
     "assist_target": "slider",
+    "slider_visual_offset": 260,
+    "slider_delta_live": "260",
+    "handle_transform": "translateX(260px)",
     "browser_private_state_access": false
   }
 }

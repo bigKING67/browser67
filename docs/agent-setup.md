@@ -226,8 +226,9 @@ lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking,
 manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking,
 redaction, manual handoff context, and finalizer cleanup.
 After CAPTCHA assist changes, run `npm run check:captcha-assist-live`; it
-validates normal, scrolled, and same-origin iframe slider fixtures, is
-planning-only. Use `npm run check:captcha-assist-physical-live` for the optional
+validates normal, scrolled, same-origin iframe, and synthetic visual-movement
+slider fixtures, and is planning-only. Use
+`npm run check:captcha-assist-physical-live` for the optional
 local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with
 TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1. Native pointer actions must be genuinely

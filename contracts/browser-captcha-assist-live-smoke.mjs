@@ -17,7 +17,10 @@ import {
   runPhysicalAssistIfEnabled,
 } from "./browser-captcha-assist-live-smoke/physical-gate.mjs";
 import { createCaptchaSmokeRpc } from "./browser-captcha-assist-live-smoke/rpc.mjs";
-import { runSliderMatrixCase } from "./browser-captcha-assist-live-smoke/slider-cases.mjs";
+import {
+  runSliderMatrixCase,
+  runSliderVisualFeedbackCase,
+} from "./browser-captcha-assist-live-smoke/slider-cases.mjs";
 
 function compactCoordinateSummary(plan = {}) {
   return {
@@ -330,6 +333,13 @@ async function run() {
         path: "/slider-login-canvas",
         expect_device_pixel_ratio: true,
       },
+      toolArgs,
+      workspaceKey,
+    });
+    await runSliderVisualFeedbackCase({
+      callTool,
+      fixture,
+      matrixResults,
       toolArgs,
       workspaceKey,
     });

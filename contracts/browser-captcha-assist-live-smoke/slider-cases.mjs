@@ -137,6 +137,113 @@ async function runSliderMatrixCase({
   return matrixPlan;
 }
 
+async function runSliderVisualFeedbackCase({
+  callTool,
+  fixture,
+  matrixResults,
+  toolArgs,
+  workspaceKey,
+}) {
+  const managed = await callTool("browser_tab_lifecycle", {
+    ...toolArgs,
+    action: "select_or_create",
+    url: `${fixture.origin}/slider-login`,
+    workspace_key: workspaceKey,
+    fresh: true,
+    active: true,
+    wait_until: "listed",
+    wait_timeout_ms: 5_000,
+    wait_poll_ms: 100,
+  });
+  const visualTabId = String(managed?.managed_tab?.tab_id ?? "");
+  assert.ok(visualTabId, "visual feedback case did not return managed tab id");
+  const ready = await waitFor(async () => {
+    try {
+      const inspected = await callTool("browser_execute_js", {
+        ...toolArgs,
+        tab_id: visualTabId,
+        script: "return { path: location.pathname, has_slider: Boolean(document.querySelector('#slider-captcha')), has_handle: Boolean(document.querySelector('#slider-handle')) };",
+      });
+      return {
+        ok: inspected?.js_return?.path === "/slider-login"
+          && inspected?.js_return?.has_slider === true
+          && inspected?.js_return?.has_handle === true,
+        inspected,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, 5_000);
+  assert.equal(ready.ok, true, `visual feedback fixture did not settle: ${JSON.stringify(ready.inspected)}`);
+
+  const visualDrag = await callTool("browser_execute_js", {
+    ...toolArgs,
+    tab_id: visualTabId,
+    script: `
+      const root = document.querySelector("#slider-captcha");
+      const handle = document.querySelector("#slider-handle");
+      const rootRect = root.getBoundingClientRect();
+      const handleRect = handle.getBoundingClientRect();
+      const pointerSupported = typeof PointerEvent === "function";
+      const EventCtor = pointerSupported ? PointerEvent : MouseEvent;
+      const eventType = pointerSupported ? "pointer" : "mouse";
+      const emit = (target, type, x) => {
+        target.dispatchEvent(new EventCtor(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: rootRect.top + rootRect.height / 2,
+          pointerId: 1,
+          pointerType: "mouse",
+          buttons: type.endsWith("up") ? 0 : 1,
+        }));
+      };
+      const startX = handleRect.left + handleRect.width / 2;
+      const endX = rootRect.left + 300;
+      emit(handle, eventType + "down", startX);
+      emit(window, eventType + "move", rootRect.left + 160);
+      emit(window, eventType + "move", endX);
+      emit(window, eventType + "up", endX);
+      const finalRootRect = root.getBoundingClientRect();
+      const finalHandleRect = handle.getBoundingClientRect();
+      return {
+        event_type: eventType,
+        slider_completed: document.body.dataset.sliderCompleted === "true",
+        slider_delta: document.body.dataset.sliderDelta || null,
+        slider_delta_live: document.body.dataset.sliderDeltaLive || null,
+        slider_visual_offset: Math.round(finalHandleRect.left - finalRootRect.left - 2),
+        handle_transform: handle.style.transform || null,
+        status_text: document.querySelector("#slider-status")?.textContent || null,
+      };
+    `,
+  });
+  const result = visualDrag?.js_return ?? {};
+  assert.equal(result.slider_completed, true, `synthetic drag should complete the visual fixture: ${JSON.stringify(result)}`);
+  assert.equal(
+    Number(result.slider_visual_offset) >= 180,
+    true,
+    `synthetic drag should visibly move the slider handle: ${JSON.stringify(result)}`,
+  );
+  assert.match(String(result.handle_transform ?? ""), /translateX\(\d+px\)/);
+  assert.equal(result.status_text, "completed");
+  matrixResults.push({
+    name: "visual_feedback",
+    path: "/slider-login",
+    tab_id: visualTabId,
+    event_type: result.event_type,
+    slider_completed: result.slider_completed,
+    slider_delta: result.slider_delta,
+    slider_delta_live: result.slider_delta_live,
+    slider_visual_offset: result.slider_visual_offset,
+    handle_transform: result.handle_transform,
+  });
+  return result;
+}
+
 export {
   runSliderMatrixCase,
+  runSliderVisualFeedbackCase,
 };
