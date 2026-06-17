@@ -26,8 +26,11 @@ export async function startAuthFixture() {
     login_submissions: 0,
     captcha_completed: false,
     captcha_submissions: 0,
+    mfa_completed: false,
     mfa_submissions: 0,
+    sso_completed: false,
     sso_submissions: 0,
+    oauth_completed: false,
     successful_logins: 0,
     requests: [],
   };
@@ -200,6 +203,17 @@ export async function startAuthFixture() {
       res.end("<!doctype html><title>fixture mfa blocked</title><p>mfa should not submit automatically</p>");
       return;
     }
+    if (requestUrl.pathname === "/mfa-complete" && req.method === "POST") {
+      state.mfa_completed = true;
+      state.successful_logins += 1;
+      res.writeHead(200, {
+        "set-cookie": `${cookieName}=1; Path=/; SameSite=Lax`,
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(JSON.stringify({ ok: true, mfa_completed: true }));
+      return;
+    }
     if (requestUrl.pathname === "/mfa-login") {
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
@@ -226,6 +240,17 @@ export async function startAuthFixture() {
         "cache-control": "no-store",
       });
       res.end("<!doctype html><title>fixture sso blocked</title><p>sso should not submit automatically</p>");
+      return;
+    }
+    if (requestUrl.pathname === "/sso-complete" && req.method === "POST") {
+      state.sso_completed = true;
+      state.successful_logins += 1;
+      res.writeHead(200, {
+        "set-cookie": `${cookieName}=1; Path=/; SameSite=Lax`,
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(JSON.stringify({ ok: true, sso_completed: true }));
       return;
     }
     if (requestUrl.pathname === "/sso-login") {
@@ -271,6 +296,8 @@ export async function startAuthFixture() {
       return;
     }
     if (requestUrl.pathname === "/oauth-callback") {
+      state.oauth_completed = true;
+      state.successful_logins += 1;
       res.writeHead(302, {
         "set-cookie": `${cookieName}=1; Path=/; SameSite=Lax`,
         location: "/protected",

@@ -43,8 +43,17 @@ async function run() {
       captcha_resume_reason: captcha.captchaResume.reason,
       captcha_submissions: context.fixture.state.captcha_submissions,
       manual_required_mfa: manual.mfaBlocked.reason === "manual_required_mfa",
+      mfa_resume_success: manual.mfaResume.status === "success"
+        && manual.mfaResume.already_authenticated === true
+        && manual.mfaResume.submitted === false,
       manual_required_sso: manual.ssoBlocked.reason === "manual_required_sso",
+      sso_resume_success: manual.ssoResume.status === "success"
+        && manual.ssoResume.already_authenticated === true
+        && manual.ssoResume.submitted === false,
       manual_required_oauth_popup: manual.oauthBlocked.manual_context?.kind === "oauth_popup",
+      oauth_popup_resume_success: manual.oauthResume.status === "success"
+        && manual.oauthResume.already_authenticated === true
+        && manual.oauthResume.submitted === false,
       login_submissions: context.fixture.state.login_submissions,
       successful_logins: context.fixture.state.successful_logins,
       unknown_origin_blocked: unknown.unknownDryRun.status === "blocked",

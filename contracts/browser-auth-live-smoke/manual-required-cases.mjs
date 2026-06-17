@@ -4,7 +4,7 @@ import {
   FIXTURE_PASSWORD,
   FIXTURE_USERNAME,
 } from "./fixture.mjs";
-import { assertNoSecretLeak, commonArgs } from "./helpers.mjs";
+import { assertNoSecretLeak, commonArgs, waitFor } from "./helpers.mjs";
 
 async function runManualRequiredCases(context) {
   const mfa = await runMfaCase(context);
@@ -12,10 +12,13 @@ async function runManualRequiredCases(context) {
   const oauth = await runOauthPopupCase(context);
   return {
     mfaBlocked: mfa.mfaBlocked,
+    mfaResume: mfa.mfaResume,
     mfaTabId: mfa.mfaTabId,
     oauthBlocked: oauth.oauthBlocked,
+    oauthResume: oauth.oauthResume,
     oauthTabId: oauth.oauthTabId,
     ssoBlocked: sso.ssoBlocked,
+    ssoResume: sso.ssoResume,
     ssoTabId: sso.ssoTabId,
   };
 }
@@ -68,9 +71,22 @@ async function runMfaCase({ callTool, cli, fixture, workspaceKey }) {
   assert.equal(mfaBlocked.manual_context?.resume_action, "ensure_login");
   assert.equal(fixture.state.mfa_submissions, 0, "mfa block should not submit credentials");
   assertNoSecretLeak(mfaBlocked, "mfa block result");
+  const mfaResume = await completeManualAuthAndResume({
+    callTool,
+    cli,
+    tabId: mfaTabId,
+    workspaceKey,
+    label: "mfa",
+    completePath: "/mfa-complete",
+    completeMethod: "POST",
+    profile_id: "fixture-mfa",
+  });
+  assert.equal(fixture.state.mfa_completed, true, "mfa manual completion should update fixture state");
+  assert.equal(fixture.state.mfa_submissions, 0, "mfa resume should not submit credentials after manual completion");
   return {
     mfaBlocked,
     mfaProfile,
+    mfaResume,
     mfaTabId,
   };
 }
@@ -105,8 +121,20 @@ async function runSsoCase({ callTool, cli, fixture, workspaceKey }) {
   assert.equal(ssoBlocked.manual_context?.resume_action, "ensure_login");
   assert.equal(fixture.state.sso_submissions, 0, "sso block should not submit credentials");
   assertNoSecretLeak(ssoBlocked, "sso block result");
+  const ssoResume = await completeManualAuthAndResume({
+    callTool,
+    cli,
+    tabId: ssoTabId,
+    workspaceKey,
+    label: "sso",
+    completePath: "/sso-complete",
+    completeMethod: "POST",
+  });
+  assert.equal(fixture.state.sso_completed, true, "sso manual completion should update fixture state");
+  assert.equal(fixture.state.sso_submissions, 0, "sso resume should not submit credentials after manual completion");
   return {
     ssoBlocked,
+    ssoResume,
     ssoTabId,
   };
 }
@@ -140,10 +168,95 @@ async function runOauthPopupCase({ callTool, cli, fixture, workspaceKey }) {
   assert.equal(oauthBlocked.manual_context?.workspace_key, workspaceKey);
   assert.equal(oauthBlocked.manual_context?.resume_action, "ensure_login");
   assertNoSecretLeak(oauthBlocked, "oauth block result");
+  const oauthResume = await completeManualAuthAndResume({
+    callTool,
+    cli,
+    tabId: oauthTabId,
+    workspaceKey,
+    label: "oauth popup",
+    completePath: "/oauth-callback",
+    completeMethod: "GET",
+  });
+  assert.equal(fixture.state.oauth_completed, true, "oauth manual completion should update fixture state");
   return {
     oauthBlocked,
+    oauthResume,
     oauthTabId,
   };
+}
+
+async function completeManualAuthAndResume({
+  callTool,
+  cli,
+  tabId,
+  workspaceKey,
+  label,
+  completePath,
+  completeMethod,
+  profile_id,
+}) {
+  const completed = await callTool("browser_execute_js", {
+    ...commonArgs(cli),
+    tab_id: tabId,
+    script: `return await (async () => {
+      const completedResponse = await fetch(${JSON.stringify(completePath)}, {
+        method: ${JSON.stringify(completeMethod)},
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "follow"
+      });
+      const protectedResponse = await fetch("/protected", {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      const html = await protectedResponse.text();
+      document.open();
+      document.write(html);
+      document.close();
+      history.replaceState({}, "", "/protected");
+      return {
+        completed_ok: completedResponse.ok,
+        protected_ok: protectedResponse.ok,
+        path: location.pathname,
+        title: document.title
+      };
+    })();`,
+  });
+  assert.equal(
+    completed?.js_return?.completed_ok,
+    true,
+    `${label} manual completion endpoint should succeed`,
+  );
+  assert.equal(
+    completed?.js_return?.protected_ok,
+    true,
+    `${label} manual completion should unlock protected page`,
+  );
+  assert.equal(completed?.js_return?.path, "/protected");
+
+  const resumeWait = await waitFor(async () => {
+    const resumed = await callTool("browser_auth_ops", {
+      ...commonArgs(cli),
+      action: "ensure_login",
+      ...(profile_id ? { profile_id } : {}),
+      tab_id: tabId,
+      workspace_key: workspaceKey,
+    });
+    return {
+      ok: resumed.status === "success"
+        && resumed.already_authenticated === true
+        && resumed.submitted === false
+        && resumed.pathname === "/protected",
+      resumed,
+    };
+  }, 5_000);
+  assert.equal(
+    resumeWait.ok,
+    true,
+    `${label} ensure_login should resume after manual completion: ${JSON.stringify(resumeWait.resumed)}`,
+  );
+  assertNoSecretLeak(resumeWait.resumed, `${label} resume result`);
+  return resumeWait.resumed;
 }
 
 export {
