@@ -206,9 +206,9 @@ function buildOptionalGaps({ report }) {
   gaps.push(createGap(
     "complex_idp_optional_live_not_proven",
     "optional_live",
-    0.003,
-    "OAuth/SSO/MFA contracts exist, but provider-specific live gates are intentionally optional.",
-    "Add optional live gates for representative OAuth popup, cross-domain SSO, and MFA handoff/resume flows.",
+    0.001,
+    "Local OAuth/SSO/MFA manual handoff/resume fixtures are covered; external provider-specific live gates remain optional.",
+    "Run optional live gates against approved representative OAuth popup, cross-domain SSO, and MFA providers before claiming provider-specific coverage.",
   ));
 
   return gaps;
