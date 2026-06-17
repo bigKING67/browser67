@@ -16,6 +16,7 @@ const commands = [
   ["npm", ["run", "check:auth-live"]],
   ["npm", ["run", "check:captcha-assist-live"]],
   ["npm", ["run", "check:ljqctrl"]],
+  ["npm", ["run", "check:optional-live-proofs"]],
   ["npm", ["run", "check:managed-tabs-clean"]],
   ["npm", ["audit", "--audit-level=moderate"]],
 ];

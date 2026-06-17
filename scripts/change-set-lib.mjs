@@ -192,7 +192,7 @@ const GROUPS = [
     ],
     patterns: [
       /^README\.md$/,
-      /^docs\/(?:agent-setup|architecture|codex-integration|global-prompt-snippet)\.md$/,
+      /^docs\/(?:agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs)\.md$/,
       /^skills\/tmwd-browser-mcp\//,
     ],
   },
@@ -211,7 +211,7 @@ const GROUPS = [
     ],
     patterns: [
       /^package\.json$/,
-      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit)\.mjs$/,
+      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|optional-live-proof-audit)\.mjs$/,
     ],
   },
 ];

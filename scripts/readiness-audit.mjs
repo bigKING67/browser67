@@ -6,6 +6,7 @@ import {
   GROUPS,
   buildChangeSetReport,
 } from "./change-set-lib.mjs";
+import { buildOptionalLiveProofAudit } from "./optional-live-proof-audit.mjs";
 
 const DEFAULT_FAIL_BELOW = 99.0;
 
@@ -87,6 +88,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "check:captcha-assist-live",
     "check:captcha-assist-physical-live",
     "check:ljqctrl",
+    "check:optional-live-proofs",
     "check:readiness",
     "verify",
   ];
@@ -116,8 +118,9 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:readiness",
         "check:captcha-assist-live",
         "check:ljqctrl",
+        "check:optional-live-proofs",
       ]),
-      "verify.mjs includes change-set, readiness, captcha assist, and ljqctrl gates",
+      "verify.mjs includes change-set, readiness, captcha assist, ljqctrl, and optional live proof gates",
     ),
     createCheck(
       "change_set_grouped",
@@ -154,8 +157,9 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
   ];
 }
 
-function buildOptionalGaps({ report }) {
+async function buildOptionalGaps({ report }) {
   const gaps = [];
+  const optionalProofAudit = await buildOptionalLiveProofAudit({});
 
   if (report.changed_paths_count > 0) {
     gaps.push(createGap(
@@ -195,21 +199,27 @@ function buildOptionalGaps({ report }) {
     ));
   }
 
-  gaps.push(createGap(
-    "cross_os_native_live_not_proven",
-    "portability",
-    0.004,
-    `current_platform=${process.platform}`,
-    "Run native provider live gates on Linux and Windows hosts before claiming full cross-OS physical-input proof.",
-  ));
+  const missingNativeProofs = optionalProofAudit.missing.filter((id) => id.startsWith("native-live-"));
+  if (missingNativeProofs.length > 0) {
+    gaps.push(createGap(
+      "cross_os_native_live_not_proven",
+      "portability",
+      0.004,
+      `current_platform=${process.platform} missing_proofs=${missingNativeProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}`,
+      "Run native provider live gates on Linux and Windows hosts, save sanitized proof JSON, then run npm run check:optional-live-proofs.",
+    ));
+  }
 
-  gaps.push(createGap(
-    "complex_idp_optional_live_not_proven",
-    "optional_live",
-    0.001,
-    "Local OAuth/SSO/MFA manual handoff/resume fixtures are covered; external provider-specific live gates remain optional.",
-    "Run optional live gates against approved representative OAuth popup, cross-domain SSO, and MFA providers before claiming provider-specific coverage.",
-  ));
+  const missingIdpProofs = optionalProofAudit.missing.filter((id) => id.startsWith("idp-"));
+  if (missingIdpProofs.length > 0) {
+    gaps.push(createGap(
+      "complex_idp_optional_live_not_proven",
+      "optional_live",
+      0.001,
+      `Local OAuth/SSO/MFA manual handoff/resume fixtures are covered; external provider-specific proofs missing=${missingIdpProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}.`,
+      "Run optional live gates against approved representative OAuth popup, cross-domain SSO, and MFA providers, save sanitized proof JSON, then run npm run check:optional-live-proofs.",
+    ));
+  }
 
   return gaps;
 }
@@ -252,7 +262,7 @@ async function buildAudit(args) {
     verifySource,
     report,
   });
-  const optional_gaps = buildOptionalGaps({ report });
+  const optional_gaps = await buildOptionalGaps({ report });
   const required_ok = required_checks.every((check) => !check.required || check.ok);
   const score = computeScore(required_checks, optional_gaps);
 

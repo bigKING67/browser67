@@ -1,0 +1,287 @@
+#!/usr/bin/env node
+
+import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const DEFAULT_PROOF_DIR = join(homedir(), ".tmwd-browser-mcp", "optional-live-proofs");
+const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|authorization|credential)/i;
+const SAFE_REDACTION_STATUS_KEYS = new Set(["secrets_redacted", "credentials_redacted"]);
+
+const REQUIREMENTS = [
+  {
+    id: "native-live-linux",
+    type: "native_live",
+    title: "Linux native physical-input live proof",
+    matches: { platform: "linux" },
+    required_fields: ["platform", "provider_id", "actions", "checked_at", "command"],
+  },
+  {
+    id: "native-live-win32",
+    type: "native_live",
+    title: "Windows native physical-input live proof",
+    matches: { platform: "win32" },
+    required_fields: ["platform", "provider_id", "actions", "checked_at", "command"],
+  },
+  {
+    id: "idp-oauth-popup",
+    type: "idp_live",
+    title: "External OAuth popup handoff/resume live proof",
+    matches: { provider_kind: "oauth_popup" },
+    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified"],
+  },
+  {
+    id: "idp-cross-domain-sso",
+    type: "idp_live",
+    title: "External cross-domain SSO handoff/resume live proof",
+    matches: { provider_kind: "cross_domain_sso" },
+    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified"],
+  },
+  {
+    id: "idp-mfa",
+    type: "idp_live",
+    title: "External MFA handoff/resume live proof",
+    matches: { provider_kind: "mfa" },
+    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified"],
+  },
+];
+
+function parseArgs(argv) {
+  const parsed = {
+    json: false,
+    strict: false,
+    proof_dir: process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_PROOF_DIR,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] ?? "";
+    if (token === "--json") {
+      parsed.json = true;
+      continue;
+    }
+    if (token === "--strict") {
+      parsed.strict = true;
+      continue;
+    }
+    if (token === "--proof-dir") {
+      parsed.proof_dir = String(argv[index + 1] ?? "").trim();
+      index += 1;
+      continue;
+    }
+    if (!token) {
+      continue;
+    }
+    throw new Error(`unknown argument: ${token}`);
+  }
+  if (!parsed.proof_dir) {
+    throw new Error("proof directory is required");
+  }
+  parsed.proof_dir = resolve(parsed.proof_dir);
+  return parsed;
+}
+
+async function readProofFiles(proofDir) {
+  let entries;
+  try {
+    entries = await fs.readdir(proofDir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+  const proofFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => join(proofDir, entry.name))
+    .sort();
+  const rows = [];
+  for (const path of proofFiles) {
+    try {
+      rows.push({
+        path,
+        proof: JSON.parse(await fs.readFile(path, "utf8")),
+      });
+    } catch (error) {
+      rows.push({
+        path,
+        error: `invalid_json: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+  return rows;
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function findSensitiveKeys(value, path = "$") {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findSensitiveKeys(item, `${path}[${index}]`));
+  }
+  if (!isPlainObject(value)) {
+    return [];
+  }
+  const hits = [];
+  for (const [key, nested] of Object.entries(value)) {
+    const nextPath = `${path}.${key}`;
+    if (SENSITIVE_KEY_PATTERN.test(key) && !SAFE_REDACTION_STATUS_KEYS.has(key)) {
+      hits.push(nextPath);
+      continue;
+    }
+    hits.push(...findSensitiveKeys(nested, nextPath));
+  }
+  return hits;
+}
+
+function validIsoTimestamp(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return false;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed);
+}
+
+function proofMatchesRequirement(proof, requirement) {
+  if (!isPlainObject(proof)) {
+    return false;
+  }
+  if (proof.type !== requirement.type || proof.ok !== true) {
+    return false;
+  }
+  for (const [key, expected] of Object.entries(requirement.matches)) {
+    if (proof[key] !== expected) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function validateProof(proof, requirement) {
+  const errors = [];
+  if (!proofMatchesRequirement(proof, requirement)) {
+    errors.push("requirement_match_failed");
+  }
+  for (const field of requirement.required_fields) {
+    if (!Object.prototype.hasOwnProperty.call(proof, field)) {
+      errors.push(`missing_field:${field}`);
+    }
+  }
+  if (!validIsoTimestamp(proof.checked_at)) {
+    errors.push("invalid_checked_at");
+  }
+  if (proof.expires_at !== undefined && !validIsoTimestamp(proof.expires_at)) {
+    errors.push("invalid_expires_at");
+  }
+  if (proof.expires_at !== undefined && Date.parse(proof.expires_at) <= Date.now()) {
+    errors.push("expired");
+  }
+  if (requirement.type === "native_live") {
+    if (!Array.isArray(proof.actions) || proof.actions.length === 0) {
+      errors.push("native_actions_required");
+    }
+  }
+  if (requirement.type === "idp_live") {
+    if (proof.manual_required_verified !== true) {
+      errors.push("manual_required_verified_must_be_true");
+    }
+    if (proof.resume_verified !== true) {
+      errors.push("resume_verified_must_be_true");
+    }
+  }
+  const sensitiveKeys = findSensitiveKeys(proof);
+  if (sensitiveKeys.length > 0) {
+    errors.push(`sensitive_keys_present:${sensitiveKeys.join(",")}`);
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+  };
+}
+
+function evaluateRequirements(rows) {
+  return REQUIREMENTS.map((requirement) => {
+    const candidates = rows
+      .filter((row) => row.proof && proofMatchesRequirement(row.proof, requirement))
+      .map((row) => ({
+        path: row.path,
+        validation: validateProof(row.proof, requirement),
+      }));
+    const accepted = candidates.find((candidate) => candidate.validation.ok);
+    return {
+      id: requirement.id,
+      type: requirement.type,
+      title: requirement.title,
+      satisfied: Boolean(accepted),
+      proof_path: accepted?.path,
+      candidates,
+    };
+  });
+}
+
+async function buildOptionalLiveProofAudit(args = {}) {
+  const proofDir = resolve(args.proof_dir || process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_PROOF_DIR);
+  const rows = await readProofFiles(proofDir);
+  const invalid_files = rows
+    .filter((row) => row.error)
+    .map((row) => ({ path: row.path, error: row.error }));
+  const requirements = evaluateRequirements(rows.filter((row) => row.proof));
+  const missing = requirements
+    .filter((requirement) => !requirement.satisfied)
+    .map((requirement) => requirement.id);
+  const complete = missing.length === 0 && invalid_files.length === 0;
+  return {
+    ok: true,
+    status: complete ? "complete" : "optional_gaps",
+    check: "optional-live-proof-audit",
+    proof_dir: proofDir,
+    strict: args.strict === true,
+    complete,
+    proof_file_count: rows.length,
+    invalid_files,
+    requirements,
+    missing,
+    summary: {
+      required_count: REQUIREMENTS.length,
+      satisfied_count: requirements.filter((requirement) => requirement.satisfied).length,
+      missing_count: missing.length,
+      invalid_file_count: invalid_files.length,
+    },
+  };
+}
+
+function outputText(audit) {
+  process.stdout.write(
+    `optional_live_proofs=${audit.status} satisfied=${audit.summary.satisfied_count}/${audit.summary.required_count} missing=${audit.summary.missing_count} proof_dir=${audit.proof_dir}\n`,
+  );
+  if (audit.missing.length > 0) {
+    process.stdout.write(`missing=${audit.missing.join(",")}\n`);
+  }
+  if (audit.invalid_files.length > 0) {
+    process.stdout.write(`invalid_files=${audit.invalid_files.map((item) => item.path).join(",")}\n`);
+  }
+}
+
+async function run() {
+  const args = parseArgs(process.argv.slice(2));
+  const audit = await buildOptionalLiveProofAudit(args);
+  if (args.json) {
+    process.stdout.write(`${JSON.stringify(audit)}\n`);
+  } else {
+    outputText(audit);
+  }
+  process.exitCode = args.strict && !audit.complete ? 1 : 0;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+  try {
+    await run();
+  } catch (error) {
+    process.stderr.write(`optional-live-proof-audit failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  }
+}
+
+export {
+  buildOptionalLiveProofAudit,
+};
