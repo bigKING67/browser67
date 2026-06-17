@@ -1,39 +1,59 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
-const commands = [
-  ["npm", ["run", "extension:check"]],
-  ["npm", ["run", "upstream:check"]],
-  ["npm", ["run", "skills:check"]],
-  ["npm", ["run", "check:syntax"]],
-  ["npm", ["run", "check:change-set"]],
-  ["npm", ["run", "check:readiness"]],
-  ["npm", ["run", "check"]],
-  ["npm", ["run", "check:live:doctor"]],
-  ["npm", ["run", "check:js-reverse-live"]],
-  ["npm", ["run", "check:managed-tab-live"]],
-  ["npm", ["run", "check:auth-live"]],
-  ["npm", ["run", "check:captcha-assist-live"]],
-  ["npm", ["run", "check:ljqctrl"]],
-  ["npm", ["run", "check:optional-live-proofs"]],
-  ["npm", ["run", "check:managed-tabs-clean"]],
-  ["npm", ["audit", "--audit-level=moderate"]],
-];
+function buildCommands(managedTabBaselineFile) {
+  return [
+    {
+      command: "node",
+      args: ["scripts/check-managed-tab-cleanup.mjs", "--write-baseline", managedTabBaselineFile],
+      label: "managed tab cleanup baseline",
+    },
+    { command: "npm", args: ["run", "extension:check"] },
+    { command: "npm", args: ["run", "upstream:check"] },
+    { command: "npm", args: ["run", "skills:check"] },
+    { command: "npm", args: ["run", "check:syntax"] },
+    { command: "npm", args: ["run", "check:change-set"] },
+    { command: "npm", args: ["run", "check:readiness"] },
+    { command: "npm", args: ["run", "check"] },
+    { command: "npm", args: ["run", "check:live:doctor"] },
+    { command: "npm", args: ["run", "check:js-reverse-live"] },
+    { command: "npm", args: ["run", "check:managed-tab-live"] },
+    { command: "npm", args: ["run", "check:auth-live"] },
+    { command: "npm", args: ["run", "check:captcha-assist-live"] },
+    { command: "npm", args: ["run", "check:ljqctrl"] },
+    { command: "npm", args: ["run", "check:optional-live-proofs"] },
+    {
+      command: "node",
+      args: ["scripts/check-managed-tab-cleanup.mjs", "--baseline-file", managedTabBaselineFile],
+      label: "npm run check:managed-tabs-clean -- --baseline-file <verify-baseline>",
+    },
+    { command: "npm", args: ["audit", "--audit-level=moderate"] },
+  ];
+}
 
 function run() {
-  for (const [command, args] of commands) {
-    const label = `${command} ${args.join(" ")}`;
-    process.stdout.write(`\n>>> ${label}\n`);
-    const result = spawnSync(command, args, {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: "inherit",
-    });
-    if (result.status !== 0) {
-      process.stderr.write(`verify failed at: ${label}\n`);
-      return Number.isFinite(Number(result.status)) ? Number(result.status) : 1;
+  const tempDir = mkdtempSync(path.join(tmpdir(), "tmwd-verify-"));
+  const managedTabBaselineFile = path.join(tempDir, "managed-tabs-baseline.json");
+  try {
+    for (const step of buildCommands(managedTabBaselineFile)) {
+      const label = step.label ?? `${step.command} ${step.args.join(" ")}`;
+      process.stdout.write(`\n>>> ${label}\n`);
+      const result = spawnSync(step.command, step.args, {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: "inherit",
+      });
+      if (result.status !== 0) {
+        process.stderr.write(`verify failed at: ${label}\n`);
+        return Number.isFinite(Number(result.status)) ? Number(result.status) : 1;
+      }
     }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
   }
   process.stdout.write("\nverify ok\n");
   return 0;

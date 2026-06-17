@@ -52,7 +52,7 @@ const GROUPS = [
     verification: [
       "npm run check:mcp",
       "npm run check:managed-tab-live",
-      "npm run check:managed-tabs-clean",
+      "npm run verify",
       "npm run check:change-set",
     ],
     risk_notes: [
