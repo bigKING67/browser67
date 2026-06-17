@@ -21,6 +21,7 @@ const deletedTabIds = new Set();
 const registryPath = resolveRegistryPath();
 let registryLoaded = false;
 let registryLoadPromise = null;
+let registryDiskFingerprint = "";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -77,6 +78,26 @@ async function releaseRegistryLock(lock) {
   }
 }
 
+async function registryFingerprintFromDisk() {
+  try {
+    const stat = await fs.stat(registryPath, { bigint: true });
+    const mtime = stat.mtimeNs ?? stat.mtimeMs;
+    return `${String(mtime)}:${String(stat.size)}`;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return "missing";
+    }
+    throw error;
+  }
+}
+
+function replaceManagedTabs(records) {
+  managedTabs.clear();
+  records
+    .filter((record) => record.dry_run !== true && record.status !== "closed")
+    .forEach((record) => managedTabs.set(record.tab_id, record));
+}
+
 async function readRegistryRecordsFromDisk() {
   let parsed;
   try {
@@ -96,9 +117,8 @@ async function loadRegistry() {
   if (!registryLoadPromise) {
     registryLoadPromise = (async () => {
       const records = await readRegistryRecordsFromDisk();
-      records
-        .filter((record) => record.dry_run !== true && record.status !== "closed")
-        .forEach((record) => managedTabs.set(record.tab_id, record));
+      replaceManagedTabs(records);
+      registryDiskFingerprint = await registryFingerprintFromDisk();
       registryLoaded = true;
     })();
   }
@@ -108,6 +128,17 @@ async function loadRegistry() {
     registryLoadPromise = null;
     throw error;
   }
+}
+
+async function refreshRegistryFromDiskIfChanged() {
+  await loadRegistry();
+  const fingerprint = await registryFingerprintFromDisk();
+  if (fingerprint === registryDiskFingerprint) {
+    return;
+  }
+  const records = await readRegistryRecordsFromDisk();
+  replaceManagedTabs(records);
+  registryDiskFingerprint = await registryFingerprintFromDisk();
 }
 
 async function persistRegistry() {
@@ -144,13 +175,14 @@ async function persistRegistry() {
     managedTabs.clear();
     Array.from(merged.values()).forEach((record) => managedTabs.set(record.tab_id, record));
     deletedTabIds.clear();
+    registryDiskFingerprint = await registryFingerprintFromDisk();
   } finally {
     await releaseRegistryLock(lock);
   }
 }
 
 async function recordManagedTab(input) {
-  await loadRegistry();
+  await refreshRegistryFromDiskIfChanged();
   if (input?.dry_run === true) {
     return planManagedTab(input);
   }
@@ -161,12 +193,12 @@ async function recordManagedTab(input) {
 }
 
 async function getManagedTab(tabId) {
-  await loadRegistry();
+  await refreshRegistryFromDiskIfChanged();
   return managedTabs.get(String(tabId ?? "").trim()) ?? null;
 }
 
 async function updateManagedTab(tabId, patch = {}) {
-  await loadRegistry();
+  await refreshRegistryFromDiskIfChanged();
   const normalizedTabId = String(tabId ?? "").trim();
   const existing = managedTabs.get(normalizedTabId);
   if (!existing) {
@@ -195,7 +227,7 @@ async function updateManagedTab(tabId, patch = {}) {
 }
 
 async function deleteManagedTab(tabId) {
-  await loadRegistry();
+  await refreshRegistryFromDiskIfChanged();
   const normalizedTabId = String(tabId ?? "").trim();
   if (!normalizedTabId) {
     return;
@@ -206,7 +238,7 @@ async function deleteManagedTab(tabId) {
 }
 
 async function listManagedTabRecords(options = {}) {
-  await loadRegistry();
+  await refreshRegistryFromDiskIfChanged();
   const includeClosed = options.include_closed === true;
   const rows = Array.from(managedTabs.values()).filter((record) => {
     if (!includeClosed && record.status === "closed") {
