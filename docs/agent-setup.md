@@ -226,7 +226,8 @@ planning-only. Use `npm run check:captcha-assist-physical-live` for the optional
 local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with
 TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1. Native pointer actions must be genuinely
-available; on macOS, missing Accessibility permission keeps `cliclick` click/drag
+available; run `npm run check:native-pointer` first for a no-input readiness
+check. On macOS, missing Accessibility permission keeps `cliclick` click/drag
 capability disabled. A successful physical run writes a
 sanitized repo-external local CAPTCHA proof by default; set
 TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0 to disable that persistence.

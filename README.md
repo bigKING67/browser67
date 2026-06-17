@@ -276,6 +276,7 @@ npm run check:live:doctor
 npm run check:auth-live
 npm run check:captcha-assist-live
 npm run check:captcha-assist-physical-live
+npm run check:native-pointer
 npm run check:ljqctrl
 npm run check:optional-live-proofs
 npm run proof:optional-live-template
@@ -295,13 +296,19 @@ skipped by default and only runs the local physical slider drag when both
 use `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when a local machine gate should
 fail instead of skip. The physical branch foregrounds its own TMWD-managed
 fixture tab before dragging. Native pointer actions must be genuinely available:
-on macOS, `cliclick` is treated as pointer-capable only when its diagnostic
-probe does not report missing Accessibility privileges for the current
-terminal/Codex host. When the physical branch passes, it writes a
+run `npm run check:native-pointer` first to verify whether the current OS
+provider can actually click/drag without moving the mouse. On macOS, `cliclick`
+is treated as pointer-capable only when its diagnostic probe does not report
+missing Accessibility privileges for the current terminal/Codex host. When the
+physical branch passes, it writes a
 sanitized repo-external proof under `~/.tmwd-browser-mcp/optional-live-proofs`
 or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable
 that proof write, or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to make proof-write
 failure fail the gate.
+`check:native-pointer` is diagnostic-only by default and exits successfully when
+requirements are missing; use `npm run check:native-pointer -- --require-pointer`
+only as a local hard gate after installing OS dependencies and granting the
+required permissions.
 `check:ljqctrl` is diagnostic-only by default: it probes the local Python
 `ljqCtrl` module and reports whether click/window-region capture would be
 available, but it does not activate windows, click, drag, capture screenshots,

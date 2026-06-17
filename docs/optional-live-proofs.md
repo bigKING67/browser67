@@ -47,6 +47,8 @@ that produced the sanitized evidence. The local CAPTCHA physical gate writes its
 passing proof automatically after a successful run:
 
 ```bash
+npm run check:native-pointer
+
 TMWD_CAPTCHA_ASSIST_PHYSICAL=1 \
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 \
 npm run check:captcha-assist-physical-live
@@ -57,6 +59,9 @@ actually affect the browser window. On macOS, `native-os` pointer actions depend
 on `cliclick`; the readiness probe treats `cliclick` as unavailable for click and
 drag when its diagnostic output reports missing Accessibility privileges for the
 current terminal/Codex host.
+`npm run check:native-pointer` is diagnostic-only by default and does not move
+the mouse; use `npm run check:native-pointer -- --require-pointer` only when a
+local release gate should fail until click/drag support is genuinely available.
 
 Set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that automatic proof write, or
 `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail the gate if the sanitized proof
