@@ -2,6 +2,11 @@ import { normalizeTimeoutMs } from "../common.mjs";
 import { createToolError } from "../errors.mjs";
 import { executeTmwdJsWithFallback, resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
 import {
+  MANUAL_CHALLENGE_DETECTOR_JS,
+  manualCaptchaContextFields,
+  publicChallengeFields,
+} from "./manual-challenge.mjs";
+import {
   normalizeOrigin,
   normalizePathPattern,
   normalizeProfile,
@@ -105,6 +110,11 @@ function manualRequirementFields(reason, pageState = {}, args = {}) {
     manual_required: true,
     manual_context: {
       kind: manualContextKind(normalizedReason, pageState),
+      ...(
+        normalizedReason === "manual_required_captcha"
+          ? manualCaptchaContextFields(pageState)
+          : {}
+      ),
       tab_id: tabId || undefined,
       workspace_key: workspaceKey || undefined,
       resume_action: "ensure_login",
@@ -184,7 +194,8 @@ async function inspectCurrentPage(args, profile = null) {
     const passwordInputs = Array.from(document.querySelectorAll('input[type="password"]'));
     const usernameLikeInputs = Array.from(document.querySelectorAll('input[type="text"], input[type="email"], input[name*="user" i], input[name*="email" i]'));
     const mfaInputs = Array.from(document.querySelectorAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]'));
-    const captchaDetected = Boolean(document.querySelector('[class*="captcha" i], [id*="captcha" i], iframe[src*="captcha" i], iframe[src*="recaptcha" i]'));
+    ${MANUAL_CHALLENGE_DETECTOR_JS}
+    const challenge = detectManualChallenge();
     const ssoElements = Array.from(document.querySelectorAll('a, button')).filter((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
     const ssoDetected = ssoElements.length > 0;
     const oauthPopupDetected = ssoElements.some((el) => {
@@ -207,7 +218,7 @@ async function inspectCurrentPage(args, profile = null) {
       password_input_count: passwordInputs.length,
       username_like_input_count: usernameLikeInputs.length,
       mfa_input_count: mfaInputs.length,
-      captcha_detected: captchaDetected,
+      ...challenge,
       sso_detected: ssoDetected,
       oauth_popup_detected: oauthPopupDetected,
       mfa_detected: mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText),
@@ -297,7 +308,8 @@ async function suggestProfileFromCurrentPage(args) {
     ]);
     const passwordSelector = selectorFor(passwordInput, ['input[type="password"]']);
     const submitSelector = selectorFor(submitButton, ['button[type="submit"]', 'input[type="submit"]', 'button']);
-    const captchaDetected = Boolean(document.querySelector('[class*="captcha" i], [id*="captcha" i], iframe[src*="captcha" i], iframe[src*="recaptcha" i]'));
+    ${MANUAL_CHALLENGE_DETECTOR_JS}
+    const challenge = detectManualChallenge();
     const mfaInputs = queryAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]');
     const bodyText = String(document.body?.innerText || "");
     const ssoElements = queryAll('a, button').filter((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
@@ -324,7 +336,7 @@ async function suggestProfileFromCurrentPage(args) {
       password_input_count: passwordInputs.length,
       username_like_input_count: formInputs.length,
       form_detected: Boolean(form),
-      captcha_detected: captchaDetected,
+      ...challenge,
       mfa_detected: mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText),
       mfa_input_count: mfaInputs.length,
       sso_detected: ssoDetected,
@@ -378,5 +390,6 @@ export {
   manualRequirementFields,
   manualRequirementFromPageState,
   parseUrlState,
+  publicChallengeFields,
   suggestProfileFromCurrentPage,
 };

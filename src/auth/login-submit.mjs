@@ -1,5 +1,6 @@
 import { normalizeTimeoutMs } from "../common.mjs";
 import { executeBrowserScript } from "./login-detect.mjs";
+import { MANUAL_CHALLENGE_DETECTOR_JS } from "./manual-challenge.mjs";
 
 const DEFAULT_LOGIN_TIMEOUT_MS = 12_000;
 
@@ -32,7 +33,8 @@ async function submitLoginForm(args, profile) {
     const isStillBlockedPath = () => successPathNot.some((pattern) => pathMatches(location.pathname, pattern));
     const detectManualRequirement = () => {
       const bodyText = String(document.body?.innerText || "");
-      const captchaDetected = Boolean(document.querySelector('[class*="captcha" i], [id*="captcha" i], iframe[src*="captcha" i], iframe[src*="recaptcha" i]'));
+      ${MANUAL_CHALLENGE_DETECTOR_JS}
+      const challenge = detectManualChallenge();
       const mfaInputs = Array.from(document.querySelectorAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]'));
       const ssoElements = Array.from(document.querySelectorAll('a, button')).filter((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
       const ssoDetected = ssoElements.length > 0;
@@ -48,12 +50,12 @@ async function submitLoginForm(args, profile) {
       });
       const mfaDetected = mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText);
       return {
-        captcha_detected: captchaDetected,
+        ...challenge,
         mfa_detected: mfaDetected,
         mfa_input_count: mfaInputs.length,
         sso_detected: ssoDetected,
         oauth_popup_detected: oauthPopupDetected,
-        manual_required_reason: captchaDetected
+        manual_required_reason: challenge.captcha_detected
           ? "manual_required_captcha"
           : (mfaDetected ? "manual_required_mfa" : (ssoDetected && !document.querySelector('input[type="password"]') ? "manual_required_sso" : ""))
       };
