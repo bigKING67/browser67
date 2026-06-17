@@ -34,9 +34,11 @@ function compactCoordinateSummary(plan = {}) {
       : undefined,
     viewport: plan.viewport,
     slider_drag_hint: plan.slider_drag_hint,
+    checkbox_click_hint: plan.checkbox_click_hint,
     coordinate_transform: plan.coordinate_transform
       ? {
         viewport_origin_screen_estimate: plan.coordinate_transform.viewport_origin_screen_estimate,
+        click_hint: plan.coordinate_transform.click_hint,
         screen_estimate: plan.coordinate_transform.screen_estimate,
         vision_correction_plan: plan.coordinate_transform.vision_correction_plan
           ? {
@@ -362,8 +364,16 @@ async function run() {
       workspaceKey,
     });
 
-    const { physicalAssist, physicalCompletion, physicalAttempts } = await runPhysicalAssistIfEnabled({
+    const {
+      physicalAssist,
+      physicalCompletion,
+      physicalAttempts,
+      checkboxPhysicalAssist,
+      checkboxPhysicalCompletion,
+      checkboxPhysicalAttempts,
+    } = await runPhysicalAssistIfEnabled({
       callTool,
+      fixture,
       tabId,
       toolArgs,
       workspaceKey,
@@ -410,6 +420,16 @@ async function run() {
       physical_attempt_count: physicalAttempts.length,
       physical_attempts: physicalAttempts,
       physical_completion: physicalCompletion?.js_return ?? physicalCompletion,
+      checkbox_physical_required: envEnabled("TMWD_CAPTCHA_ASSIST_PHYSICAL"),
+      checkbox_physical_assist_status: checkboxPhysicalAssist.status,
+      checkbox_physical_assist_reason: checkboxPhysicalAssist.reason,
+      checkbox_physical_assist_provider_id: checkboxPhysicalAssist.physical_input_provider?.provider_id ?? null,
+      checkbox_physical_assist_provider_selection_reason: checkboxPhysicalAssist.physical_input_provider_selection?.reason ?? null,
+      checkbox_physical_assist_coordinates_source: checkboxPhysicalAssist.screen_coordinates?.source ?? null,
+      checkbox_physical_assist_diagnostics: compactPhysicalAssist(checkboxPhysicalAssist),
+      checkbox_physical_attempt_count: checkboxPhysicalAttempts.length,
+      checkbox_physical_attempts: checkboxPhysicalAttempts,
+      checkbox_physical_completion: checkboxPhysicalCompletion?.js_return ?? checkboxPhysicalCompletion,
       finalized_closed: finalize.close_unkept.closed.length,
     };
   } finally {

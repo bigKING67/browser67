@@ -17,7 +17,7 @@ function buildPhysicalDisabledResult(flags) {
     ok: !flags.require_physical,
     status: "skipped",
     check: CHECK_ID,
-    reason: "set TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and TMWD_CAPTCHA_ASSIST_CONFIRM=1 to run the local physical drag gate",
+    reason: "set TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and TMWD_CAPTCHA_ASSIST_CONFIRM=1 to run the local physical drag/click gate",
     require_physical: flags.require_physical,
     planning_gate: "npm run check:captcha-assist-live",
     ...noPointerInputFields(),
@@ -76,7 +76,14 @@ function buildChildFailureResult(child, parsed) {
 
 function buildPhysicalResultPayload(parsed) {
   const physicalCompleted = parsed.physical_completion?.slider_completed === true;
-  const physicalSucceeded = parsed.physical_assist_status === "success" && physicalCompleted;
+  const checkboxRequired = parsed.checkbox_physical_required === true
+    || parsed.checkbox_physical_completion !== undefined
+    || parsed.checkbox_physical_assist_status !== undefined;
+  const checkboxCompleted = parsed.checkbox_physical_completion?.checkbox_completed === true
+    && parsed.checkbox_physical_completion?.checkbox_click_inside === true;
+  const physicalSucceeded = parsed.physical_assist_status === "success"
+    && physicalCompleted
+    && (!checkboxRequired || checkboxCompleted);
   return {
     ok: physicalSucceeded,
     status: physicalSucceeded ? "passed" : "failed",
@@ -87,6 +94,18 @@ function buildPhysicalResultPayload(parsed) {
     physical_attempt_count: parsed.physical_attempt_count,
     physical_attempts: Array.isArray(parsed.physical_attempts)
       ? parsed.physical_attempts.map((attempt) => ({
+        attempt: attempt.attempt,
+        strategy: attempt.strategy,
+        requested: attempt.requested,
+        physical_completion: attempt.physical_completion,
+      }))
+      : undefined,
+    checkbox_physical_required: checkboxRequired,
+    checkbox_physical_assist_status: parsed.checkbox_physical_assist_status,
+    checkbox_physical_completion: parsed.checkbox_physical_completion,
+    checkbox_physical_attempt_count: parsed.checkbox_physical_attempt_count,
+    checkbox_physical_attempts: Array.isArray(parsed.checkbox_physical_attempts)
+      ? parsed.checkbox_physical_attempts.map((attempt) => ({
         attempt: attempt.attempt,
         strategy: attempt.strategy,
         requested: attempt.requested,

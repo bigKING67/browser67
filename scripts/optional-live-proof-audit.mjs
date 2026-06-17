@@ -317,11 +317,17 @@ function validateProof(proof, requirement) {
     if (!Array.isArray(proof.actions) || !proof.actions.includes("drag")) {
       errors.push("captcha_physical_drag_action_required");
     }
+    if (!Array.isArray(proof.actions) || !proof.actions.includes("click")) {
+      errors.push("captcha_physical_click_action_required");
+    }
     if (proof.managed_tab_only !== true) {
       errors.push("managed_tab_only_must_be_true");
     }
     if (proof.slider_completed !== true) {
       errors.push("slider_completed_must_be_true");
+    }
+    if (proof.checkbox_completed !== true) {
+      errors.push("checkbox_completed_must_be_true");
     }
     if (proof.fullscreen_screenshot !== false) {
       errors.push("fullscreen_screenshot_must_be_false");
@@ -348,6 +354,9 @@ function validateProof(proof, requirement) {
       }
       if (!validTranslateX(proof.evidence.handle_transform)) {
         errors.push("handle_transform_translatex_required");
+      }
+      if (proof.evidence.checkbox_click_inside !== true) {
+        errors.push("checkbox_click_inside_must_be_true");
       }
     }
   }

@@ -21,28 +21,38 @@ function buildPhysicalProof(parsed, options = {}) {
     ok: true,
     platform: options.platform ?? process.platform,
     provider_id: parsed.physical_assist_provider_id || "unknown",
-    actions: ["drag"],
+    actions: ["drag", "click"],
     checked_at: checkedAt,
     expires_at: options.expires_at ?? expiresAtFrom(checkedAt),
     command: physicalGateCommand(),
     managed_tab_only: true,
     fixture: "local TMWD-owned managed tab",
     slider_completed: parsed.physical_completion?.slider_completed === true,
+    checkbox_completed: parsed.checkbox_physical_completion?.checkbox_completed === true,
     fullscreen_screenshot: false,
     js_cdp_widget_click: false,
     secrets_redacted: true,
     evidence: {
       assist_target: "slider",
+      assist_targets: ["slider", "checkbox"],
       coordinate_source: parsed.physical_assist_coordinates_source || "vision_corrected_region_capture",
+      checkbox_coordinate_source: parsed.checkbox_physical_assist_coordinates_source || "vision_corrected_region_capture",
       provider_selection_reason: parsed.physical_assist_provider_selection_reason || "not_reported",
+      checkbox_provider_selection_reason: parsed.checkbox_physical_assist_provider_selection_reason || "not_reported",
       vision_correction_status: parsed.vision_correction_status,
       slider_visual_offset: Number.isFinite(Number(parsed.physical_completion?.slider_visual_offset))
         ? Number(parsed.physical_completion.slider_visual_offset)
         : undefined,
       slider_delta_live: parsed.physical_completion?.slider_delta_live,
       handle_transform: parsed.physical_completion?.handle_transform,
+      checkbox_click_inside: parsed.checkbox_physical_completion?.checkbox_click_inside,
+      checkbox_status_text: parsed.checkbox_physical_completion?.status_text,
+      checkbox_click: parsed.checkbox_physical_completion?.checkbox_click,
       physical_attempt_count: Number.isFinite(Number(parsed.physical_attempt_count))
         ? Number(parsed.physical_attempt_count)
+        : undefined,
+      checkbox_physical_attempt_count: Number.isFinite(Number(parsed.checkbox_physical_attempt_count))
+        ? Number(parsed.checkbox_physical_attempt_count)
         : undefined,
       matrix_case_count: Array.isArray(parsed.matrix_results) ? parsed.matrix_results.length : 0,
       finalized_closed: parsed.finalized_closed,

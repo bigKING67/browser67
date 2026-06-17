@@ -1,6 +1,7 @@
 import { captureCdpRegion } from "./vision-correction/capture.mjs";
 import { normalizeClip } from "./vision-correction/clip.mjs";
 import { MIN_EXECUTION_CONFIDENCE } from "./vision-correction/constants.mjs";
+import { detectCheckboxCorrection } from "./vision-correction/checkbox.mjs";
 import {
   detectSliderCorrection,
   unsupportedCorrection,
@@ -24,7 +25,9 @@ async function runCaptchaVisionCorrection(args = {}, pageState = {}, planned = {
     const target = String(planned.assist_target ?? args?.assist_target ?? "auto");
     const detected = target === "slider"
       ? detectSliderCorrection(capture.image, clip, pageState, planned)
-      : unsupportedCorrection(target);
+      : target === "checkbox"
+        ? detectCheckboxCorrection(capture.image, clip, pageState, planned)
+        : unsupportedCorrection(target);
     return {
       status: detected.correction_status === "success" ? "success" : "blocked",
       provider_id: capture.provider_id,

@@ -45,6 +45,17 @@ function successfulChildPayload(overrides = {}) {
       slider_delta_live: "260",
       handle_transform: "translateX(260px)",
     },
+    checkbox_physical_required: true,
+    checkbox_physical_assist_status: "success",
+    checkbox_physical_assist_coordinates_source: "vision_corrected_region_capture",
+    checkbox_physical_attempt_count: 1,
+    checkbox_physical_attempts: [{ attempt: 1, strategy: "vision_corrected_checkbox_click" }],
+    checkbox_physical_completion: {
+      checkbox_completed: true,
+      checkbox_click_inside: true,
+      status_text: "completed",
+      checkbox_click: { x: 77, y: 121.5 },
+    },
     matrix_results: [{ case: "slider" }],
     finalized_closed: 1,
     workspace_key: "contract-captcha",
@@ -221,9 +232,13 @@ async function assertPhysicalLiveGateContract() {
   });
   assert.equal(proof.platform, "contract-os");
   assert.equal(proof.slider_completed, true);
+  assert.equal(proof.checkbox_completed, true);
+  assert.deepEqual(proof.actions, ["drag", "click"]);
   assert.equal(proof.evidence.slider_visual_offset, 260);
   assert.equal(proof.evidence.slider_delta_live, "260");
   assert.equal(proof.evidence.handle_transform, "translateX(260px)");
+  assert.equal(proof.evidence.checkbox_click_inside, true);
+  assert.equal(proof.evidence.checkbox_physical_attempt_count, 1);
   assert.equal(proof.evidence.physical_attempt_count, 1);
   assert.equal(proof.managed_tab_only, true);
   assert.equal(proof.fullscreen_screenshot, false);

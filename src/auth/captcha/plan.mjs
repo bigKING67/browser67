@@ -4,6 +4,7 @@ import {
 } from "../manual-challenge.mjs";
 import {
   buildCoordinateTransformPlan,
+  buildCheckboxClickHint,
   buildSliderDragHint,
 } from "./coordinates.mjs";
 
@@ -56,6 +57,7 @@ function buildPlan(pageState = {}, nativeCapabilities = {}, args = {}, physicalI
   const coordinateSupport = buildCoordinateSupport(pageState, nativeCapabilities, physicalInput);
   const captchaKind = pageState.captcha_kind || (effectiveTarget === "slider" ? "slider" : "unknown");
   const sliderDragHint = buildSliderDragHint(target);
+  const checkboxClickHint = buildCheckboxClickHint(target);
   const coordinateTransform = buildCoordinateTransformPlan(pageState, target, sliderDragHint, physicalInput);
   const plan = degradedMode ? [
     {
@@ -127,6 +129,7 @@ function buildPlan(pageState = {}, nativeCapabilities = {}, args = {}, physicalI
     degraded_reason: degradedMode ? "cross_origin_frame_uninspectable" : undefined,
     coordinate_support: coordinateSupport,
     slider_drag_hint: sliderDragHint,
+    checkbox_click_hint: checkboxClickHint,
     coordinate_transform: coordinateTransform,
     plan,
     blocked_if: blockedIf,

@@ -178,8 +178,9 @@ function checkboxFixtureHtml() {
   <title>fixture checkbox captcha login</title>
   <style>
     body { font-family: sans-serif; margin: 48px; }
-    .cf-turnstile { width: 300px; height: 74px; border: 1px solid #9ca3af; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 12px; background: #f9fafb; }
-    .fake-box { width: 28px; height: 28px; border: 2px solid #6b7280; border-radius: 4px; background: white; }
+    .cf-turnstile { width: 300px; height: 74px; border: 1px solid #9ca3af; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 12px; background: #f9fafb; cursor: pointer; }
+    .fake-box { width: 28px; height: 28px; border: 2px solid #6b7280; border-radius: 4px; background: white; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #047857; }
+    .fake-box.checked { border-color: #047857; background: #ecfdf5; }
   </style>
 </head>
 <body>
@@ -190,8 +191,44 @@ function checkboxFixtureHtml() {
       <span class="fake-box" aria-hidden="true"></span>
       <span>Verify you are human</span>
     </div>
+    <p id="checkbox-status">pending</p>
     <button type="submit">Login</button>
   </form>
+  <script>
+    const widget = document.getElementById("turnstile-captcha");
+    const fakeBox = document.querySelector(".fake-box");
+    const status = document.getElementById("checkbox-status");
+    const roundPoint = (value) => String(Math.round(Number(value || 0) * 100) / 100);
+    const pointInside = (event, rect) => (
+      event.clientX >= rect.left
+      && event.clientX <= rect.right
+      && event.clientY >= rect.top
+      && event.clientY <= rect.bottom
+    );
+    widget.addEventListener("click", (event) => {
+      const rect = fakeBox.getBoundingClientRect();
+      const inside = pointInside(event, rect);
+      document.body.dataset.checkboxClicked = "true";
+      document.body.dataset.checkboxClickX = roundPoint(event.clientX);
+      document.body.dataset.checkboxClickY = roundPoint(event.clientY);
+      document.body.dataset.checkboxBoxLeft = roundPoint(rect.left);
+      document.body.dataset.checkboxBoxTop = roundPoint(rect.top);
+      document.body.dataset.checkboxBoxRight = roundPoint(rect.right);
+      document.body.dataset.checkboxBoxBottom = roundPoint(rect.bottom);
+      document.body.dataset.checkboxClickInside = inside ? "true" : "false";
+      if (inside) {
+        document.body.dataset.checkboxCompleted = "true";
+        fakeBox.classList.add("checked");
+        fakeBox.textContent = "ok";
+        status.textContent = "completed";
+      } else {
+        delete document.body.dataset.checkboxCompleted;
+        fakeBox.classList.remove("checked");
+        fakeBox.textContent = "";
+        status.textContent = "missed";
+      }
+    });
+  </script>
 </body>
 </html>`;
 }

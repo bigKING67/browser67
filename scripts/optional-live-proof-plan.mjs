@@ -163,6 +163,8 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
       "slider_completed=true",
       "slider_visual_offset>=180",
       "handle_transform starts with translateX(",
+      "checkbox_completed=true",
+      "checkbox_click_inside=true",
       "managed_tab_only=true",
       "fullscreen_screenshot=false",
       "js_cdp_widget_click=false",

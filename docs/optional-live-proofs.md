@@ -173,6 +173,8 @@ about these invariants:
   `evidence.handle_transform`. The validator rejects local CAPTCHA proofs unless
   both movement fields are at least `180` pixels and the transform is
   `translateX(...px)`.
+- Local CAPTCHA physical proofs include checkbox click evidence:
+  `checkbox_completed:true` and `evidence.checkbox_click_inside:true`.
 
 Accepted proofs expose freshness metadata through `check:optional-live-proofs`,
 `plan:optional-live-proofs`, and `check:readiness`. This lets callers distinguish
@@ -187,21 +189,25 @@ without reading or storing any browser private state.
   "ok": true,
   "platform": "darwin",
   "provider_id": "native-os",
-  "actions": ["drag"],
+  "actions": ["drag", "click"],
   "checked_at": "2026-06-17T00:00:00.000Z",
   "expires_at": "2026-09-17T00:00:00.000Z",
   "command": "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
   "managed_tab_only": true,
   "fixture": "local TMWD-owned managed tab",
   "slider_completed": true,
+  "checkbox_completed": true,
   "fullscreen_screenshot": false,
   "js_cdp_widget_click": false,
   "secrets_redacted": true,
   "evidence": {
     "assist_target": "slider",
+    "assist_targets": ["slider", "checkbox"],
     "slider_visual_offset": 260,
     "slider_delta_live": "260",
     "handle_transform": "translateX(260px)",
+    "checkbox_click_inside": true,
+    "checkbox_status_text": "completed",
     "browser_private_state_access": false
   }
 }

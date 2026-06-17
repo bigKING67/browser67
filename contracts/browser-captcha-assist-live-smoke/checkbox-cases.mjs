@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
+import { stat } from "node:fs/promises";
 
 import { waitFor } from "./fixtures.mjs";
+
+function pointInsideRect(point, rect) {
+  return point?.x >= rect?.left
+    && point?.x <= rect?.right
+    && point?.y >= rect?.top
+    && point?.y <= rect?.bottom;
+}
 
 async function runCheckboxMatrixCase({
   callTool,
@@ -48,12 +56,48 @@ async function runCheckboxMatrixCase({
     tab_id: matrixTabId,
     workspace_key: workspaceKey,
     assist_target: "checkbox",
+    run_vision_correction: true,
   });
   assert.equal(checkboxPlan.status, "planned", `${testCase.name} should produce a plan`);
   assert.equal(checkboxPlan.target?.role, "checkbox", `${testCase.name} should target checkbox`);
   assert.equal(checkboxPlan.assist_target, "checkbox");
   assert.equal(checkboxPlan.coordinate_transform?.vision_correction_plan?.fullscreen_allowed, false);
   assert.equal(typeof checkboxPlan.coordinate_transform?.screen_estimate?.click?.x, "number");
+  assert.equal(typeof checkboxPlan.checkbox_click_hint?.click_client?.x, "number");
+  assert.equal(
+    checkboxPlan.checkbox_click_hint.click_client.x < checkboxPlan.target.center_client.x,
+    true,
+    `${testCase.name} checkbox click hint should be left-biased instead of widget center`,
+  );
+  assert.equal(
+    checkboxPlan.coordinate_transform?.vision_correction_plan?.correction_status,
+    "success",
+    `${testCase.name} checkbox vision correction should succeed: ${JSON.stringify(checkboxPlan.coordinate_transform?.vision_correction_plan)}`,
+  );
+  assert.equal(checkboxPlan.coordinate_transform?.vision_correction?.artifact?.fullscreen, false);
+  assert.equal(typeof checkboxPlan.coordinate_transform?.vision_correction?.screen_estimate?.click?.x, "number");
+  await stat(checkboxPlan.coordinate_transform.vision_correction.artifact.path);
+  const fakeBox = await callTool("browser_execute_js", {
+    ...toolArgs,
+    tab_id: matrixTabId,
+    script: `
+      const rect = document.querySelector(".fake-box")?.getBoundingClientRect();
+      return rect ? {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      } : null;
+    `,
+  });
+  const correctedClick = checkboxPlan.coordinate_transform?.vision_correction?.corrected_coordinates?.click;
+  assert.equal(
+    pointInsideRect(correctedClick, fakeBox?.js_return),
+    true,
+    `${testCase.name} corrected checkbox click should land inside the visual checkbox: ${JSON.stringify({ correctedClick, fakeBox: fakeBox?.js_return })}`,
+  );
   assert.equal(checkboxPlan.plan?.some((step) => step.step === "native_mouse_click"), true);
   matrixResults.push({
     name: testCase.name,
@@ -62,6 +106,11 @@ async function runCheckboxMatrixCase({
     role: checkboxPlan.target?.role,
     captcha_kind: checkboxPlan.captcha_kind,
     click_estimate_available: typeof checkboxPlan.coordinate_transform?.screen_estimate?.click?.x === "number",
+    checkbox_click_hint: checkboxPlan.checkbox_click_hint?.click_client,
+    correction_status: checkboxPlan.coordinate_transform?.vision_correction_plan?.correction_status,
+    detector: checkboxPlan.coordinate_transform?.vision_correction?.detector,
+    confidence: checkboxPlan.coordinate_transform?.vision_correction?.confidence,
+    corrected_click: correctedClick,
     device_pixel_ratio: checkboxPlan.viewport?.device_pixel_ratio,
     visual_viewport_scale: checkboxPlan.viewport?.visual_viewport?.scale,
   });

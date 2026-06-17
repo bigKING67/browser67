@@ -147,13 +147,14 @@ async function assertOptionalLiveProofContract() {
     ok: true,
     platform: process.platform,
     provider_id: "native-os",
-    actions: ["drag"],
+    actions: ["drag", "click"],
     checked_at: "2026-06-17T00:00:00.000Z",
     expires_at: "2099-06-17T00:00:00.000Z",
     command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
     managed_tab_only: true,
     fixture: "local TMWD-owned managed tab",
     slider_completed: true,
+    checkbox_completed: true,
     fullscreen_screenshot: false,
     js_cdp_widget_click: false,
     secrets_redacted: true,
@@ -161,6 +162,7 @@ async function assertOptionalLiveProofContract() {
       slider_visual_offset: 260,
       slider_delta_live: "260",
       handle_transform: "translateX(260px)",
+      checkbox_click_inside: true,
       browser_private_state_access: true,
     },
   }, localCaptcha);
@@ -172,13 +174,14 @@ async function assertOptionalLiveProofContract() {
     ok: true,
     platform: process.platform,
     provider_id: "native-os",
-    actions: ["drag"],
+    actions: ["drag", "click"],
     checked_at: "2026-06-17T00:00:00.000Z",
     expires_at: "2099-06-17T00:00:00.000Z",
     command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
     managed_tab_only: true,
     fixture: "local TMWD-owned managed tab",
     slider_completed: true,
+    checkbox_completed: true,
     fullscreen_screenshot: false,
     js_cdp_widget_click: false,
     secrets_redacted: true,
@@ -186,6 +189,7 @@ async function assertOptionalLiveProofContract() {
       slider_visual_offset: 0,
       slider_delta_live: "0",
       handle_transform: "none",
+      checkbox_click_inside: true,
       browser_private_state_access: false,
     },
   }, localCaptcha);
@@ -280,6 +284,7 @@ async function assertOptionalLiveProofContract() {
     assert.equal(captchaPlan.collection_mode, "local_gui_physical_gate");
     assert.equal(captchaPlan.commands.live_gate.includes("TMWD_CAPTCHA_ASSIST_PHYSICAL=1"), true);
     assert.equal(captchaPlan.evidence_requirements.includes("slider_visual_offset>=180"), true);
+    assert.equal(captchaPlan.evidence_requirements.includes("checkbox_click_inside=true"), true);
     assert.equal(captchaPlan.collection_steps.includes("Run the native pointer readiness check."), true);
     assert.equal(
       captchaPlan.safety_boundaries.includes("Do not use JS/CDP clicks on CAPTCHA widgets."),

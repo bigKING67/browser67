@@ -227,10 +227,13 @@ metadata/execution bridge), `coordinate_transform` screen-pixel estimates, a win
 `vision_correction_plan`, and a replay plan without clicking or taking
 screenshots. Set `run_vision_correction:true` to capture only the planned
 browser viewport/region via CDP, write a bounded temporary PNG artifact under
-the OS temp directory, and return first-pass corrected slider coordinates with a
-confidence gate; the artifact metadata includes path, sha256, dimensions, clip,
-TTL, `fullscreen:false`, and the actual CDP capture clip when scroll offset had
-to be applied, but never base64 image data. Same-origin iframe targets are
+the OS temp directory, and return first-pass corrected slider or checkbox
+coordinates with a confidence gate. Checkbox-style widgets also expose a
+left-biased `checkbox_click_hint` so physical clicks target the visible checkbox
+hotspot instead of the center of the whole Turnstile/hCaptcha-style widget. The
+artifact metadata includes path, sha256, dimensions, clip, TTL,
+`fullscreen:false`, and the actual CDP capture clip when scroll offset had to be
+applied, but never base64 image data. Same-origin iframe targets are
 reported with top-viewport coordinates plus a `frame_path`. Cross-origin
 captcha-like iframes are degraded safely: the planner returns the iframe
 bounding rect, a clipped screenshot plan, `degraded_mode:true`, and
@@ -261,8 +264,10 @@ candidate list when the module is installed outside the default Python path;
 CAPTCHA, planning returns a viewport-space drag hint and estimated screen
 start/end coordinates; execution also requires destination coordinates
 (explicit or estimated) plus physical `drag` capability. If those gates are
-missing, it hands off instead of guessing. The optional local physical live gate
-keeps real input opt-in and now uses a bounded local-fixture retry path:
+missing, it hands off instead of guessing. Checkbox-style CAPTCHA planning
+returns a left-biased click hint and can use vision-corrected coordinates for
+the visible checkbox hotspot. The optional local physical live gate keeps real
+input opt-in and now uses a bounded local-fixture retry path:
 `TMWD_CAPTCHA_ASSIST_MAX_ATTEMPTS` is clamped to 1-3, retry attempts are slower,
 wait at least 5 seconds between attempts via `assist_captcha`, and can be tuned
 with `TMWD_CAPTCHA_ASSIST_PRE_INPUT_SETTLE_MS`,
@@ -300,10 +305,11 @@ uses the current local browser environment and can fail when the extension or hu
 is not connected. `check:captcha-assist-live` is planning-only by default and now
 also validates region-only screenshot artifact creation, scroll-adjusted CDP
 clips, same-origin iframe coordinate conversion, first-pass slider vision
-correction, synthetic slider visual movement, and cross-origin iframe
+and checkbox vision correction, synthetic slider visual movement, and cross-origin iframe
 degraded/manual handoff behavior.
 `check:captcha-assist-physical-live` is the optional hard physical gate. It is
-skipped by default and only runs the local physical slider drag when both
+skipped by default and only runs the local physical slider drag plus checkbox
+click fixtures when both
 `TMWD_CAPTCHA_ASSIST_PHYSICAL=1` and `TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set;
 use `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when a local machine gate should
 fail instead of skip. Skipped/blocked default paths explicitly report
@@ -314,14 +320,15 @@ the same native pointer preflight as
 `npm run check:native-pointer`; if click/drag requirements are missing, it
 returns a structured skipped/blocked result without foregrounding Chrome or
 attempting physical input. The physical branch foregrounds its own TMWD-managed
-fixture tab before dragging only after that preflight passes. Native pointer
+fixture tab before dragging/clicking only after that preflight passes. Native pointer
 actions must be genuinely available: run `npm run check:native-pointer` first to
 verify whether the current OS provider can actually click/drag without moving
 the mouse. On macOS, `cliclick` is treated as pointer-capable only when its
 diagnostic probe does not report missing Accessibility privileges for the
 current terminal/Codex host. When the physical branch passes, it asserts both
-the completion flag and visible slider movement (`slider_visual_offset` /
-`handle_transform`), then writes a sanitized repo-external proof under
+the slider completion/visible movement (`slider_visual_offset` /
+`handle_transform`) and checkbox inside-hotspot completion, then writes a
+sanitized repo-external proof under
 `~/.tmwd-browser-mcp/optional-live-proofs`
 or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable
 that proof write, or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to make proof-write

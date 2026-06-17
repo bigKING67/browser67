@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { envEnabled, envNumber } from "./fixtures.mjs";
+import { envEnabled, envNumber, waitFor } from "./fixtures.mjs";
 
 function compactPhysicalAssist(physicalAssist = {}) {
   return {
@@ -63,11 +63,13 @@ function compactPhysicalAssist(physicalAssist = {}) {
       : undefined,
     viewport: physicalAssist.viewport,
     slider_drag_hint: physicalAssist.slider_drag_hint,
+    checkbox_click_hint: physicalAssist.checkbox_click_hint,
     coordinate_transform: physicalAssist.coordinate_transform
       ? {
         source_coordinate_system: physicalAssist.coordinate_transform.source_coordinate_system,
         target_coordinate_system: physicalAssist.coordinate_transform.target_coordinate_system,
         viewport_origin_screen_estimate: physicalAssist.coordinate_transform.viewport_origin_screen_estimate,
+        click_hint: physicalAssist.coordinate_transform.click_hint,
         screen_estimate: physicalAssist.coordinate_transform.screen_estimate,
         vision_correction_plan: physicalAssist.coordinate_transform.vision_correction_plan,
         vision_correction: physicalAssist.coordinate_transform.vision_correction
@@ -361,8 +363,150 @@ async function runPhysicalAttemptSequence(state) {
   });
 }
 
+async function openCheckboxPhysicalTab({
+  callTool,
+  fixture,
+  toolArgs,
+  workspaceKey,
+}) {
+  const managed = await callTool("browser_tab_lifecycle", {
+    ...toolArgs,
+    action: "select_or_create",
+    url: `${fixture.origin}/checkbox-turnstile`,
+    workspace_key: workspaceKey,
+    fresh: true,
+    active: true,
+    wait_until: "listed",
+    wait_timeout_ms: 5_000,
+    wait_poll_ms: 100,
+  });
+  const tabId = String(managed?.managed_tab?.tab_id ?? "");
+  assert.ok(tabId, "physical checkbox gate did not return managed tab id");
+  const ready = await waitFor(async () => {
+    try {
+      const inspected = await callTool("browser_execute_js", {
+        ...toolArgs,
+        tab_id: tabId,
+        script: "return { path: location.pathname, has_checkbox: Boolean(document.querySelector('.cf-turnstile, [data-captcha=\"turnstile\"]')), title: document.title };",
+      });
+      return {
+        ok: inspected?.js_return?.path === "/checkbox-turnstile" && inspected?.js_return?.has_checkbox === true,
+        inspected,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, 5_000);
+  assert.equal(ready.ok, true, `physical checkbox fixture did not settle: ${JSON.stringify(ready.inspected)}`);
+  return tabId;
+}
+
+function checkboxCompletionScript() {
+  return `
+    const data = document.body.dataset;
+    const box = document.querySelector(".fake-box");
+    const rect = box?.getBoundingClientRect();
+    const numberOrNull = (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    return {
+      checked: true,
+      checkbox_completed: data.checkboxCompleted === "true",
+      checkbox_clicked: data.checkboxClicked === "true",
+      checkbox_click_inside: data.checkboxClickInside === "true",
+      checkbox_click: {
+        x: numberOrNull(data.checkboxClickX),
+        y: numberOrNull(data.checkboxClickY),
+      },
+      fake_box_rect: rect ? {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      } : null,
+      status_text: document.querySelector("#checkbox-status")?.textContent || null,
+      active_element_id: document.activeElement?.id || null,
+    };
+  `;
+}
+
+async function runCheckboxPhysicalAttempt({
+  attemptOptions,
+  callTool,
+  tabId,
+  toolArgs,
+  workspaceKey,
+}) {
+  const checkboxPhysicalAssist = await callTool("browser_auth_ops", {
+    ...toolArgs,
+    action: "assist_captcha",
+    tab_id: tabId,
+    workspace_key: workspaceKey,
+    assist_target: "checkbox",
+    run_vision_correction: true,
+    use_vision_corrected_coordinates: true,
+    confirm_corrected_coordinates: true,
+    confirm_physical_input: true,
+    pre_input_settle_ms: attemptOptions.preInputSettleMs,
+    wait_after_ms: 5_000,
+  });
+  if (checkboxPhysicalAssist.status !== "success") {
+    throw physicalGateError("physical checkbox assist did not report success", checkboxPhysicalAssist, null);
+  }
+  if (checkboxPhysicalAssist.activation?.method !== "tmwd_tabs_switch") {
+    throw physicalGateError("physical checkbox assist did not activate managed tab via TMWD switch", checkboxPhysicalAssist, null);
+  }
+  if (typeof checkboxPhysicalAssist.physical_input_provider?.provider_id !== "string") {
+    throw physicalGateError("physical checkbox assist did not report physical input provider id", checkboxPhysicalAssist, null);
+  }
+  if (typeof checkboxPhysicalAssist.physical_input_provider_selection?.reason !== "string") {
+    throw physicalGateError("physical checkbox assist did not report provider selection reason", checkboxPhysicalAssist, null);
+  }
+  if (checkboxPhysicalAssist.coordinate_refresh?.performed !== true) {
+    throw physicalGateError("physical checkbox assist did not refresh coordinates after foreground activation", checkboxPhysicalAssist, null);
+  }
+  if (checkboxPhysicalAssist.coordinate_refresh?.reason !== "post_activation_viewport_metrics") {
+    throw physicalGateError("physical checkbox coordinate refresh reason was not post-activation viewport metrics", checkboxPhysicalAssist, null);
+  }
+  const checkboxPhysicalCompletion = await callTool("browser_execute_js", {
+    ...toolArgs,
+    tab_id: tabId,
+    script: checkboxCompletionScript(),
+  });
+  const checkboxCompletion = checkboxPhysicalCompletion?.js_return ?? {};
+  const checkboxPhysicalAttempts = [{
+    attempt: 1,
+    strategy: "vision_corrected_checkbox_click",
+    requested: {
+      pre_input_settle_ms: attemptOptions.preInputSettleMs,
+    },
+    physical_assist: compactPhysicalAssist(checkboxPhysicalAssist),
+    physical_completion: checkboxCompletion,
+  }];
+  if (checkboxCompletion.checkbox_completed !== true || checkboxCompletion.checkbox_click_inside !== true) {
+    throw physicalGateError(
+      "physical checkbox click did not complete local checkbox fixture",
+      checkboxPhysicalAssist,
+      checkboxPhysicalCompletion,
+      checkboxPhysicalAttempts,
+    );
+  }
+  return {
+    checkboxPhysicalAssist,
+    checkboxPhysicalCompletion,
+    checkboxPhysicalAttempts,
+  };
+}
+
 async function runPhysicalAssistIfEnabled({
   callTool,
+  fixture,
   tabId,
   toolArgs,
   workspaceKey,
@@ -373,6 +517,12 @@ async function runPhysicalAssistIfEnabled({
   };
   let physicalCompletion = { checked: false };
   let physicalAttempts = [];
+  let checkboxPhysicalAssist = {
+    status: "skipped",
+    reason: "set TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and TMWD_CAPTCHA_ASSIST_CONFIRM=1 to opt in",
+  };
+  let checkboxPhysicalCompletion = { checked: false };
+  let checkboxPhysicalAttempts = [];
   if (envEnabled("TMWD_CAPTCHA_ASSIST_PHYSICAL")) {
     assert.equal(
       envEnabled("TMWD_CAPTCHA_ASSIST_CONFIRM"),
@@ -401,12 +551,28 @@ async function runPhysicalAssistIfEnabled({
     if (!Number.isFinite(visualOffset) || visualOffset < 180) {
       throw physicalGateError("physical drag completed but slider visual movement was not observed", physicalAssist, physicalCompletion, physicalAttempts);
     }
+    const checkboxTabId = await openCheckboxPhysicalTab({
+      callTool,
+      fixture,
+      toolArgs,
+      workspaceKey,
+    });
+    ({ checkboxPhysicalAssist, checkboxPhysicalCompletion, checkboxPhysicalAttempts } = await runCheckboxPhysicalAttempt({
+      attemptOptions,
+      callTool,
+      tabId: checkboxTabId,
+      toolArgs,
+      workspaceKey,
+    }));
   }
 
   return {
     physicalAssist,
     physicalCompletion,
     physicalAttempts,
+    checkboxPhysicalAssist,
+    checkboxPhysicalCompletion,
+    checkboxPhysicalAttempts,
   };
 }
 

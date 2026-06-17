@@ -64,6 +64,38 @@ function buildSliderDragHint(target) {
   };
 }
 
+function buildCheckboxClickHint(target) {
+  const rect = target?.rect;
+  if (!rect || target?.role !== "checkbox") {
+    return undefined;
+  }
+  const width = finiteNumber(rect.width);
+  const height = finiteNumber(rect.height);
+  const left = finiteNumber(rect.left);
+  const top = finiteNumber(rect.top);
+  if (width === null || height === null || left === null || top === null || width <= 0 || height <= 0) {
+    return undefined;
+  }
+  const wideWidget = width >= height * 1.6;
+  const xOffset = wideWidget
+    ? Math.max(22, Math.min(height * 0.35, width * 0.22, 42))
+    : width / 2;
+  const clickClient = {
+    x: roundCoordinate(left + xOffset),
+    y: roundCoordinate(top + height / 2),
+  };
+  return {
+    coordinate_system: "viewport_css_pixels",
+    confidence: wideWidget ? "medium" : "low",
+    click_client: clickClient,
+    fallback_center_client: target.center_client,
+    method: wideWidget ? "left_biased_checkbox_hotspot" : "center_of_compact_checkbox",
+    note: wideWidget
+      ? "Wide checkbox CAPTCHA widgets often expose a whole widget rect; click the left checkbox hotspot instead of the widget center."
+      : "Compact checkbox target uses the element center.",
+  };
+}
+
 function clampRectToViewport(rect, viewport = {}, margin = 12) {
   if (!rect) {
     return undefined;
@@ -169,8 +201,10 @@ function buildVisionCorrectionPlan(screenshotClip, physicalInput = {}) {
 function buildCoordinateTransformPlan(pageState = {}, target = null, sliderDragHint = undefined, physicalInput = {}) {
   const viewport = pageState.viewport ?? {};
   const screenshotClip = clampRectToViewport(target?.rect, viewport);
-  const clickScreen = target?.center_client
-    ? clientPointToScreenEstimate(target.center_client, viewport)
+  const checkboxClickHint = buildCheckboxClickHint(target);
+  const clickClient = checkboxClickHint?.click_client ?? target?.center_client;
+  const clickScreen = clickClient
+    ? clientPointToScreenEstimate(clickClient, viewport)
     : null;
   const dragFrom = sliderDragHint?.from_client
     ? clientPointToScreenEstimate(sliderDragHint.from_client, viewport)
@@ -191,6 +225,7 @@ function buildCoordinateTransformPlan(pageState = {}, target = null, sliderDragH
       "foreground_window_confirmation",
     ],
     viewport_origin_screen_estimate: estimateViewportOriginScreen(viewport) ?? undefined,
+    click_hint: checkboxClickHint,
     screen_estimate: {
       click: clickScreen ?? undefined,
       drag: (dragFrom && dragTo)
@@ -209,6 +244,7 @@ function buildCoordinateTransformPlan(pageState = {}, target = null, sliderDragH
 }
 
 export {
+  buildCheckboxClickHint,
   buildCoordinateTransformPlan,
   buildSliderDragHint,
   buildVisionCorrectionPlan,
