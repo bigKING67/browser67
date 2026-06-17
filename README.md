@@ -306,8 +306,11 @@ degraded/manual handoff behavior.
 skipped by default and only runs the local physical slider drag when both
 `TMWD_CAPTCHA_ASSIST_PHYSICAL=1` and `TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set;
 use `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when a local machine gate should
-fail instead of skip. Before opening the GUI fixture or creating a managed tab,
-the wrapper now runs the same native pointer preflight as
+fail instead of skip. Skipped/blocked default paths explicitly report
+`physical_input_executed:false` and `pointer_moved:false` plus the exact
+`physical_gate_command`, so operator UIs must not present them as real drags.
+Before opening the GUI fixture or creating a managed tab, the wrapper now runs
+the same native pointer preflight as
 `npm run check:native-pointer`; if click/drag requirements are missing, it
 returns a structured skipped/blocked result without foregrounding Chrome or
 attempting physical input. The physical branch foregrounds its own TMWD-managed

@@ -63,6 +63,10 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(disabled.exitCode, 0);
   assert.equal(disabled.payload.status, "skipped");
   assert.equal(disabled.payload.ok, true);
+  assert.equal(disabled.payload.physical_input_attempted, false);
+  assert.equal(disabled.payload.physical_input_executed, false);
+  assert.equal(disabled.payload.pointer_moved, false);
+  assert.match(disabled.payload.physical_gate_command, /TMWD_CAPTCHA_ASSIST_PHYSICAL=1/);
 
   const disabledRequired = await runPhysicalLiveGate({
     env: { TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL: "1" },
@@ -73,6 +77,7 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(disabledRequired.exitCode, 1);
   assert.equal(disabledRequired.payload.status, "skipped");
   assert.equal(disabledRequired.payload.ok, false);
+  assert.equal(disabledRequired.payload.pointer_moved, false);
 
   const missingConfirm = await runPhysicalLiveGate({
     env: { TMWD_CAPTCHA_ASSIST_PHYSICAL: "1" },
@@ -83,6 +88,8 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(missingConfirm.exitCode, 1);
   assert.equal(missingConfirm.payload.status, "blocked");
   assert.match(missingConfirm.payload.reason, /CONFIRM=1/);
+  assert.equal(missingConfirm.payload.physical_input_executed, false);
+  assert.equal(missingConfirm.payload.pointer_moved, false);
 
   const pointerMissingSkip = await runPhysicalLiveGate({
     env: {
@@ -98,6 +105,8 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(pointerMissingSkip.payload.gui_fixture_started, false);
   assert.equal(pointerMissingSkip.payload.managed_tab_created, false);
   assert.equal(pointerMissingSkip.payload.physical_input_attempted, false);
+  assert.equal(pointerMissingSkip.payload.physical_input_executed, false);
+  assert.equal(pointerMissingSkip.payload.pointer_moved, false);
 
   const pointerMissingBlocked = await runPhysicalLiveGate({
     env: {

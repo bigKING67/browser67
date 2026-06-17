@@ -1,4 +1,16 @@
 const CHECK_ID = "captcha-assist-physical-live";
+const PHYSICAL_GATE_COMMAND = "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live";
+
+function noPointerInputFields() {
+  return {
+    physical_input_attempted: false,
+    physical_input_executed: false,
+    pointer_moved: false,
+    gui_fixture_started: false,
+    managed_tab_created: false,
+    physical_gate_command: PHYSICAL_GATE_COMMAND,
+  };
+}
 
 function buildPhysicalDisabledResult(flags) {
   const payload = {
@@ -8,6 +20,7 @@ function buildPhysicalDisabledResult(flags) {
     reason: "set TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and TMWD_CAPTCHA_ASSIST_CONFIRM=1 to run the local physical drag gate",
     require_physical: flags.require_physical,
     planning_gate: "npm run check:captcha-assist-live",
+    ...noPointerInputFields(),
   };
   return {
     exitCode: payload.ok ? 0 : 1,
@@ -23,6 +36,7 @@ function buildConfirmMissingResult() {
       status: "blocked",
       check: CHECK_ID,
       reason: "TMWD_CAPTCHA_ASSIST_CONFIRM=1 is required before physical input",
+      ...noPointerInputFields(),
     },
   };
 }
@@ -37,9 +51,7 @@ function buildNativePointerMissingResult(nativePointer, flags) {
     native_pointer: nativePointer,
     planning_gate: "npm run check:captcha-assist-live",
     readiness_gate: "npm run check:native-pointer",
-    gui_fixture_started: false,
-    managed_tab_created: false,
-    physical_input_attempted: false,
+    ...noPointerInputFields(),
   };
   return {
     exitCode: payload.ok ? 0 : 1,

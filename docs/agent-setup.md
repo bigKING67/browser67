@@ -235,10 +235,11 @@ slider fixtures, and is planning-only. Use
 local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with
 TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1. Native pointer actions must be genuinely
-available; the physical wrapper runs native pointer preflight before opening the
-GUI fixture or creating a managed tab, and missing click/drag requirements
-return structured skipped/blocked output without foregrounding Chrome or
-attempting physical input. Run `npm run check:native-pointer` first for a
+available; skipped/blocked paths include physical_input_executed=false and
+pointer_moved=false, and the physical wrapper runs native pointer preflight
+before opening the GUI fixture or creating a managed tab. Missing click/drag
+requirements return structured skipped/blocked output without foregrounding
+Chrome or attempting physical input. Run `npm run check:native-pointer` first for a
 no-input readiness check. On macOS, missing Accessibility permission keeps
 `cliclick` click/drag capability disabled. A successful physical run writes a
 sanitized repo-external local CAPTCHA proof by default; set
