@@ -342,8 +342,11 @@ cross-OS native-input proof, and approved external IdP live coverage; use
 `--strict` only when a local release gate should require every optional proof.
 Use `plan:optional-live-proofs` to print the current proof collection runbook:
 per-proof status, required host/platform, safe commands, blockers, and evidence
-requirements. Use `proof:optional-live-template` to generate safe `ok:false`
-starter templates before recording real external proofs. Use
+requirements. The plan also surfaces accepted proof freshness
+(`expires_at`/`expires_in_days`), `next_command`, `collection_steps`, and
+`commands.record_replace` so agents can continue from readiness gaps without
+recomputing the collection path. Use `proof:optional-live-template` to generate
+safe `ok:false` starter templates before recording real external proofs. Use
 `proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` to
 dry-run validate a collected proof without writing it; add `--write` to persist
 the canonical proof under the repo-external proof directory, and `--replace`
@@ -375,18 +378,19 @@ already covers OAuth popup, SSO, and MFA manual handoff/resume fixtures; the
 remaining IdP gap is explicitly about approved external provider coverage. The
 readiness audit also consumes `check:optional-live-proofs` results so collected
 local physical/cross-OS/provider evidence can remove those optional gaps without
-storing secrets in the repository. When local CAPTCHA proof is missing, it
-distinguishes "native pointer is not ready", "physical gate was not run", and
-"physical gate appears runnable but no accepted proof was persisted". If macOS
-Accessibility blocks `cliclick`, the native-pointer and CAPTCHA-blocked JSON
-gaps also carry the same structured `permission_recovery` plan exposed by
-`check:native-pointer`, so callers can render the exact Settings path and
-copyable recovery commands without a second probe. Optional proof gaps also
-include a compact `proof_plan` pointer with `npm run plan:optional-live-proofs
--- --json`, the active proof directory, and the missing proof ids, so callers
-can render the next collection command without recomputing the audit. It is
-read-only; use `--strict` when a local release gate should fail on optional
-gaps too.
+storing secrets in the repository. Accepted proof evidence includes expiry
+freshness when available, so readiness output can show when a physical or IdP
+proof needs refresh. When local CAPTCHA proof is missing, it distinguishes
+"native pointer is not ready", "physical gate was not run", and "physical gate
+appears runnable but no accepted proof was persisted". If macOS Accessibility
+blocks `cliclick`, the native-pointer and CAPTCHA-blocked JSON gaps also carry
+the same structured `permission_recovery` plan exposed by `check:native-pointer`,
+so callers can render the exact Settings path and copyable recovery commands
+without a second probe. Optional proof gaps also include a compact `proof_plan`
+pointer with `npm run plan:optional-live-proofs -- --json`, the active proof
+directory, and the missing proof ids, so callers can render the next collection
+command without recomputing the audit. It is read-only; use `--strict` when a
+local release gate should fail on optional gaps too.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,

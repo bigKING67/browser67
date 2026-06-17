@@ -307,12 +307,27 @@ function validateProof(proof, requirement) {
   };
 }
 
+function proofFreshness(proof) {
+  const checkedAt = validIsoTimestamp(proof?.checked_at) ? proof.checked_at : undefined;
+  const expiresAt = validIsoTimestamp(proof?.expires_at) ? proof.expires_at : undefined;
+  const expiresInDays = expiresAt === undefined
+    ? undefined
+    : Math.ceil((Date.parse(expiresAt) - Date.now()) / (24 * 60 * 60 * 1000));
+  return {
+    checked_at: checkedAt,
+    expires_at: expiresAt,
+    expires_in_days: expiresInDays,
+    expires_soon: Number.isFinite(expiresInDays) ? expiresInDays <= 14 : undefined,
+  };
+}
+
 function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREMENTS) {
   return requirements.map((requirement) => {
     const candidates = rows
       .filter((row) => row.proof && proofTargetsRequirement(row.proof, requirement))
       .map((row) => ({
         path: row.path,
+        ...proofFreshness(row.proof),
         validation: validateProof(row.proof, requirement),
       }));
     const accepted = candidates.find((candidate) => candidate.validation.ok);
@@ -322,6 +337,15 @@ function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREME
       title: requirement.title,
       satisfied: Boolean(accepted),
       proof_path: accepted?.path,
+      accepted: accepted
+        ? {
+          path: accepted.path,
+          checked_at: accepted.checked_at,
+          expires_at: accepted.expires_at,
+          expires_in_days: accepted.expires_in_days,
+          expires_soon: accepted.expires_soon,
+        }
+        : undefined,
       candidates,
     };
   });

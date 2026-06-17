@@ -41,7 +41,15 @@ npm run plan:optional-live-proofs -- --json
 The plan reports each proof id, current satisfaction status, required host or
 provider kind, safe commands, blockers such as macOS Accessibility permission,
 the dry-run/write record commands, and the evidence fields that must be present
-before a proof is accepted.
+before a proof is accepted. JSON output includes enough state for agents and UIs
+to resume collection directly from a readiness gap:
+
+- `accepted`: accepted proof path plus `checked_at`, `expires_at`,
+  `expires_in_days`, and `expires_soon` when a proof is already valid.
+- `next_command`: the next safe command or host/provider handoff to run.
+- `collection_steps`: a short ordered runbook for collecting that proof.
+- `commands.record_replace`: the audited refresh command for replacing an
+  existing canonical proof after a newer sanitized run is available.
 
 Generate safe starter templates instead of hand-writing JSON:
 
@@ -131,6 +139,14 @@ about these invariants:
 - Native proofs set `evidence.fullscreen_screenshot:false`.
 - Native and IdP proofs set `evidence.secrets_redacted:true`.
 - Local CAPTCHA physical proofs set `evidence.browser_private_state_access:false`.
+- Local CAPTCHA physical proofs include visible slider movement evidence:
+  `evidence.slider_visual_offset`, `evidence.slider_delta_live`, and
+  `evidence.handle_transform`.
+
+Accepted proofs expose freshness metadata through `check:optional-live-proofs`,
+`plan:optional-live-proofs`, and `check:readiness`. This lets callers distinguish
+fresh accepted proof, soon-expiring proof, expired proof, and missing proof
+without reading or storing any browser private state.
 
 ## Local CAPTCHA physical proof example
 

@@ -207,6 +207,9 @@ async function assertOptionalLiveProofContract() {
     assert.ok(linux.candidates[0].validation.errors.includes("template_only_not_accepted"));
     const win32 = audit.requirements.find((item) => item.id === "native-live-win32");
     assert.equal(win32?.satisfied, true);
+    assert.equal(win32?.accepted?.path?.endsWith("native-live-win32.json"), true);
+    assert.equal(win32?.accepted?.expires_at, "2099-06-17T00:00:00.000Z");
+    assert.equal(typeof win32?.accepted?.expires_in_days, "number");
 
     const plan = await buildOptionalLiveProofPlan({ proof_dir: tmpDir });
     assert.equal(plan.action, "optional-live-proof-plan");
@@ -216,6 +219,8 @@ async function assertOptionalLiveProofContract() {
     assert.ok(captchaPlan);
     assert.equal(captchaPlan.collection_mode, "local_gui_physical_gate");
     assert.equal(captchaPlan.commands.live_gate.includes("TMWD_CAPTCHA_ASSIST_PHYSICAL=1"), true);
+    assert.equal(captchaPlan.evidence_requirements.includes("slider_visual_offset>=180"), true);
+    assert.equal(captchaPlan.collection_steps.includes("Run the native pointer readiness check."), true);
     assert.equal(
       captchaPlan.safety_boundaries.includes("Do not use JS/CDP clicks on CAPTCHA widgets."),
       true,
@@ -223,9 +228,14 @@ async function assertOptionalLiveProofContract() {
     const win32Plan = plan.items.find((item) => item.id === "native-live-win32");
     assert.equal(win32Plan?.satisfied, true);
     assert.equal(win32Plan?.proof_path?.endsWith("native-live-win32.json"), true);
+    assert.equal(win32Plan?.accepted?.expires_at, "2099-06-17T00:00:00.000Z");
+    assert.equal(typeof win32Plan?.accepted?.expires_in_days, "number");
+    assert.equal(win32Plan?.next_command, `TMWD_OPTIONAL_PROOF_DIR=${tmpDir} npm run check:optional-live-proofs`);
+    assert.equal(win32Plan?.commands.record_replace, "npm run proof:optional-live-record -- --id native-live-win32 --from-json <sanitized.json> --write --replace");
     const linuxPlan = plan.items.find((item) => item.id === "native-live-linux");
     assert.equal(linuxPlan?.collection_mode, "cross_os_native_physical_gate");
     assert.equal(linuxPlan?.target_platform, "linux");
+    assert.equal(linuxPlan?.next_command, "Run this plan on a linux host");
     assert.equal(linuxPlan?.commands.template, "npm run proof:optional-live-template -- --id native-live-linux --write");
     assert.equal(
       linuxPlan?.commands.record,
@@ -237,8 +247,10 @@ async function assertOptionalLiveProofContract() {
     );
     const idpPlan = plan.items.find((item) => item.id === "idp-oauth-popup");
     assert.equal(idpPlan?.status, "requires_approved_external_provider");
+    assert.equal(idpPlan?.next_command, "Run approved external oauth_popup handoff/resume gate");
     assert.equal(idpPlan?.commands.local_fixture_baseline, "npm run check:auth-live");
     assert.equal(idpPlan?.evidence_requirements.includes("manual_required_verified=true"), true);
+    assert.equal(idpPlan?.collection_steps.includes("Resume ensure_login and record sanitized proof JSON."), true);
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

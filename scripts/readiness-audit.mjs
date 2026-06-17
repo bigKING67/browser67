@@ -264,11 +264,14 @@ function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, poi
   const localCaptchaPhysicalProof = optionalProofAudit.local_requirements
     ?.find((requirement) => requirement.id === "captcha-assist-physical-local" && requirement.satisfied === true);
   if (localCaptchaPhysicalProof) {
+    const freshness = localCaptchaPhysicalProof.accepted?.expires_at
+      ? ` expires_at=${localCaptchaPhysicalProof.accepted.expires_at} expires_in_days=${localCaptchaPhysicalProof.accepted.expires_in_days}`
+      : "";
     return createGap(
       "captcha_physical_live_gate_proven",
       "informational",
       0,
-      `proof_path=${localCaptchaPhysicalProof.proof_path} proof_dir=${optionalProofAudit.proof_dir}`,
+      `proof_path=${localCaptchaPhysicalProof.proof_path} proof_dir=${optionalProofAudit.proof_dir}${freshness}`,
       "Keep the repo-external sanitized proof fresh by rerunning the physical gate after CAPTCHA assist or native-input provider changes.",
     );
   }

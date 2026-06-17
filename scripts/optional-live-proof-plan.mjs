@@ -61,6 +61,10 @@ function proofRecordCommand(id) {
   return `npm run proof:optional-live-record -- --id ${id} --from-json <sanitized.json>`;
 }
 
+function proofRecordReplaceCommand(id) {
+  return `${proofRecordCommand(id)} --write --replace`;
+}
+
 function validateProofCommand(proofDir) {
   return `TMWD_OPTIONAL_PROOF_DIR=${proofDir} npm run check:optional-live-proofs`;
 }
@@ -69,6 +73,7 @@ function baseCommands(requirement, proofDir) {
   return {
     record: proofRecordCommand(requirement.id),
     record_write: `${proofRecordCommand(requirement.id)} --write`,
+    record_replace: proofRecordReplaceCommand(requirement.id),
     template: proofTemplateCommand(requirement.id),
     validate: validateProofCommand(proofDir),
   };
@@ -81,6 +86,7 @@ function baseItem({ requirement, result, proofDir }) {
     title: requirement.title,
     satisfied: result?.satisfied === true,
     proof_path: result?.proof_path,
+    accepted: result?.accepted,
     proof_dir: proofDir,
     commands: baseCommands(requirement, proofDir),
   };
@@ -94,12 +100,16 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
   } else if (nativePointer?.ok !== true) {
     status = "blocked_by_native_pointer";
   }
+  const nextCommand = satisfied
+    ? validateProofCommand(proofDir)
+    : nativePointer?.ok === true ? PHYSICAL_GATE_COMMAND : NATIVE_POINTER_COMMAND;
   return {
     ...baseItem({ requirement, result, proofDir }),
     status,
     collection_mode: "local_gui_physical_gate",
     current_platform: process.platform,
     required_current_platform: requirement.matches.platform,
+    next_command: nextCommand,
     commands: {
       ...baseCommands(requirement, proofDir),
       native_pointer_readiness: NATIVE_POINTER_COMMAND,
@@ -113,6 +123,8 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
     ],
     evidence_requirements: [
       "slider_completed=true",
+      "slider_visual_offset>=180",
+      "handle_transform starts with translateX(",
       "managed_tab_only=true",
       "fullscreen_screenshot=false",
       "js_cdp_widget_click=false",
@@ -125,6 +137,12 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
       "Do not read cookies, tokens, passwords, browser history, or session stores.",
       "Stop and hand off on multi-round image or puzzle challenges.",
     ],
+    collection_steps: [
+      "Run the native pointer readiness check.",
+      "Run the explicit physical gate on a TMWD-owned local fixture tab.",
+      "Confirm the generated proof records slider completion and visible movement.",
+      "Validate the repo-external proof directory.",
+    ],
     native_pointer: nativePointer,
     permission_recovery: nativePointer?.permission_recovery ?? undefined,
   };
@@ -133,14 +151,19 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
 function buildNativeHostItem({ requirement, result, proofDir }) {
   const targetPlatform = requirement.matches.platform;
   const currentHostMatches = process.platform === targetPlatform;
+  const satisfied = result?.satisfied === true;
+  const nextCommand = satisfied
+    ? validateProofCommand(proofDir)
+    : currentHostMatches ? PHYSICAL_GATE_COMMAND : `Run this plan on a ${targetPlatform} host`;
   return {
     ...baseItem({ requirement, result, proofDir }),
-    status: result?.satisfied === true
+    status: satisfied
       ? "satisfied"
       : currentHostMatches ? "run_on_this_host_with_explicit_opt_in" : "requires_target_platform_host",
     collection_mode: "cross_os_native_physical_gate",
     current_platform: process.platform,
     target_platform: targetPlatform,
+    next_command: nextCommand,
     commands: {
       ...baseCommands(requirement, proofDir),
       native_pointer_readiness: NATIVE_POINTER_COMMAND,
@@ -164,16 +187,27 @@ function buildNativeHostItem({ requirement, result, proofDir }) {
       "Do not store screenshots or secrets in proof JSON.",
       "Do not mark templates as accepted proof.",
     ],
+    collection_steps: [
+      `Move to a ${targetPlatform} GUI host with this repo and TMWD browser setup.`,
+      "Run native pointer readiness on that host.",
+      "Run the explicit physical live gate or equivalent approved native live gate.",
+      "Record sanitized proof JSON with proof:optional-live-record.",
+      "Validate all optional proofs from the shared repo-external proof directory.",
+    ],
   };
 }
 
 function buildIdpItem({ requirement, result, proofDir }) {
   const providerKind = requirement.matches.provider_kind;
+  const satisfied = result?.satisfied === true;
   return {
     ...baseItem({ requirement, result, proofDir }),
-    status: result?.satisfied === true ? "satisfied" : "requires_approved_external_provider",
+    status: satisfied ? "satisfied" : "requires_approved_external_provider",
     collection_mode: "approved_external_idp_handoff_resume",
     provider_kind: providerKind,
+    next_command: satisfied
+      ? validateProofCommand(proofDir)
+      : `Run approved external ${providerKind} handoff/resume gate`,
     commands: {
       ...baseCommands(requirement, proofDir),
       local_fixture_baseline: "npm run check:auth-live",
@@ -195,6 +229,14 @@ function buildIdpItem({ requirement, result, proofDir }) {
       "Do not store provider tokens, cookies, session IDs, passwords, or authorization headers.",
       "Do not bypass MFA/SSO; prove handoff and resume only.",
       "Do not broaden profile origin allowlists.",
+    ],
+    collection_steps: [
+      "Run the local auth live fixture baseline first.",
+      "Use an approved external provider or test tenant.",
+      "Capture manual_required state without storing provider secrets.",
+      "Complete manual/native handoff outside the proof JSON.",
+      "Resume ensure_login and record sanitized proof JSON.",
+      "Validate the repo-external proof directory.",
     ],
   };
 }
@@ -258,8 +300,14 @@ function outputText(plan) {
     if (item.proof_path) {
       process.stdout.write(`  proof=${item.proof_path}\n`);
     }
+    if (item.accepted?.expires_at) {
+      process.stdout.write(`  expires_at=${item.accepted.expires_at} expires_in_days=${item.accepted.expires_in_days}\n`);
+    }
     if (item.permission_recovery) {
       process.stdout.write(`  permission_recovery=${item.permission_recovery.status} blocker=${item.permission_recovery.blocker}\n`);
+    }
+    if (item.next_command) {
+      process.stdout.write(`  next=${item.next_command}\n`);
     }
     process.stdout.write(`  template=${item.commands.template}\n`);
     process.stdout.write(`  record=${item.commands.record}\n`);
