@@ -42,6 +42,16 @@ function compactPhysicalAssist(physicalAssist = {}) {
       : undefined,
     pre_input_settle_ms: physicalAssist.pre_input_settle_ms,
     screen_coordinates: physicalAssist.screen_coordinates,
+    coordinate_refresh: physicalAssist.coordinate_refresh
+      ? {
+        performed: physicalAssist.coordinate_refresh.performed,
+        reason: physicalAssist.coordinate_refresh.reason,
+        initial_viewport: physicalAssist.coordinate_refresh.initial_viewport,
+        refreshed_viewport: physicalAssist.coordinate_refresh.refreshed_viewport,
+        initial_coordinate_transform: physicalAssist.coordinate_refresh.initial_coordinate_transform,
+        refreshed_coordinate_transform: physicalAssist.coordinate_refresh.refreshed_coordinate_transform,
+      }
+      : undefined,
     waited_ms: physicalAssist.waited_ms,
     target: physicalAssist.target
       ? {
@@ -281,6 +291,12 @@ async function runSinglePhysicalAttempt({
   }
   if (typeof nextPhysicalAssist.physical_input_provider_selection?.reason !== "string") {
     throw physicalGateError("physical assist did not report provider selection reason", nextPhysicalAssist, physicalCompletion, physicalAttempts);
+  }
+  if (nextPhysicalAssist.coordinate_refresh?.performed !== true) {
+    throw physicalGateError("physical assist did not refresh coordinates after foreground activation", nextPhysicalAssist, physicalCompletion, physicalAttempts);
+  }
+  if (nextPhysicalAssist.coordinate_refresh?.reason !== "post_activation_viewport_metrics") {
+    throw physicalGateError("physical assist coordinate refresh reason was not post-activation viewport metrics", nextPhysicalAssist, physicalCompletion, physicalAttempts);
   }
   const nextPhysicalCompletion = await callTool("browser_execute_js", {
     ...toolArgs,

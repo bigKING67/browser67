@@ -103,8 +103,15 @@ function estimateViewportOriginScreen(viewport = {}) {
   return {
     x: roundCoordinate(screenX + sideInset),
     y: roundCoordinate(screenY + topInset),
+    top_chrome_inset: roundCoordinate(topInset),
+    top_chrome_inset_source: outerHeight !== null && innerHeight !== null
+      ? "outerHeight-innerHeight"
+      : "unavailable",
     confidence: outerWidth !== null && outerHeight !== null ? "medium" : "low",
     method: "window.screen + outer/inner viewport chrome estimate",
+    metrics_warning: chromeHeight === 0
+      ? "outerHeight-innerHeight is zero; metrics can be stale before foreground activation"
+      : undefined,
     assumptions: [
       "screenX/screenY refer to the browser outer window",
       "outerWidth/outerHeight include browser chrome and frame",
