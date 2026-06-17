@@ -352,9 +352,11 @@ command, record/write commands, validation command, and the non-negotiable
 completion policy. Use `proof:optional-live-template` to generate safe
 `ok:false` starter templates before recording real external proofs. Use
 `proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` to
-dry-run validate a collected proof without writing it; add `--write` to persist
-the canonical proof under the repo-external proof directory, and `--replace`
-only for an intentional audited refresh of an existing proof. See
+dry-run validate a collected proof without writing it; its output includes a
+`redaction_checklist` and rejects obvious Bearer/JWT/cookie-like values plus
+unredacted IdP tenant/account/provider identifiers. Add `--write` to persist the
+canonical proof under the repo-external proof directory, and `--replace` only
+for an intentional audited refresh of an existing proof. See
 `docs/optional-live-proofs.md`.
 
 `npm run check:change-set` is a read-only review hygiene gate for large refactors.

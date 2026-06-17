@@ -92,10 +92,14 @@ npm run proof:optional-live-record -- --id native-live-linux --from-json /path/t
 
 The default record command is dry-run only. It accepts a JSON file path, validates
 the proof against the selected requirement, prints input/output SHA-256 hashes,
-and does not read environment secrets, browser state, cookies, tokens, or
-clipboard data. `--write` persists the canonical JSON to the repo-external proof
-directory as `<proof-id>.json`; it refuses to overwrite an existing proof unless
-`--replace` is also supplied for an intentional audited refresh.
+prints a `redaction_checklist`, and does not read environment secrets, browser
+state, cookies, tokens, or clipboard data. The validator rejects obvious
+sensitive key names, Bearer/JWT/cookie-like values, templates, placeholder
+commands, and unredacted IdP tenant, account, email, username, phone, domain,
+provider, client, org, or user identifiers. `--write` persists the canonical JSON to the
+repo-external proof directory as `<proof-id>.json`; it refuses to overwrite an
+existing proof unless `--replace` is also supplied for an intentional audited
+refresh.
 
 ```bash
 npm run check:native-pointer
@@ -140,6 +144,9 @@ Proof files must be sanitized. The validator rejects keys whose names look like
 credentials, cookies, tokens, secrets, or session material. Do not store browser
 cookies, IdP tokens, screenshots with private data, passwords, authorization
 headers, or raw profile/session state in proof files.
+For external IdP proofs, tenant, account, email, username, phone, domain,
+provider, client, org, and user identifiers must be represented only as redacted,
+anonymous, hashed, synthetic, fixture, or test-tenant/test-provider values.
 
 The audit reports invalid candidate files when a proof targets the right
 requirement but still fails validation, for example when a generated

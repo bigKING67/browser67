@@ -7,9 +7,12 @@ import { pathToFileURL } from "node:url";
 
 const DEFAULT_OPTIONAL_LIVE_PROOF_DIR = join(homedir(), ".tmwd-browser-mcp", "optional-live-proofs");
 const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|authorization|credential)/i;
+const SENSITIVE_VALUE_PATTERN = /(?:\bBearer\s+[A-Za-z0-9._~+/-]+=*|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|(?:^|[;,\s])(?:sid|sessionid|token|cookie|authorization)=\S+)/i;
 const PLACEHOLDER_COMMAND_PATTERN = /(?:replace with exact|placeholder|template-only|template only)/i;
 const SAFE_REDACTION_STATUS_KEYS = new Set(["secrets_redacted", "credentials_redacted"]);
 const VALID_IDP_PROVIDER_KINDS = new Set(["oauth_popup", "cross_domain_sso", "mfa"]);
+const IDP_IDENTIFIER_KEY_PATTERN = /(?:tenant|account|email|username|phone|domain|provider|client_id|org_id|user_id)/i;
+const REDACTED_VALUE_PATTERN = /(?:redacted|anonymous|anonymized|hashed|synthetic|fixture|test tenant|test provider)/i;
 const MIN_CAPTCHA_SLIDER_VISUAL_OFFSET = 180;
 
 const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
@@ -159,6 +162,50 @@ function findSensitiveKeys(value, path = "$") {
       continue;
     }
     hits.push(...findSensitiveKeys(nested, nextPath));
+  }
+  return hits;
+}
+
+function findSensitiveValues(value, path = "$") {
+  if (typeof value === "string") {
+    return SENSITIVE_VALUE_PATTERN.test(value) ? [path] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findSensitiveValues(item, `${path}[${index}]`));
+  }
+  if (!isPlainObject(value)) {
+    return [];
+  }
+  return Object.entries(value).flatMap(([key, nested]) => findSensitiveValues(nested, `${path}.${key}`));
+}
+
+function safeRedactedIdentifierValue(value) {
+  if (value === undefined || value === null) {
+    return true;
+  }
+  if (typeof value !== "string") {
+    return false;
+  }
+  return REDACTED_VALUE_PATTERN.test(value);
+}
+
+function findIdpIdentifierLeaks(value, path = "$") {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findIdpIdentifierLeaks(item, `${path}[${index}]`));
+  }
+  if (!isPlainObject(value)) {
+    return [];
+  }
+  const hits = [];
+  for (const [key, nested] of Object.entries(value)) {
+    const nextPath = `${path}.${key}`;
+    if (IDP_IDENTIFIER_KEY_PATTERN.test(key)) {
+      if (!safeRedactedIdentifierValue(nested)) {
+        hits.push(nextPath);
+      }
+      continue;
+    }
+    hits.push(...findIdpIdentifierLeaks(nested, nextPath));
   }
   return hits;
 }
@@ -324,9 +371,111 @@ function validateProof(proof, requirement) {
   if (sensitiveKeys.length > 0) {
     errors.push(`sensitive_keys_present:${sensitiveKeys.join(",")}`);
   }
+  const sensitiveValues = findSensitiveValues(proof);
+  if (sensitiveValues.length > 0) {
+    errors.push(`sensitive_values_present:${sensitiveValues.join(",")}`);
+  }
+  if (requirement.type === "idp_live" && isPlainObject(proof.evidence)) {
+    const idpIdentifierLeaks = findIdpIdentifierLeaks(proof.evidence);
+    if (idpIdentifierLeaks.length > 0) {
+      errors.push(`idp_identifier_values_must_be_redacted:${idpIdentifierLeaks.join(",")}`);
+    }
+  }
   return {
     ok: errors.length === 0,
     errors,
+  };
+}
+
+function checklistItem(id, ok, message, details = {}) {
+  return {
+    id,
+    ok,
+    message,
+    ...details,
+  };
+}
+
+function buildProofRedactionChecklist(proof, requirement) {
+  const sensitiveKeys = findSensitiveKeys(proof);
+  const sensitiveValues = findSensitiveValues(proof);
+  const idpIdentifierLeaks = requirement.type === "idp_live" && isPlainObject(proof?.evidence)
+    ? findIdpIdentifierLeaks(proof.evidence)
+    : [];
+  const checks = [
+    checklistItem(
+      "no_sensitive_key_names",
+      sensitiveKeys.length === 0,
+      "Proof JSON must not contain keys named like password, secret, token, cookie, session, authorization, or credential.",
+      sensitiveKeys.length > 0 ? { paths: sensitiveKeys } : {},
+    ),
+    checklistItem(
+      "no_sensitive_value_patterns",
+      sensitiveValues.length === 0,
+      "Proof JSON must not contain Bearer tokens, JWT-like values, or cookie/session assignment strings.",
+      sensitiveValues.length > 0 ? { paths: sensitiveValues } : {},
+    ),
+    checklistItem(
+      "not_template_only",
+      proof?.template_only !== true,
+      "Templates must be replaced by sanitized output from a real live gate.",
+    ),
+    checklistItem(
+      "command_is_exact",
+      typeof proof?.command === "string" && proof.command.trim().length > 0 && !PLACEHOLDER_COMMAND_PATTERN.test(proof.command),
+      "Command must be the exact approved gate/runbook command, not a placeholder.",
+    ),
+  ];
+
+  if (requirement.type === "captcha_physical_live") {
+    checks.push(
+      checklistItem(
+        "captcha_no_browser_private_state",
+        proof?.evidence?.browser_private_state_access === false,
+        "Local CAPTCHA physical proof must explicitly avoid browser private state access.",
+      ),
+      checklistItem(
+        "captcha_no_fullscreen_or_cdp_widget_click",
+        proof?.fullscreen_screenshot === false && proof?.js_cdp_widget_click === false,
+        "Local CAPTCHA physical proof must not use fullscreen screenshots or JS/CDP widget clicks.",
+      ),
+    );
+  }
+
+  if (requirement.type === "native_live") {
+    checks.push(
+      checklistItem(
+        "native_managed_tab_only",
+        proof?.evidence?.managed_tab_only === true,
+        "Native proof must run only against TMWD-owned managed fixture tabs.",
+      ),
+      checklistItem(
+        "native_no_fullscreen_screenshot",
+        proof?.evidence?.fullscreen_screenshot === false,
+        "Native proof must not rely on fullscreen screenshots.",
+      ),
+    );
+  }
+
+  if (requirement.type === "idp_live") {
+    checks.push(
+      checklistItem(
+        "idp_handoff_resume_only",
+        proof?.manual_required_verified === true && proof?.resume_verified === true,
+        "External IdP proof must show manual-required handoff and resume, not bypass.",
+      ),
+      checklistItem(
+        "idp_identifiers_redacted",
+        idpIdentifierLeaks.length === 0,
+        "External IdP proof must redact tenant, account, email, username, phone, domain, provider, client, org, and user identifiers.",
+        idpIdentifierLeaks.length > 0 ? { paths: idpIdentifierLeaks } : {},
+      ),
+    );
+  }
+
+  return {
+    ok: checks.every((item) => item.ok === true),
+    checks,
   };
 }
 
@@ -456,6 +605,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
 export {
   ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   buildOptionalLiveProofAudit,
+  buildProofRedactionChecklist,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
   LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   OPTIONAL_LIVE_PROOF_REQUIREMENTS,

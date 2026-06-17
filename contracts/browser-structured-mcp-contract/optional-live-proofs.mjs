@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   buildOptionalLiveProofAudit,
+  buildProofRedactionChecklist,
   LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   validateProof,
@@ -113,6 +114,33 @@ async function assertOptionalLiveProofContract() {
   assert.equal(idpSensitive.ok, false);
   assert.ok(idpSensitive.errors.some((error) => error.startsWith("sensitive_keys_present:")));
 
+  const idpSensitiveValue = validateProof({
+    ...validIdpProof("oauth_popup"),
+    evidence: {
+      approved_provider: "redacted test tenant",
+      profile_scope: "repo-external exact-origin profile",
+      secrets_redacted: true,
+      callback_header: "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.example.example",
+    },
+  }, idpOauth);
+  assert.equal(idpSensitiveValue.ok, false);
+  assert.ok(idpSensitiveValue.errors.some((error) => error.startsWith("sensitive_values_present:")));
+
+  const idpIdentifierLeak = validateProof({
+    ...validIdpProof("oauth_popup"),
+    evidence: {
+      approved_provider: "Acme Okta tenant",
+      profile_scope: "repo-external exact-origin profile",
+      secrets_redacted: true,
+    },
+  }, idpOauth);
+  assert.equal(idpIdentifierLeak.ok, false);
+  assert.ok(idpIdentifierLeak.errors.some((error) => error.startsWith("idp_identifier_values_must_be_redacted:")));
+
+  const idpChecklist = buildProofRedactionChecklist(validIdpProof("oauth_popup"), idpOauth);
+  assert.equal(idpChecklist.ok, true);
+  assert.equal(idpChecklist.checks.some((item) => item.id === "idp_identifiers_redacted"), true);
+
   const localCaptcha = requirement("captcha-assist-physical-local");
   const captchaUnsafeState = validateProof({
     type: "captcha_physical_live",
@@ -178,6 +206,7 @@ async function assertOptionalLiveProofContract() {
     assert.equal(dryRunRecord.ok, true);
     assert.equal(dryRunRecord.status, "validated");
     assert.equal(dryRunRecord.written, false);
+    assert.equal(dryRunRecord.redaction_checklist.ok, true);
     await assert.rejects(
       () => fs.stat(path.join(recordTmpDir, "native-live-linux.json")),
       /ENOENT/,

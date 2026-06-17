@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  buildProofRedactionChecklist,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
   validateProof,
 } from "./optional-live-proof-audit.mjs";
@@ -142,6 +143,7 @@ async function buildOptionalLiveProofRecord(args = {}) {
   const targetPath = join(proofDir, proofFileName(requirement));
   const { proof, raw, size } = await readProofInput(inputPath);
   const validation = validateProof(proof, requirement);
+  const redactionChecklist = buildProofRedactionChecklist(proof, requirement);
   const canonical_json = `${JSON.stringify(proof, null, 2)}\n`;
   const payload = {
     ok: validation.ok,
@@ -155,6 +157,7 @@ async function buildOptionalLiveProofRecord(args = {}) {
     write: args.write === true,
     replace: args.replace === true,
     validation,
+    redaction_checklist: redactionChecklist,
     input: {
       bytes: size,
       sha256: sha256(raw),
@@ -194,8 +197,16 @@ function outputText(payload) {
     `optional_live_proof_record=${payload.status} id=${payload.id} write=${payload.write} target=${payload.target_path}\n`,
   );
   process.stdout.write(`validation=${payload.validation.ok ? "ok" : "fail"}\n`);
+  process.stdout.write(`redaction_checklist=${payload.redaction_checklist.ok ? "ok" : "fail"}\n`);
   if (!payload.validation.ok) {
     process.stdout.write(`errors=${payload.validation.errors.join(",")}\n`);
+  }
+  if (!payload.redaction_checklist.ok) {
+    const failed = payload.redaction_checklist.checks
+      .filter((item) => item.ok !== true)
+      .map((item) => item.id)
+      .join(",");
+    process.stdout.write(`redaction_failures=${failed}\n`);
   }
   if (payload.error) {
     process.stdout.write(`error=${payload.error}\n`);
