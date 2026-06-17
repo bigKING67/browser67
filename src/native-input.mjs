@@ -1,6 +1,9 @@
 import { nowIso } from "./common.mjs";
 import { createToolError } from "./errors.mjs";
-import { detectNativeInputCapabilities } from "./native-capabilities.mjs";
+import {
+  clearNativeInputCapabilitiesCache,
+  detectNativeInputCapabilities,
+} from "./native-capabilities.mjs";
 import {
   NATIVE_INPUT_DEFAULT_TIMEOUT_MS,
   NATIVE_INPUT_MAX_TIMEOUT_MS,
@@ -110,6 +113,7 @@ export {
   detectNativeInputCapabilities,
   validateNativeInputArguments,
   buildNativeInputDryRunResponse,
+  clearNativeInputCapabilitiesCache,
   runNativeInputAction,
   mapNativeInputError,
   handleBrowserNativeInput,
