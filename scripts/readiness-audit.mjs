@@ -172,7 +172,11 @@ async function buildOptionalGaps({ report }) {
     ));
   }
 
-  if (process.env.TMWD_LJQCTRL_PYTHON !== undefined || process.env.TMWD_LJQCTRL_EXECUTE === "1") {
+  if (
+    process.env.TMWD_LJQCTRL_PYTHON !== undefined
+    || process.env.TMWD_LJQCTRL_PYTHON_CANDIDATES !== undefined
+    || process.env.TMWD_LJQCTRL_EXECUTE === "1"
+  ) {
     gaps.push(createGap(
       "ljqctrl_config_external",
       "informational",
@@ -185,8 +189,8 @@ async function buildOptionalGaps({ report }) {
       "ljqctrl_not_configured",
       "optional_live",
       0.006,
-      "TMWD_LJQCTRL_PYTHON unset and TMWD_LJQCTRL_EXECUTE not enabled",
-      "Set TMWD_LJQCTRL_PYTHON to a Python that can import ljqCtrl, then run npm run check:ljqctrl.",
+      "TMWD_LJQCTRL_PYTHON/TMWD_LJQCTRL_PYTHON_CANDIDATES unset and TMWD_LJQCTRL_EXECUTE not enabled",
+      "Set TMWD_LJQCTRL_PYTHON or TMWD_LJQCTRL_PYTHON_CANDIDATES to interpreter(s) that can import ljqCtrl, then run npm run check:ljqctrl.",
     ));
   }
 
