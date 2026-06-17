@@ -35,6 +35,7 @@ moving the mouse, or writing proof files:
 
 ```bash
 npm run plan:optional-live-proofs
+npm run plan:optional-live-proofs -- --id idp-oauth-popup
 npm run plan:optional-live-proofs -- --json
 ```
 
@@ -51,10 +52,15 @@ to resume collection directly from a readiness gap:
 - `commands.record_replace`: the audited refresh command for replacing an
   existing canonical proof after a newer sanitized run is available.
 
+Use `--id <proof-id>` to produce a single-proof handoff packet for a specific
+host or provider owner. The filtered plan keeps the same safe defaults and
+validates the proof id before printing commands.
+
 Print an operator-facing status/checklist without executing any listed command:
 
 ```bash
 npm run proof:optional-live-status
+npm run proof:optional-live-status -- --id native-live-linux
 npm run proof:optional-live-status -- --json
 ```
 
@@ -64,6 +70,8 @@ required host/provider owner, repeats the dry-run/write/replace record commands,
 and includes a completion policy that explicitly forbids fabricated cross-OS or
 external IdP proofs. Like the plan command, it does not move the mouse, open
 Chrome, create tabs, read browser private state, or write proof files.
+Use `--id <proof-id>` when sending only one checklist item to an external
+Linux/Windows/IdP operator.
 
 Generate safe starter templates instead of hand-writing JSON:
 

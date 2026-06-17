@@ -16,6 +16,7 @@ const NATIVE_POINTER_COMMAND = "npm run check:native-pointer";
 
 function parseArgs(argv) {
   const parsed = {
+    id: "",
     json: false,
     proof_dir: process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
   };
@@ -23,6 +24,15 @@ function parseArgs(argv) {
     const token = argv[index] ?? "";
     if (token === "--json") {
       parsed.json = true;
+      continue;
+    }
+    if (token === "--id") {
+      const value = String(argv[index + 1] ?? "").trim();
+      if (!value || value.startsWith("--")) {
+        throw new Error("--id requires a proof id");
+      }
+      parsed.id = value;
+      index += 1;
       continue;
     }
     if (token === "--proof-dir") {
@@ -44,6 +54,33 @@ function parseArgs(argv) {
   }
   parsed.proof_dir = resolve(parsed.proof_dir);
   return parsed;
+}
+
+function selectedRequirements(id) {
+  if (!id) {
+    return ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS;
+  }
+  const selected = ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.filter((requirement) => requirement.id === id);
+  if (selected.length === 0) {
+    throw new Error(`unknown optional live proof id: ${id}`);
+  }
+  return selected;
+}
+
+function summarizeItems(items) {
+  const missing = items.filter((item) => item.satisfied !== true);
+  return {
+    required_count: items.length,
+    satisfied_count: items.length - missing.length,
+    missing_count: missing.length,
+    local_missing_count: missing.filter((item) => item.type === "captcha_physical_live").length,
+    external_missing_count: missing.filter((item) => item.type !== "captcha_physical_live").length,
+    invalid_file_count: items.reduce((count, item) => (
+      count + (Array.isArray(item.candidates)
+        ? item.candidates.filter((candidate) => candidate.validation?.ok === false).length
+        : 0)
+    ), 0),
+  };
 }
 
 function requirementResultsById(audit) {
@@ -87,6 +124,7 @@ function baseItem({ requirement, result, proofDir }) {
     satisfied: result?.satisfied === true,
     proof_path: result?.proof_path,
     accepted: result?.accepted,
+    candidates: result?.candidates,
     proof_dir: proofDir,
     commands: baseCommands(requirement, proofDir),
   };
@@ -253,6 +291,7 @@ function buildPlanItem({ requirement, result, proofDir, nativePointer }) {
 
 async function buildOptionalLiveProofPlan(args = {}) {
   const proofDir = resolve(args.proof_dir || process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR);
+  const selected = selectedRequirements(String(args.id ?? "").trim());
   const [audit, nativeCapabilities] = await Promise.all([
     buildOptionalLiveProofAudit({ proof_dir: proofDir }),
     detectNativeInputCapabilities({ refresh: true, cache_ttl_ms: 0 }),
@@ -262,25 +301,23 @@ async function buildOptionalLiveProofPlan(args = {}) {
     physical_gate_command: PHYSICAL_GATE_COMMAND,
   });
   const resultById = requirementResultsById(audit);
-  const items = ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.map((requirement) => buildPlanItem({
+  const items = selected.map((requirement) => buildPlanItem({
     requirement,
     result: resultById.get(requirement.id),
     proofDir,
     nativePointer,
   }));
+  const summary = summarizeItems(items);
   return {
     ok: true,
     action: "optional-live-proof-plan",
     proof_dir: proofDir,
-    complete: audit.complete,
-    summary: {
-      required_count: audit.summary.required_count,
-      satisfied_count: audit.summary.satisfied_count,
-      missing_count: audit.summary.missing_count,
-      local_missing_count: audit.summary.local_missing_count,
-      external_missing_count: audit.summary.external_missing_count,
-      invalid_file_count: audit.summary.invalid_file_count,
+    filter: {
+      id: args.id || undefined,
     },
+    complete: summary.missing_count === 0 && summary.invalid_file_count === 0,
+    summary,
+    audit_summary: audit.summary,
     safe_defaults: [
       "This plan does not move the mouse.",
       "This plan does not open Chrome or create managed tabs.",
@@ -293,7 +330,7 @@ async function buildOptionalLiveProofPlan(args = {}) {
 
 function outputText(plan) {
   process.stdout.write(
-    `optional_live_proof_plan=${plan.complete ? "complete" : "missing"} satisfied=${plan.summary.satisfied_count}/${plan.summary.required_count} missing=${plan.summary.missing_count} proof_dir=${plan.proof_dir}\n`,
+    `optional_live_proof_plan=${plan.complete ? "complete" : "missing"} satisfied=${plan.summary.satisfied_count}/${plan.summary.required_count} missing=${plan.summary.missing_count} proof_dir=${plan.proof_dir}${plan.filter?.id ? ` filter_id=${plan.filter.id}` : ""}\n`,
   );
   for (const item of plan.items) {
     process.stdout.write(`- ${item.id}: status=${item.status} mode=${item.collection_mode}\n`);

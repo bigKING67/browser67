@@ -285,6 +285,16 @@ async function assertOptionalLiveProofContract() {
       captchaPlan.safety_boundaries.includes("Do not use JS/CDP clicks on CAPTCHA widgets."),
       true,
     );
+    const filteredPlan = await buildOptionalLiveProofPlan({ proof_dir: tmpDir, id: "idp-oauth-popup" });
+    assert.equal(filteredPlan.filter.id, "idp-oauth-popup");
+    assert.equal(filteredPlan.items.length, 1);
+    assert.equal(filteredPlan.items[0].id, "idp-oauth-popup");
+    assert.equal(filteredPlan.summary.required_count, 1);
+    assert.equal(filteredPlan.summary.missing_count, 1);
+    await assert.rejects(
+      () => buildOptionalLiveProofPlan({ proof_dir: tmpDir, id: "unknown-proof" }),
+      /unknown optional live proof id/,
+    );
     const win32Plan = plan.items.find((item) => item.id === "native-live-win32");
     assert.equal(win32Plan?.satisfied, true);
     assert.equal(win32Plan?.proof_path?.endsWith("native-live-win32.json"), true);
@@ -325,6 +335,12 @@ async function assertOptionalLiveProofContract() {
     assert.equal(idpChecklist?.scope, "external_approved_idp");
     assert.equal(idpChecklist?.owner, "oauth_popup_test_tenant_operator");
     assert.equal(status.completion_policy.forbidden.some((item) => item.includes("Do not fabricate")), true);
+    const filteredStatus = await buildOptionalLiveProofStatus({ proof_dir: tmpDir, id: "native-live-linux" });
+    assert.equal(filteredStatus.filter.id, "native-live-linux");
+    assert.equal(filteredStatus.summary.required_count, 1);
+    assert.equal(filteredStatus.accepted.length, 0);
+    assert.equal(filteredStatus.checklist.length, 1);
+    assert.equal(filteredStatus.checklist[0].id, "native-live-linux");
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

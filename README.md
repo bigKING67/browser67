@@ -349,9 +349,12 @@ per-proof status, required host/platform, safe commands, blockers, and evidence
 requirements. The plan also surfaces accepted proof freshness
 (`expires_at`/`expires_in_days`), `next_command`, `collection_steps`, and
 `commands.record_replace` so agents can continue from readiness gaps without
-recomputing the collection path. Use `proof:optional-live-status` for the
+recomputing the collection path. Add `--id <proof-id>` to print a single-proof
+handoff packet for one Linux/Windows/IdP operator. Use
+`proof:optional-live-status` for the
 operator-facing summary: accepted proofs, missing checklist, owner/host, next
-command, record/write commands, validation command, and the non-negotiable
+command, record/write commands, validation command, optional `--id <proof-id>`
+filtering, and the non-negotiable
 completion policy. Use `proof:optional-live-template` to generate safe
 `ok:false` starter templates before recording real external proofs. Use
 `proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` to

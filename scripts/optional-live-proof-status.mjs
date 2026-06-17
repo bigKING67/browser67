@@ -12,6 +12,7 @@ import {
 
 function parseArgs(argv) {
   const parsed = {
+    id: "",
     json: false,
     proof_dir: process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
   };
@@ -19,6 +20,15 @@ function parseArgs(argv) {
     const token = argv[index] ?? "";
     if (token === "--json") {
       parsed.json = true;
+      continue;
+    }
+    if (token === "--id") {
+      const value = String(argv[index + 1] ?? "").trim();
+      if (!value || value.startsWith("--")) {
+        throw new Error("--id requires a proof id");
+      }
+      parsed.id = value;
+      index += 1;
       continue;
     }
     if (token === "--proof-dir") {
@@ -122,7 +132,7 @@ function classifyMissing(items) {
 
 async function buildOptionalLiveProofStatus(args = {}) {
   const proofDir = resolve(args.proof_dir || process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR);
-  const plan = await buildOptionalLiveProofPlan({ proof_dir: proofDir });
+  const plan = await buildOptionalLiveProofPlan({ proof_dir: proofDir, id: args.id });
   const classified = classifyMissing(plan.items);
   const accepted = plan.items
     .filter((item) => item.satisfied === true)
@@ -146,6 +156,7 @@ async function buildOptionalLiveProofStatus(args = {}) {
     status: plan.complete ? "complete" : classified.local.length > 0 ? "needs_local_action" : "needs_external_proofs",
     complete: plan.complete,
     proof_dir: proofDir,
+    filter: plan.filter,
     summary: {
       ...plan.summary,
       accepted_count: accepted.length,
@@ -173,7 +184,7 @@ async function buildOptionalLiveProofStatus(args = {}) {
       forbidden: [
         "Do not fabricate Linux, Windows, OAuth, SSO, or MFA proofs on a different host/provider.",
         "Do not store cookies, tokens, session IDs, passwords, screenshots with private data, or authorization headers.",
-        "Do not use JS/CDP clicks on CAPTCHA widgets or unmanaged user tabs for physical proof.",
+        "Do not use JS/CDP clicks on CAPTCHA widgets or unmanaged user tabs during physical proof collection.",
       ],
     },
   };
@@ -181,32 +192,32 @@ async function buildOptionalLiveProofStatus(args = {}) {
 
 function outputText(status) {
   process.stdout.write(
-    `optional_live_proof_status=${status.status} satisfied=${status.summary.satisfied_count}/${status.summary.required_count} missing=${status.summary.missing_count} proof_dir=${status.proof_dir}\n`,
+    `optional_live_proof_status=${status.status} satisfied=${status.summary.satisfied_count}/${status.summary.required_count} missing=${status.summary.missing_count} proof_dir=${status.proof_dir}${status.filter?.id ? ` filter_id=${status.filter.id}` : ""}\n`,
   );
   if (status.accepted.length > 0) {
     process.stdout.write("accepted:\n");
-    for (const item of status.accepted) {
+    status.accepted.forEach((item) => {
       const freshness = item.expires_at
         ? ` expires_at=${item.expires_at} expires_in_days=${item.expires_in_days}`
         : "";
       process.stdout.write(`- ${item.id}: proof=${item.proof_path}${freshness}\n`);
-    }
+    });
   }
   if (status.checklist.length > 0) {
     process.stdout.write("checklist:\n");
-    for (const item of status.checklist) {
+    status.checklist.forEach((item) => {
       process.stdout.write(`- ${item.id}: owner=${item.owner} status=${item.status}\n`);
       process.stdout.write(`  next=${item.next_command}\n`);
       process.stdout.write(`  record=${item.record_command}\n`);
       process.stdout.write(`  write=${item.record_write_command}\n`);
       process.stdout.write(`  validate=${item.validate_command}\n`);
-    }
+    });
   }
   if (status.next_actions.length > 0) {
     process.stdout.write("next_actions:\n");
-    for (const item of status.next_actions) {
+    status.next_actions.forEach((item) => {
       process.stdout.write(`- ${item.id}: action=${item.action} command=${item.command}\n`);
-    }
+    });
   }
 }
 
@@ -222,14 +233,12 @@ async function runStatusCommand(argv = process.argv.slice(2)) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
-  try {
-    await runStatusCommand();
-  } catch (error) {
+  runStatusCommand().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     const file = basename(process.argv[1] || "optional-live-proof-status.mjs");
     process.stderr.write(`${file} failed: ${message}\n`);
     process.exitCode = 1;
-  }
+  });
 }
 
 export {
