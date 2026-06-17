@@ -108,6 +108,23 @@ async function assertReadinessLjqCtrlProbeContract() {
     assert.equal(physicalProvenGap?.deduction, 0);
     assert.match(physicalProvenGap?.evidence ?? "", /captcha-assist-physical-local\.json/);
     assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_not_executed"), undefined);
+    assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_blocked_by_native_pointer"), undefined);
+    assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_proof_missing"), undefined);
+
+    const emptyProofDir = path.join(tmpDir, "empty-proofs");
+    await fs.mkdir(emptyProofDir, { recursive: true });
+    const optInUnprovenAudit = runReadinessAudit({
+      TMWD_OPTIONAL_PROOF_DIR: emptyProofDir,
+      TMWD_CAPTCHA_ASSIST_PHYSICAL: "1",
+      TMWD_CAPTCHA_ASSIST_CONFIRM: "1",
+      TMWD_LJQCTRL_PYTHON: "",
+      TMWD_LJQCTRL_PYTHON_CANDIDATES: "",
+      TMWD_LJQCTRL_EXECUTE: "",
+    });
+    assert.equal(findGap(optInUnprovenAudit, "captcha_physical_live_gate_not_executed"), undefined);
+    const localCaptchaUnprovenGap = findGap(optInUnprovenAudit, "captcha_physical_live_gate_blocked_by_native_pointer")
+      || findGap(optInUnprovenAudit, "captcha_physical_live_gate_proof_missing");
+    assert.equal(localCaptchaUnprovenGap?.deduction, 0.006);
 
     const failingPython = await writeFakePythonProbe(tmpDir, "python-no-ljqctrl", {
       ok: false,

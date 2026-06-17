@@ -339,8 +339,8 @@ stages files.
 `npm run check:readiness` turns the near-100 quality target into a deterministic
 readiness audit: it verifies required governance/docs/skill gates, reports a
 score, and lists optional hardening gaps such as pending scoped commits,
-unconfigured or invalid `ljqCtrl`, unavailable native pointer actions, skipped
-physical CAPTCHA gate, cross-OS native live proof, and provider-specific
+unconfigured or invalid `ljqCtrl`, unavailable native pointer actions, local
+physical CAPTCHA proof states, cross-OS native live proof, and provider-specific
 OAuth/SSO/MFA live gates. The
 `ljqCtrl` readiness row is platform-aware and based on the same diagnostic-only
 Python capability probe as `npm run check:ljqctrl`, not just the presence of
@@ -353,8 +353,11 @@ already covers OAuth popup, SSO, and MFA manual handoff/resume fixtures; the
 remaining IdP gap is explicitly about approved external provider coverage. The
 readiness audit also consumes `check:optional-live-proofs` results so collected
 local physical/cross-OS/provider evidence can remove those optional gaps without
-storing secrets in the repository. It is read-only; use `--strict` when a local
-release gate should fail on optional gaps too.
+storing secrets in the repository. When local CAPTCHA proof is missing, it
+distinguishes "native pointer is not ready", "physical gate was not run", and
+"physical gate appears runnable but no accepted proof was persisted". It is
+read-only; use `--strict` when a local release gate should fail on optional
+gaps too.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,

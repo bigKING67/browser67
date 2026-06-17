@@ -89,6 +89,11 @@ function envEnabled(name) {
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
+function nativePointerReady(capabilities = {}) {
+  const supportedActions = Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [];
+  return supportedActions.includes("click") && supportedActions.includes("drag");
+}
+
 function summarizeLjqCtrlCandidate(candidate = {}) {
   const marker = candidate.selected === true ? "*" : "";
   const reason = candidate.reason ? ` reason=${compactText(candidate.reason, 80)}` : "";
@@ -205,10 +210,10 @@ function buildLjqCtrlGap(probe = {}) {
 }
 
 function buildNativePointerGap(capabilities = {}) {
-  const supportedActions = Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [];
-  if (supportedActions.includes("drag") && supportedActions.includes("click")) {
+  if (nativePointerReady(capabilities)) {
     return null;
   }
+  const supportedActions = Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [];
   const checks = capabilities.checks ?? {};
   const requirements = Array.isArray(capabilities.requirements) ? capabilities.requirements : [];
   const evidence = [
@@ -225,6 +230,48 @@ function buildNativePointerGap(capabilities = {}) {
     0,
     evidence,
     "Fix the native pointer provider requirements before running physical CAPTCHA assist; on macOS this usually means granting Accessibility permission to the current terminal/Codex host.",
+  );
+}
+
+function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities) {
+  const localCaptchaPhysicalProof = optionalProofAudit.local_requirements
+    ?.find((requirement) => requirement.id === "captcha-assist-physical-local" && requirement.satisfied === true);
+  if (localCaptchaPhysicalProof) {
+    return createGap(
+      "captcha_physical_live_gate_proven",
+      "informational",
+      0,
+      `proof_path=${localCaptchaPhysicalProof.proof_path} proof_dir=${optionalProofAudit.proof_dir}`,
+      "Keep the repo-external sanitized proof fresh by rerunning the physical gate after CAPTCHA assist or native-input provider changes.",
+    );
+  }
+
+  if (!nativePointerReady(nativeCapabilities)) {
+    return createGap(
+      "captcha_physical_live_gate_blocked_by_native_pointer",
+      "optional_live",
+      0.006,
+      `native pointer click/drag unavailable and no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
+      "Fix native pointer requirements first, confirm with npm run check:native-pointer, then run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live.",
+    );
+  }
+
+  if (!envEnabled("TMWD_CAPTCHA_ASSIST_PHYSICAL") || !envEnabled("TMWD_CAPTCHA_ASSIST_CONFIRM")) {
+    return createGap(
+      "captcha_physical_live_gate_not_executed",
+      "optional_live",
+      0.006,
+      `physical gate env is not fully enabled and no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
+      "Only after explicit local permission, run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live; a sanitized proof is written repo-externally on success.",
+    );
+  }
+
+  return createGap(
+    "captcha_physical_live_gate_proof_missing",
+    "optional_live",
+    0.006,
+    `physical gate env is enabled and native pointer click/drag appear available, but no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
+    "Run npm run check:captcha-assist-physical-live with proof writing enabled, or inspect TMWD_CAPTCHA_ASSIST_WRITE_PROOF / TMWD_OPTIONAL_PROOF_DIR if the physical gate already passed.",
   );
 }
 
@@ -336,25 +383,7 @@ async function buildOptionalGaps({ report }) {
     gaps.push(nativePointerGap);
   }
 
-  const localCaptchaPhysicalProof = optionalProofAudit.local_requirements
-    ?.find((requirement) => requirement.id === "captcha-assist-physical-local" && requirement.satisfied === true);
-  if (localCaptchaPhysicalProof) {
-    gaps.push(createGap(
-      "captcha_physical_live_gate_proven",
-      "informational",
-      0,
-      `proof_path=${localCaptchaPhysicalProof.proof_path} proof_dir=${optionalProofAudit.proof_dir}`,
-      "Keep the repo-external sanitized proof fresh by rerunning the physical gate after CAPTCHA assist or native-input provider changes.",
-    ));
-  } else if (process.env.TMWD_CAPTCHA_ASSIST_PHYSICAL !== "1" || process.env.TMWD_CAPTCHA_ASSIST_CONFIRM !== "1") {
-    gaps.push(createGap(
-      "captcha_physical_live_gate_not_executed",
-      "optional_live",
-      0.006,
-      `physical gate env is not fully enabled and no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
-      "Only after explicit local permission, run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live; a sanitized proof is written repo-externally on success.",
-    ));
-  }
+  gaps.push(buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities));
 
   const missingNativeProofs = optionalProofAudit.missing.filter((id) => id.startsWith("native-live-"));
   if (missingNativeProofs.length > 0) {
