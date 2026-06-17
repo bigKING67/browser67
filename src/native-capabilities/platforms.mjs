@@ -1,4 +1,25 @@
-import { allNativeInputActions, commandExists } from "../native-core.mjs";
+import { allNativeInputActions, commandExists, runNativeCommand } from "../native-core.mjs";
+
+function cliclickAccessibilityWarning(output) {
+  return String(output ?? "").toLowerCase().includes("accessibility privileges not enabled");
+}
+
+async function probeCliclickAccessibility() {
+  try {
+    const result = await runNativeCommand("cliclick", ["-m", "test", "c:0,0"], { timeoutMs: 1_200 });
+    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    return {
+      ok: result.code === 0 && !cliclickAccessibilityWarning(output),
+      warning: cliclickAccessibilityWarning(output),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      warning: false,
+      error: String(error?.message ?? error),
+    };
+  }
+}
 
 async function detectWindowsCapabilities(actions) {
   const [hasWindowsPowerShell, hasPowerShellCore] = await Promise.all([
@@ -24,10 +45,12 @@ async function detectWindowsCapabilities(actions) {
 }
 
 async function detectDarwinCapabilities(actions) {
-  const [hasOsaScript, hasCliclick] = await Promise.all([
+  const [hasOsaScript, hasCliclick, cliclickAccessibility] = await Promise.all([
     commandExists("osascript", 1_200),
     commandExists("cliclick", 1_200),
+    probeCliclickAccessibility(),
   ]);
+  const cliclickPointerReady = hasCliclick && cliclickAccessibility.ok === true;
   const noPointerActions = [
     "activate_window",
     "press",
@@ -48,7 +71,7 @@ async function detectDarwinCapabilities(actions) {
       supported.add(action);
     }
   }
-  if (hasCliclick) {
+  if (cliclickPointerReady) {
     for (const action of pointerActions) {
       supported.add(action);
     }
@@ -62,12 +85,17 @@ async function detectDarwinCapabilities(actions) {
   if (!hasCliclick) {
     requirements.push("Install `cliclick` for pointer actions (`move/drag/click/double_click/scroll`).");
   }
+  if (hasCliclick && !cliclickPointerReady) {
+    requirements.push("Grant Accessibility permission to the current terminal/Codex host so `cliclick` pointer actions can affect Chrome.");
+  }
   return {
     platform: "darwin",
     driver: "macos-osascript-cliclick",
     checks: {
       osascript: hasOsaScript,
       cliclick: hasCliclick,
+      cliclick_accessibility: cliclickAccessibility.ok === true,
+      cliclick_accessibility_warning: cliclickAccessibility.warning === true,
     },
     supported_actions: supportedActions,
     unsupported_actions: unsupportedActions,

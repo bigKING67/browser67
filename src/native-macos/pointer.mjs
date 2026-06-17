@@ -8,6 +8,35 @@ import {
   runNativeCommand,
 } from "../native-core.mjs";
 
+function buildCliclickDragCommands({
+  durationMs,
+  fromX,
+  fromY,
+  steps,
+  toX,
+  toY,
+}) {
+  const waitMs = steps > 0 ? Math.max(20, Math.round(durationMs / Math.max(1, steps + 3))) : 20;
+  const moveCommands = Array.from({ length: steps }, (_item, index) => {
+    const ratio = (index + 1) / steps;
+    const x = Math.round(fromX + (toX - fromX) * ratio);
+    const y = Math.round(fromY + (toY - fromY) * ratio);
+    return `dm:${String(x)},${String(y)}`;
+  });
+  const commands = [
+    `m:${String(fromX)},${String(fromY)}`,
+    `dd:${String(fromX)},${String(fromY)}`,
+    ...moveCommands,
+    `du:${String(toX)},${String(toY)}`,
+  ];
+  return {
+    wait_ms: waitMs,
+    commands,
+    command_sequence: commands.map((command) => String(command).split(":", 1)[0]),
+    pre_move: true,
+  };
+}
+
 async function movePointer(args, timeoutMs) {
   const x = normalizeCoordinate(args?.x, "x");
   const y = normalizeCoordinate(args?.y, "y");
@@ -31,19 +60,15 @@ async function dragPointer(args, timeoutMs) {
   }
   const steps = normalizeDragSteps(args?.steps);
   const durationMs = normalizeDragDurationMs(args?.duration_ms);
-  const waitMs = steps > 0 ? Math.max(20, Math.round(durationMs / Math.max(1, steps + 2))) : 20;
-  const moveCommands = Array.from({ length: steps }, (_item, index) => {
-    const ratio = (index + 1) / steps;
-    const x = Math.round(fromX + (toX - fromX) * ratio);
-    const y = Math.round(fromY + (toY - fromY) * ratio);
-    return `dm:${String(x)},${String(y)}`;
+  const dragPlan = buildCliclickDragCommands({
+    durationMs,
+    fromX,
+    fromY,
+    steps,
+    toX,
+    toY,
   });
-  const commands = [
-    `dd:${String(fromX)},${String(fromY)}`,
-    ...moveCommands,
-    `du:${String(toX)},${String(toY)}`,
-  ];
-  const result = await runNativeCommand("cliclick", ["-w", String(waitMs), ...commands], { timeoutMs });
+  const result = await runNativeCommand("cliclick", ["-w", String(dragPlan.wait_ms), ...dragPlan.commands], { timeoutMs });
   ensureNativeCommandOk(result, "cliclick drag");
   return {
     driver: "macos-cliclick",
@@ -54,6 +79,9 @@ async function dragPointer(args, timeoutMs) {
     button,
     duration_ms: durationMs,
     steps,
+    command_sequence: dragPlan.command_sequence,
+    pre_move: dragPlan.pre_move,
+    wait_ms: dragPlan.wait_ms,
   };
 }
 
@@ -90,6 +118,7 @@ async function scrollPointer(args, timeoutMs) {
 }
 
 export {
+  buildCliclickDragCommands,
   clickPointer,
   dragPointer,
   movePointer,
