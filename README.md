@@ -320,8 +320,12 @@ stages files.
 `npm run check:readiness` turns the near-100 quality target into a deterministic
 readiness audit: it verifies required governance/docs/skill gates, reports a
 score, and lists optional hardening gaps such as pending scoped commits,
-unconfigured `ljqCtrl`, skipped physical CAPTCHA gate, cross-OS native live
-proof, and provider-specific OAuth/SSO/MFA live gates. The local auth smoke
+unconfigured or invalid `ljqCtrl`, skipped physical CAPTCHA gate, cross-OS
+native live proof, and provider-specific OAuth/SSO/MFA live gates. The
+`ljqCtrl` readiness row is based on the same diagnostic-only Python capability
+probe as `npm run check:ljqctrl`, not just the presence of environment
+variables; an importable driver becomes an informational execution-gated row
+until `TMWD_LJQCTRL_EXECUTE=1` is explicitly supplied. The local auth smoke
 already covers OAuth popup, SSO, and MFA manual handoff/resume fixtures; the
 remaining IdP gap is explicitly about approved external provider coverage. The
 readiness audit also consumes `check:optional-live-proofs` results so collected
