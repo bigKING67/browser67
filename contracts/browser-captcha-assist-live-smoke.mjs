@@ -323,6 +323,9 @@ async function run() {
       matrix_results: matrixResults,
       physical_assist_status: physicalAssist.status,
       physical_assist_reason: physicalAssist.reason,
+      physical_assist_provider_id: physicalAssist.physical_input_provider?.provider_id ?? null,
+      physical_assist_provider_selection_reason: physicalAssist.physical_input_provider_selection?.reason ?? null,
+      physical_assist_coordinates_source: physicalAssist.screen_coordinates?.source ?? null,
       physical_completion: physicalCompletion?.js_return ?? physicalCompletion,
       finalized_closed: finalize.close_unkept.closed.length,
     };

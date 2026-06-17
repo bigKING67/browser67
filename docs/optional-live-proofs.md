@@ -3,6 +3,7 @@
 `npm run check:optional-live-proofs` validates sanitized, repo-external JSON
 proofs for near-100 optional gates that cannot be completed on every machine:
 
+- Local CAPTCHA physical-input live proof.
 - Linux native physical-input live proof.
 - Windows native physical-input live proof.
 - External OAuth popup handoff/resume live proof.
@@ -42,12 +43,51 @@ npm run proof:optional-live-template -- --all --write
 the real live gate has been run and the proof is intentionally edited into a
 sanitized passing artifact. Passing proofs must remove `template_only:true` and
 replace any placeholder command with the exact approved command or runbook entry
-that produced the sanitized evidence.
+that produced the sanitized evidence. The local CAPTCHA physical gate writes its
+passing proof automatically after a successful run:
+
+```bash
+TMWD_CAPTCHA_ASSIST_PHYSICAL=1 \
+TMWD_CAPTCHA_ASSIST_CONFIRM=1 \
+npm run check:captcha-assist-physical-live
+```
+
+Set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that automatic proof write, or
+`TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail the gate if the sanitized proof
+cannot be persisted.
 
 Proof files must be sanitized. The validator rejects keys whose names look like
 credentials, cookies, tokens, secrets, or session material. Do not store browser
 cookies, IdP tokens, screenshots with private data, passwords, authorization
 headers, or raw profile/session state in proof files.
+
+## Local CAPTCHA physical proof example
+
+```json
+{
+  "type": "captcha_physical_live",
+  "ok": true,
+  "platform": "darwin",
+  "provider_id": "native-os",
+  "actions": ["drag"],
+  "checked_at": "2026-06-17T00:00:00.000Z",
+  "expires_at": "2026-09-17T00:00:00.000Z",
+  "command": "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+  "managed_tab_only": true,
+  "fixture": "local TMWD-owned managed tab",
+  "slider_completed": true,
+  "fullscreen_screenshot": false,
+  "js_cdp_widget_click": false,
+  "secrets_redacted": true,
+  "evidence": {
+    "assist_target": "slider",
+    "browser_private_state_access": false
+  }
+}
+```
+
+The `platform` must match the current host that runs `check:readiness`; stale or
+cross-host local CAPTCHA proofs do not satisfy the local physical gate.
 
 ## Native proof example
 

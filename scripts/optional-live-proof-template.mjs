@@ -5,8 +5,8 @@ import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
+  ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
-  OPTIONAL_LIVE_PROOF_REQUIREMENTS,
 } from "./optional-live-proof-audit.mjs";
 
 function parseArgs(argv) {
@@ -63,9 +63,9 @@ function parseArgs(argv) {
 
 function selectedRequirements(args) {
   if (args.all || args.ids.length === 0) {
-    return OPTIONAL_LIVE_PROOF_REQUIREMENTS;
+    return ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS;
   }
-  const byId = new Map(OPTIONAL_LIVE_PROOF_REQUIREMENTS.map((requirement) => [requirement.id, requirement]));
+  const byId = new Map(ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.map((requirement) => [requirement.id, requirement]));
   return args.ids.map((id) => {
     const requirement = byId.get(id);
     if (!requirement) {
@@ -83,6 +83,30 @@ function expiresAtFrom(checkedAt) {
 
 function createProofTemplate(requirement, now = new Date()) {
   const checkedAt = now.toISOString();
+  if (requirement.type === "captcha_physical_live") {
+    return {
+      type: "captcha_physical_live",
+      ok: false,
+      template_only: true,
+      platform: requirement.matches.platform,
+      provider_id: "native-os",
+      actions: ["drag"],
+      checked_at: checkedAt,
+      expires_at: expiresAtFrom(checkedAt),
+      command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+      managed_tab_only: true,
+      fixture: "local TMWD-owned managed tab",
+      slider_completed: false,
+      fullscreen_screenshot: false,
+      js_cdp_widget_click: false,
+      secrets_redacted: true,
+      evidence: {
+        assist_target: "slider",
+        browser_private_state_access: false,
+        notes: "This template is intentionally not accepted. Run the physical gate to generate a sanitized passing proof automatically.",
+      },
+    };
+  }
   if (requirement.type === "native_live") {
     return {
       type: "native_live",
@@ -140,13 +164,11 @@ async function writeTemplates(proofDir, templates) {
     }
     throw new Error(`refusing to overwrite existing proof template: ${path}`);
   }));
-  const written = [];
-  for (const [index, { template }] of templates.entries()) {
+  return Promise.all(templates.map(async ({ template }, index) => {
     const path = paths[index];
     await fs.writeFile(path, `${JSON.stringify(template, null, 2)}\n`, { flag: "wx" });
-    written.push(path);
-  }
-  return written;
+    return path;
+  }));
 }
 
 function buildOutput({ args, templates, written = [] }) {

@@ -10,6 +10,28 @@ const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|au
 const PLACEHOLDER_COMMAND_PATTERN = /(?:replace with exact|placeholder|template-only|template only)/i;
 const SAFE_REDACTION_STATUS_KEYS = new Set(["secrets_redacted", "credentials_redacted"]);
 
+const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
+  {
+    id: "captcha-assist-physical-local",
+    type: "captcha_physical_live",
+    title: `Local ${process.platform} CAPTCHA physical-input live proof`,
+    matches: { platform: process.platform },
+    required_fields: [
+      "platform",
+      "provider_id",
+      "actions",
+      "checked_at",
+      "command",
+      "managed_tab_only",
+      "fixture",
+      "slider_completed",
+      "fullscreen_screenshot",
+      "js_cdp_widget_click",
+      "secrets_redacted",
+    ],
+  },
+];
+
 const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
   {
     id: "native-live-linux",
@@ -46,6 +68,11 @@ const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     matches: { provider_kind: "mfa" },
     required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified"],
   },
+];
+
+const ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
+  ...LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  ...OPTIONAL_LIVE_PROOF_REQUIREMENTS,
 ];
 
 function parseArgs(argv) {
@@ -95,21 +122,19 @@ async function readProofFiles(proofDir) {
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
     .map((entry) => join(proofDir, entry.name))
     .sort();
-  const rows = [];
-  for (const path of proofFiles) {
+  return Promise.all(proofFiles.map(async (path) => {
     try {
-      rows.push({
+      return {
         path,
         proof: JSON.parse(await fs.readFile(path, "utf8")),
-      });
+      };
     } catch (error) {
-      rows.push({
+      return {
         path,
         error: `invalid_json: ${error instanceof Error ? error.message : String(error)}`,
-      });
+      };
     }
-  }
-  return rows;
+  }));
 }
 
 function isPlainObject(value) {
@@ -190,6 +215,26 @@ function validateProof(proof, requirement) {
       errors.push("native_actions_required");
     }
   }
+  if (requirement.type === "captcha_physical_live") {
+    if (!Array.isArray(proof.actions) || !proof.actions.includes("drag")) {
+      errors.push("captcha_physical_drag_action_required");
+    }
+    if (proof.managed_tab_only !== true) {
+      errors.push("managed_tab_only_must_be_true");
+    }
+    if (proof.slider_completed !== true) {
+      errors.push("slider_completed_must_be_true");
+    }
+    if (proof.fullscreen_screenshot !== false) {
+      errors.push("fullscreen_screenshot_must_be_false");
+    }
+    if (proof.js_cdp_widget_click !== false) {
+      errors.push("js_cdp_widget_click_must_be_false");
+    }
+    if (proof.secrets_redacted !== true) {
+      errors.push("secrets_redacted_must_be_true");
+    }
+  }
   if (requirement.type === "idp_live") {
     if (proof.manual_required_verified !== true) {
       errors.push("manual_required_verified_must_be_true");
@@ -208,8 +253,8 @@ function validateProof(proof, requirement) {
   };
 }
 
-function evaluateRequirements(rows) {
-  return OPTIONAL_LIVE_PROOF_REQUIREMENTS.map((requirement) => {
+function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREMENTS) {
+  return requirements.map((requirement) => {
     const candidates = rows
       .filter((row) => row.proof && proofMatchesRequirement(row.proof, requirement))
       .map((row) => ({
@@ -234,11 +279,18 @@ async function buildOptionalLiveProofAudit(args = {}) {
   const invalid_files = rows
     .filter((row) => row.error)
     .map((row) => ({ path: row.path, error: row.error }));
-  const requirements = evaluateRequirements(rows.filter((row) => row.proof));
+  const proofRows = rows.filter((row) => row.proof);
+  const local_requirements = evaluateRequirements(proofRows, LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS);
+  const requirements = evaluateRequirements(proofRows, OPTIONAL_LIVE_PROOF_REQUIREMENTS);
   const missing = requirements
     .filter((requirement) => !requirement.satisfied)
     .map((requirement) => requirement.id);
-  const complete = missing.length === 0 && invalid_files.length === 0;
+  const local_missing = local_requirements
+    .filter((requirement) => !requirement.satisfied)
+    .map((requirement) => requirement.id);
+  const localSatisfiedCount = local_requirements.filter((requirement) => requirement.satisfied).length;
+  const externalSatisfiedCount = requirements.filter((requirement) => requirement.satisfied).length;
+  const complete = missing.length === 0 && local_missing.length === 0 && invalid_files.length === 0;
   return {
     ok: true,
     status: complete ? "complete" : "optional_gaps",
@@ -248,12 +300,18 @@ async function buildOptionalLiveProofAudit(args = {}) {
     complete,
     proof_file_count: rows.length,
     invalid_files,
+    local_requirements,
     requirements,
+    local_missing,
     missing,
     summary: {
-      required_count: OPTIONAL_LIVE_PROOF_REQUIREMENTS.length,
-      satisfied_count: requirements.filter((requirement) => requirement.satisfied).length,
-      missing_count: missing.length,
+      required_count: ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.length,
+      satisfied_count: localSatisfiedCount + externalSatisfiedCount,
+      local_satisfied_count: localSatisfiedCount,
+      external_satisfied_count: externalSatisfiedCount,
+      local_missing_count: local_missing.length,
+      external_missing_count: missing.length,
+      missing_count: local_missing.length + missing.length,
       invalid_file_count: invalid_files.length,
     },
   };
@@ -265,6 +323,9 @@ function outputText(audit) {
   );
   if (audit.missing.length > 0) {
     process.stdout.write(`missing=${audit.missing.join(",")}\n`);
+  }
+  if (audit.local_missing.length > 0) {
+    process.stdout.write(`local_missing=${audit.local_missing.join(",")}\n`);
   }
   if (audit.invalid_files.length > 0) {
     process.stdout.write(`invalid_files=${audit.invalid_files.map((item) => item.path).join(",")}\n`);
@@ -292,8 +353,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
 }
 
 export {
+  ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   buildOptionalLiveProofAudit,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
+  LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   validateProof,
 };

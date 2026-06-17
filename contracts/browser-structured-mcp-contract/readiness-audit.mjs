@@ -21,6 +21,36 @@ async function writeFakePythonProbe(dir, name, payload) {
   return file;
 }
 
+async function writeLocalCaptchaPhysicalProof(dir) {
+  const checkedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+  const file = path.join(dir, "captcha-assist-physical-local.json");
+  await fs.writeFile(
+    file,
+    `${JSON.stringify({
+      type: "captcha_physical_live",
+      ok: true,
+      platform: process.platform,
+      provider_id: "native-os",
+      actions: ["drag"],
+      checked_at: checkedAt,
+      expires_at: expiresAt,
+      command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+      managed_tab_only: true,
+      fixture: "local TMWD-owned managed tab",
+      slider_completed: true,
+      fullscreen_screenshot: false,
+      js_cdp_widget_click: false,
+      secrets_redacted: true,
+      evidence: {
+        assist_target: "slider",
+        browser_private_state_access: false,
+      },
+    }, null, 2)}\n`,
+  );
+  return file;
+}
+
 function runReadinessAudit(env = {}) {
   const result = spawnSync("node", ["scripts/readiness-audit.mjs", "--json"], {
     cwd: process.cwd(),
@@ -62,6 +92,22 @@ async function assertReadinessLjqCtrlProbeContract() {
       assert.match(platformGap?.evidence ?? "", /platform_supported=false/);
       assert.equal(findGap(defaultAudit, "ljqctrl_not_configured"), undefined);
     }
+
+    const proofDir = path.join(tmpDir, "proofs");
+    await fs.mkdir(proofDir, { recursive: true });
+    await writeLocalCaptchaPhysicalProof(proofDir);
+    const provenPhysicalAudit = runReadinessAudit({
+      TMWD_OPTIONAL_PROOF_DIR: proofDir,
+      TMWD_CAPTCHA_ASSIST_PHYSICAL: "",
+      TMWD_CAPTCHA_ASSIST_CONFIRM: "",
+      TMWD_LJQCTRL_PYTHON: "",
+      TMWD_LJQCTRL_PYTHON_CANDIDATES: "",
+      TMWD_LJQCTRL_EXECUTE: "",
+    });
+    const physicalProvenGap = findGap(provenPhysicalAudit, "captcha_physical_live_gate_proven");
+    assert.equal(physicalProvenGap?.deduction, 0);
+    assert.match(physicalProvenGap?.evidence ?? "", /captcha-assist-physical-local\.json/);
+    assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_not_executed"), undefined);
 
     const failingPython = await writeFakePythonProbe(tmpDir, "python-no-ljqctrl", {
       ok: false,

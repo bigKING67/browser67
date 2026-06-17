@@ -294,7 +294,11 @@ skipped by default and only runs the local physical slider drag when both
 `TMWD_CAPTCHA_ASSIST_PHYSICAL=1` and `TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set;
 use `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when a local machine gate should
 fail instead of skip. The physical branch foregrounds its own TMWD-managed
-fixture tab before dragging.
+fixture tab before dragging. When the physical branch passes, it writes a
+sanitized repo-external proof under `~/.tmwd-browser-mcp/optional-live-proofs`
+or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable
+that proof write, or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to make proof-write
+failure fail the gate.
 `check:ljqctrl` is diagnostic-only by default: it probes the local Python
 `ljqCtrl` module and reports whether click/window-region capture would be
 available, but it does not activate windows, click, drag, capture screenshots,
@@ -303,11 +307,12 @@ or access clipboard. Use `TMWD_LJQCTRL_REQUIRE=1`,
 machine-local hard gate.
 `check:optional-live-proofs` validates sanitized JSON proof artifacts under
 `~/.tmwd-browser-mcp/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. It is
-non-blocking by default and exists for optional cross-OS native-input and
-approved external IdP live coverage; use `--strict` only when a local release
-gate should require every optional proof. Use `proof:optional-live-template` to
-generate safe `ok:false` starter templates before recording real external
-proofs. See `docs/optional-live-proofs.md`.
+non-blocking by default and exists for optional local CAPTCHA physical proof,
+cross-OS native-input proof, and approved external IdP live coverage; use
+`--strict` only when a local release gate should require every optional proof.
+Use `proof:optional-live-template` to generate safe `ok:false` starter
+templates before recording real external proofs. See
+`docs/optional-live-proofs.md`.
 
 `npm run check:change-set` is a read-only review hygiene gate for large refactors.
 It groups the current `git status --porcelain` paths by architecture area and
@@ -332,9 +337,9 @@ An importable driver becomes an informational execution-gated row until
 already covers OAuth popup, SSO, and MFA manual handoff/resume fixtures; the
 remaining IdP gap is explicitly about approved external provider coverage. The
 readiness audit also consumes `check:optional-live-proofs` results so collected
-cross-OS/provider evidence can remove those optional gaps without storing
-secrets in the repository. It is read-only; use `--strict` when a local release
-gate should fail on optional gaps too.
+local physical/cross-OS/provider evidence can remove those optional gaps without
+storing secrets in the repository. It is read-only; use `--strict` when a local
+release gate should fail on optional gaps too.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,

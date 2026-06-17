@@ -302,13 +302,23 @@ async function buildOptionalGaps({ report }) {
 
   gaps.push(buildLjqCtrlGap(ljqCtrlProbe));
 
-  if (process.env.TMWD_CAPTCHA_ASSIST_PHYSICAL !== "1" || process.env.TMWD_CAPTCHA_ASSIST_CONFIRM !== "1") {
+  const localCaptchaPhysicalProof = optionalProofAudit.local_requirements
+    ?.find((requirement) => requirement.id === "captcha-assist-physical-local" && requirement.satisfied === true);
+  if (localCaptchaPhysicalProof) {
+    gaps.push(createGap(
+      "captcha_physical_live_gate_proven",
+      "informational",
+      0,
+      `proof_path=${localCaptchaPhysicalProof.proof_path} proof_dir=${optionalProofAudit.proof_dir}`,
+      "Keep the repo-external sanitized proof fresh by rerunning the physical gate after CAPTCHA assist or native-input provider changes.",
+    ));
+  } else if (process.env.TMWD_CAPTCHA_ASSIST_PHYSICAL !== "1" || process.env.TMWD_CAPTCHA_ASSIST_CONFIRM !== "1") {
     gaps.push(createGap(
       "captcha_physical_live_gate_not_executed",
       "optional_live",
       0.006,
-      "physical gate env is not fully enabled",
-      "Only after explicit local permission, run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live.",
+      `physical gate env is not fully enabled and no accepted local proof exists in ${optionalProofAudit.proof_dir}`,
+      "Only after explicit local permission, run TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live; a sanitized proof is written repo-externally on success.",
     ));
   }
 

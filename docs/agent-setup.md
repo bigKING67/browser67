@@ -223,11 +223,14 @@ validates normal, scrolled, and same-origin iframe slider fixtures, is
 planning-only. Use `npm run check:captcha-assist-physical-live` for the optional
 local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with
-TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1.
+TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1. A successful physical run writes a
+sanitized repo-external local CAPTCHA proof by default; set
+TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0 to disable that persistence.
 For near-100 external coverage, run `npm run check:optional-live-proofs` after
-collecting sanitized Linux/Windows native-input or approved OAuth/SSO/MFA proof
-JSON under `~/.tmwd-browser-mcp/optional-live-proofs`; use `--strict` only when
-those optional proofs are required for a local release gate. Use
+collecting sanitized local CAPTCHA physical, Linux/Windows native-input, or
+approved OAuth/SSO/MFA proof JSON under
+`~/.tmwd-browser-mcp/optional-live-proofs`; use `--strict` only when those
+optional proofs are required for a local release gate. Use
 `npm run proof:optional-live-template` for safe `ok:false` starter templates.
 
 ## Operating boundary
