@@ -9,6 +9,7 @@ import {
   OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   validateProof,
 } from "../../scripts/optional-live-proof-audit.mjs";
+import { buildOptionalLiveProofPlan } from "../../scripts/optional-live-proof-plan.mjs";
 import { createProofTemplate } from "../../scripts/optional-live-proof-template.mjs";
 
 function requirement(id) {
@@ -150,6 +151,30 @@ async function assertOptionalLiveProofContract() {
     assert.ok(linux.candidates[0].validation.errors.includes("template_only_not_accepted"));
     const win32 = audit.requirements.find((item) => item.id === "native-live-win32");
     assert.equal(win32?.satisfied, true);
+
+    const plan = await buildOptionalLiveProofPlan({ proof_dir: tmpDir });
+    assert.equal(plan.action, "optional-live-proof-plan");
+    assert.equal(plan.safe_defaults.includes("This plan does not move the mouse."), true);
+    assert.equal(plan.safe_defaults.includes("This plan does not read browser private state."), true);
+    const captchaPlan = plan.items.find((item) => item.id === "captcha-assist-physical-local");
+    assert.ok(captchaPlan);
+    assert.equal(captchaPlan.collection_mode, "local_gui_physical_gate");
+    assert.equal(captchaPlan.commands.live_gate.includes("TMWD_CAPTCHA_ASSIST_PHYSICAL=1"), true);
+    assert.equal(
+      captchaPlan.safety_boundaries.includes("Do not use JS/CDP clicks on CAPTCHA widgets."),
+      true,
+    );
+    const win32Plan = plan.items.find((item) => item.id === "native-live-win32");
+    assert.equal(win32Plan?.satisfied, true);
+    assert.equal(win32Plan?.proof_path?.endsWith("native-live-win32.json"), true);
+    const linuxPlan = plan.items.find((item) => item.id === "native-live-linux");
+    assert.equal(linuxPlan?.collection_mode, "cross_os_native_physical_gate");
+    assert.equal(linuxPlan?.target_platform, "linux");
+    assert.equal(linuxPlan?.commands.template, "npm run proof:optional-live-template -- --id native-live-linux --write");
+    const idpPlan = plan.items.find((item) => item.id === "idp-oauth-popup");
+    assert.equal(idpPlan?.status, "requires_approved_external_provider");
+    assert.equal(idpPlan?.commands.local_fixture_baseline, "npm run check:auth-live");
+    assert.equal(idpPlan?.evidence_requirements.includes("manual_required_verified=true"), true);
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

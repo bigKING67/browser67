@@ -30,6 +30,18 @@ proofs are present:
 npm run check:optional-live-proofs -- --strict
 ```
 
+Print the current proof collection plan without opening Chrome, creating tabs,
+moving the mouse, or writing proof files:
+
+```bash
+npm run plan:optional-live-proofs
+npm run plan:optional-live-proofs -- --json
+```
+
+The plan reports each proof id, current satisfaction status, required host or
+provider kind, safe commands, blockers such as macOS Accessibility permission,
+and the evidence fields that must be present before a proof is accepted.
+
 Generate safe starter templates instead of hand-writing JSON:
 
 ```bash

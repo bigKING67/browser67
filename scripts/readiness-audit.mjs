@@ -306,6 +306,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "check:ljqctrl",
     "check:optional-live-proofs",
     "check:readiness",
+    "plan:optional-live-proofs",
     "proof:optional-live-template",
     "verify",
   ];
@@ -337,8 +338,9 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:native-pointer",
         "check:ljqctrl",
         "check:optional-live-proofs",
+        "plan:optional-live-proofs",
       ]),
-      "verify.mjs includes change-set, readiness, captcha assist, ljqctrl, and optional live proof gates",
+      "verify.mjs includes change-set, readiness, captcha assist, ljqctrl, optional live proof audit, and optional proof planning gates",
     ),
     createCheck(
       "change_set_grouped",
@@ -359,8 +361,9 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run check:captcha-assist-live",
         "npm run check:native-pointer",
         "npm run check:ljqctrl",
+        "npm run plan:optional-live-proofs",
       ]),
-      "README lists readiness, change-set, scoped commit, captcha, native pointer, and ljqctrl gates",
+      "README lists readiness, change-set, scoped commit, captcha, native pointer, ljqctrl, and optional proof planning gates",
     ),
     createCheck(
       "skill_documents_captcha_boundaries",

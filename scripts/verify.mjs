@@ -27,6 +27,7 @@ function buildCommands(managedTabBaselineFile) {
     { command: "npm", args: ["run", "check:native-pointer"] },
     { command: "npm", args: ["run", "check:ljqctrl"] },
     { command: "npm", args: ["run", "check:optional-live-proofs"] },
+    { command: "npm", args: ["run", "plan:optional-live-proofs"] },
     {
       command: "node",
       args: ["scripts/check-managed-tab-cleanup.mjs", "--baseline-file", managedTabBaselineFile],

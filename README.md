@@ -279,6 +279,7 @@ npm run check:captcha-assist-physical-live
 npm run check:native-pointer
 npm run check:ljqctrl
 npm run check:optional-live-proofs
+npm run plan:optional-live-proofs
 npm run proof:optional-live-template
 npm run check:js-reverse-mcp
 npm run check:js-reverse-live
@@ -327,8 +328,10 @@ machine-local hard gate.
 non-blocking by default and exists for optional local CAPTCHA physical proof,
 cross-OS native-input proof, and approved external IdP live coverage; use
 `--strict` only when a local release gate should require every optional proof.
-Use `proof:optional-live-template` to generate safe `ok:false` starter
-templates before recording real external proofs. See
+Use `plan:optional-live-proofs` to print the current proof collection runbook:
+per-proof status, required host/platform, safe commands, blockers, and evidence
+requirements. Use `proof:optional-live-template` to generate safe `ok:false`
+starter templates before recording real external proofs. See
 `docs/optional-live-proofs.md`.
 
 `npm run check:change-set` is a read-only review hygiene gate for large refactors.
