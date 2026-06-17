@@ -19,6 +19,8 @@ import { assertFileDownloadClipboardOpsContract } from "./browser-structured-mcp
 import { assertTabLifecycleOpsContract } from "./browser-structured-mcp-contract/tab-lifecycle-ops.mjs";
 import { assertAuthOpsContract } from "./browser-structured-mcp-contract/auth-ops.mjs";
 import { assertToolSurface } from "./browser-structured-mcp-contract/tool-surface.mjs";
+import { assertReadinessLjqCtrlProbeContract } from "./browser-structured-mcp-contract/readiness-audit.mjs";
+import { assertManagedTabCleanupBaselineContract } from "./browser-structured-mcp-contract/managed-tab-cleanup.mjs";
 
 function parseArgs(argv) {
   const parsed = {
@@ -57,6 +59,8 @@ function parseArgs(argv) {
 async function run() {
   const cli = parseArgs(process.argv.slice(2));
   await assertNativeCapabilitySurface();
+  await assertReadinessLjqCtrlProbeContract();
+  await assertManagedTabCleanupBaselineContract();
 
   const previousTabRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
   const previousLoginProfileDir = process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR;
