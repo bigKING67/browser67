@@ -52,6 +52,12 @@ TMWD_CAPTCHA_ASSIST_CONFIRM=1 \
 npm run check:captcha-assist-physical-live
 ```
 
+The gate only counts as executable when the selected physical provider can
+actually affect the browser window. On macOS, `native-os` pointer actions depend
+on `cliclick`; the readiness probe treats `cliclick` as unavailable for click and
+drag when its diagnostic output reports missing Accessibility privileges for the
+current terminal/Codex host.
+
 Set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that automatic proof write, or
 `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail the gate if the sanitized proof
 cannot be persisted.

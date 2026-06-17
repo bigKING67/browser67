@@ -167,6 +167,8 @@ TMWD_LJQCTRL_EXECUTE=1 is required before the guarded bridge may call
 ljqCtrl.Click or clipped window-region capture artifact creation. Slider
 challenges additionally require screen destination coordinates (explicit or
 estimated) and physical drag capability, otherwise they remain manual handoff.
+On macOS, native-os drag capability requires `cliclick` and Accessibility
+permission for the current terminal/Codex host.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
 auditing whether finalizers were missed. The full npm run verify flow writes a
 temporary managed-tab baseline and fails only on newly leaked unkept records, so
@@ -223,7 +225,9 @@ validates normal, scrolled, and same-origin iframe slider fixtures, is
 planning-only. Use `npm run check:captcha-assist-physical-live` for the optional
 local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with
-TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1. A successful physical run writes a
+TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1. Native pointer actions must be genuinely
+available; on macOS, missing Accessibility permission keeps `cliclick` click/drag
+capability disabled. A successful physical run writes a
 sanitized repo-external local CAPTCHA proof by default; set
 TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0 to disable that persistence.
 For near-100 external coverage, run `npm run check:optional-live-proofs` after
