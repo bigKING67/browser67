@@ -222,7 +222,8 @@ TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1.
 For near-100 external coverage, run `npm run check:optional-live-proofs` after
 collecting sanitized Linux/Windows native-input or approved OAuth/SSO/MFA proof
 JSON under `~/.tmwd-browser-mcp/optional-live-proofs`; use `--strict` only when
-those optional proofs are required for a local release gate.
+those optional proofs are required for a local release gate. Use
+`npm run proof:optional-live-template` for safe `ok:false` starter templates.
 
 ## Operating boundary
 

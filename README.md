@@ -275,6 +275,7 @@ npm run check:captcha-assist-live
 npm run check:captcha-assist-physical-live
 npm run check:ljqctrl
 npm run check:optional-live-proofs
+npm run proof:optional-live-template
 npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
@@ -301,7 +302,9 @@ machine-local hard gate.
 `~/.tmwd-browser-mcp/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. It is
 non-blocking by default and exists for optional cross-OS native-input and
 approved external IdP live coverage; use `--strict` only when a local release
-gate should require every optional proof. See `docs/optional-live-proofs.md`.
+gate should require every optional proof. Use `proof:optional-live-template` to
+generate safe `ok:false` starter templates before recording real external
+proofs. See `docs/optional-live-proofs.md`.
 
 `npm run check:change-set` is a read-only review hygiene gate for large refactors.
 It groups the current `git status --porcelain` paths by architecture area and

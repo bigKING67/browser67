@@ -29,6 +29,21 @@ proofs are present:
 npm run check:optional-live-proofs -- --strict
 ```
 
+Generate safe starter templates instead of hand-writing JSON:
+
+```bash
+npm run proof:optional-live-template
+npm run proof:optional-live-template -- --id native-live-linux
+npm run proof:optional-live-template -- --all --write
+```
+
+`--write` stores `*.template.json` files under the proof directory using
+`ok:false` and `template_only:true`, so templates do not satisfy the audit until
+the real live gate has been run and the proof is intentionally edited into a
+sanitized passing artifact. Passing proofs must remove `template_only:true` and
+replace any placeholder command with the exact approved command or runbook entry
+that produced the sanitized evidence.
+
 Proof files must be sanitized. The validator rejects keys whose names look like
 credentials, cookies, tokens, secrets, or session material. Do not store browser
 cookies, IdP tokens, screenshots with private data, passwords, authorization
