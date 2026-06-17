@@ -309,15 +309,18 @@ stages files.
 readiness audit: it verifies required governance/docs/skill gates, reports a
 score, and lists optional hardening gaps such as pending scoped commits,
 unconfigured `ljqCtrl`, skipped physical CAPTCHA gate, cross-OS native live
-proof, and provider-specific OAuth/SSO/MFA live gates. It is read-only; use
-`--strict` when a local release gate should fail on optional gaps too.
+proof, and provider-specific OAuth/SSO/MFA live gates. The local auth smoke
+already covers OAuth popup, SSO, and MFA manual handoff/resume fixtures; the
+remaining IdP gap is explicitly about approved external provider coverage. The
+readiness audit is read-only; use `--strict` when a local release gate should
+fail on optional gaps too.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
 all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
 contracts, live doctor readiness, JS reverse live readiness, auth-profile
-onboarding/lifecycle/live smoke, diagnostic-only `ljqCtrl` probing, and npm
-audit.
+onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
+popup resume paths), diagnostic-only `ljqCtrl` probing, and npm audit.
 
 ## Source alignment
 

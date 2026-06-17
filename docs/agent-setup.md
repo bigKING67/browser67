@@ -211,8 +211,8 @@ After auth/profile changes, run `npm run check:auth-live`; it uses an isolated
 local profile directory and managed tabs, verifies first-time profile suggestion
 and upsert, login submission, already-authenticated no-resubmit behavior,
 lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking,
-unknown-origin blocking, redaction, manual handoff context, and finalizer
-cleanup.
+manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking,
+redaction, manual handoff context, and finalizer cleanup.
 After CAPTCHA assist changes, run `npm run check:captcha-assist-live`; it
 validates normal, scrolled, and same-origin iframe slider fixtures, is
 planning-only. Use `npm run check:captcha-assist-physical-live` for the optional
