@@ -251,8 +251,11 @@ executable and otherwise selects `native-os`; the `ljq-ctrl` provider is
 diagnostic/planning metadata by default and only executes through its guarded
 bridge when explicitly enabled. Run `npm run check:ljqctrl` to probe the local
 Python `ljqCtrl` import and report click/capture capability without moving the
-mouse or taking screenshots. Set `TMWD_LJQCTRL_PYTHON=/path/to/python` when the
-module is installed outside the default `python3`/`python` path;
+mouse or taking screenshots. The doctor includes a compact
+`python_candidates` matrix so a connected driver can be mapped to the right
+interpreter. Set `TMWD_LJQCTRL_PYTHON=/path/to/python` for one explicit
+interpreter, or `TMWD_LJQCTRL_PYTHON_CANDIDATES` for a system path-delimited
+candidate list when the module is installed outside the default Python path;
 `TMWD_LJQCTRL_EXECUTE=1` is required before the guarded bridge can use
 `ljqCtrl.Click` or clipped window-region capture. For slider
 CAPTCHA, planning returns a viewport-space drag hint and estimated screen

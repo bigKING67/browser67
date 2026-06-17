@@ -241,7 +241,10 @@ action. `ljq-ctrl` probe results are TTL-cached to avoid repeated Python startup
 on planner/assist chains. Run `npm run check:ljqctrl` for a diagnostic-only
 probe of the local Python `ljqCtrl` import, click support, and window-region
 capture support; the doctor does not activate windows, click, drag, capture
-screenshots, or access clipboard. Set `TMWD_LJQCTRL_PYTHON=/path/to/python` when
+screenshots, or access clipboard. It reports a compact `python_candidates`
+matrix so agents can see when one Python exists but cannot import `ljqCtrl`.
+Set `TMWD_LJQCTRL_PYTHON=/path/to/python` for one explicit interpreter, or
+`TMWD_LJQCTRL_PYTHON_CANDIDATES` to a system path-delimited candidate list when
 `ljqCtrl` is installed outside the default Python path. `TMWD_LJQCTRL_EXECUTE=1`
 is required before the guarded bridge may call `ljqCtrl.Click` or clipped
 window-region capture artifact creation. It does not use JS/CDP to click a CAPTCHA widget and does not read

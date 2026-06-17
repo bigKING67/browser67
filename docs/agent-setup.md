@@ -160,11 +160,13 @@ are fallbacks. physical_input_provider=auto currently executes through native-os
 unless the guarded ljq-ctrl bridge is explicitly enabled and reports the
 requested action. Run `npm run check:ljqctrl` to diagnose local Python ljqCtrl
 availability and click/window-region capture support without physical input.
-TMWD_LJQCTRL_PYTHON selects a non-default Python. TMWD_LJQCTRL_EXECUTE=1 is
-required before the guarded bridge may call ljqCtrl.Click or clipped
-window-region capture artifact creation. Slider challenges additionally require
-screen destination coordinates (explicit or estimated) and physical drag
-capability, otherwise they remain manual handoff.
+The diagnostic output includes a compact python_candidates matrix. Use
+TMWD_LJQCTRL_PYTHON for one explicit interpreter, or
+TMWD_LJQCTRL_PYTHON_CANDIDATES for a system path-delimited candidate list.
+TMWD_LJQCTRL_EXECUTE=1 is required before the guarded bridge may call
+ljqCtrl.Click or clipped window-region capture artifact creation. Slider
+challenges additionally require screen destination coordinates (explicit or
+estimated) and physical drag capability, otherwise they remain manual handoff.
 Use npm run check:managed-tabs-clean as a registry-only hygiene gate when
 auditing whether finalizers were missed. Managed tab creation results include
 finalize_hint; treat finalize_hint.required=true as a task-end cleanup
