@@ -40,6 +40,7 @@ function compactPhysicalAssist(physicalAssist = {}) {
         wait_ms: physicalAssist.native_input.wait_ms,
       }
       : undefined,
+    pre_input_settle_ms: physicalAssist.pre_input_settle_ms,
     screen_coordinates: physicalAssist.screen_coordinates,
     waited_ms: physicalAssist.waited_ms,
     target: physicalAssist.target
@@ -87,19 +88,242 @@ function compactPhysicalAssist(physicalAssist = {}) {
   };
 }
 
-function physicalDiagnostics(physicalAssist, physicalCompletion) {
+function physicalDiagnostics(physicalAssist, physicalCompletion, physicalAttempts = undefined) {
   return {
     physical_assist: compactPhysicalAssist(physicalAssist),
     physical_completion: physicalCompletion?.js_return ?? physicalCompletion,
+    physical_attempts: physicalAttempts,
   };
 }
 
-function physicalGateError(message, physicalAssist, physicalCompletion) {
-  const error = new Error(`${message}: ${JSON.stringify(physicalDiagnostics(physicalAssist, physicalCompletion))}`);
+function physicalGateError(message, physicalAssist, physicalCompletion, physicalAttempts = undefined) {
+  const diagnostics = physicalDiagnostics(physicalAssist, physicalCompletion, physicalAttempts);
+  const error = new Error(`${message}: ${JSON.stringify(diagnostics)}`);
   error.details = {
-    physical_diagnostics: physicalDiagnostics(physicalAssist, physicalCompletion),
+    physical_diagnostics: diagnostics,
   };
   return error;
+}
+
+function finiteNumber(raw) {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function clampNumber(raw, fallback, min, max) {
+  const value = finiteNumber(raw);
+  const candidate = value === null ? fallback : value;
+  return Math.max(min, Math.min(max, candidate));
+}
+
+function clampInteger(raw, fallback, min, max) {
+  return Math.round(clampNumber(raw, fallback, min, max));
+}
+
+function optionalEnvNumber(name) {
+  const raw = process.env[name];
+  if (raw === undefined || String(raw).trim() === "") {
+    return null;
+  }
+  return finiteNumber(raw);
+}
+
+function explicitCoordinatesFromEnv() {
+  const fromX = optionalEnvNumber("TMWD_CAPTCHA_ASSIST_DRAG_FROM_X");
+  const fromY = optionalEnvNumber("TMWD_CAPTCHA_ASSIST_DRAG_FROM_Y");
+  const toX = optionalEnvNumber("TMWD_CAPTCHA_ASSIST_DRAG_TO_X");
+  const toY = optionalEnvNumber("TMWD_CAPTCHA_ASSIST_DRAG_TO_Y");
+  if ([fromX, fromY, toX, toY].every((value) => value !== null)) {
+    return {
+      source: "env_explicit_screen_coordinates",
+      from: { x: Math.round(fromX), y: Math.round(fromY) },
+      to: { x: Math.round(toX), y: Math.round(toY) },
+    };
+  }
+  return null;
+}
+
+function physicalAttemptOptionsFromEnv() {
+  return {
+    maxAttempts: clampInteger(envNumber("TMWD_CAPTCHA_ASSIST_MAX_ATTEMPTS", 2), 2, 1, 3),
+    dragDurationMs: clampInteger(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_MS", 900), 900, 0, 10_000),
+    dragSteps: clampInteger(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_STEPS", 24), 24, 1, 240),
+    retryDragDurationMs: clampInteger(envNumber("TMWD_CAPTCHA_ASSIST_RETRY_DRAG_MS", 1_400), 1_400, 0, 10_000),
+    retryDragSteps: clampInteger(envNumber("TMWD_CAPTCHA_ASSIST_RETRY_DRAG_STEPS", 36), 36, 1, 240),
+    preInputSettleMs: clampInteger(envNumber("TMWD_CAPTCHA_ASSIST_PRE_INPUT_SETTLE_MS", 500), 500, 0, 5_000),
+    retryOvershootX: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_OVERSHOOT_X", 32), 32, -200, 400),
+    retryStartOffsetX: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_START_OFFSET_X", 0), 0, -200, 200),
+    retryStartOffsetY: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_START_OFFSET_Y", 0), 0, -200, 200),
+    retryEndOffsetX: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_END_OFFSET_X", 0), 0, -200, 200),
+    retryEndOffsetY: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_END_OFFSET_Y", 0), 0, -200, 200),
+    explicitCoordinates: explicitCoordinatesFromEnv(),
+  };
+}
+
+function coordinatePoint(x, y) {
+  const pointX = finiteNumber(x);
+  const pointY = finiteNumber(y);
+  if (pointX === null || pointY === null) {
+    return null;
+  }
+  return {
+    x: Math.max(0, Math.round(pointX)),
+    y: Math.max(0, Math.round(pointY)),
+  };
+}
+
+function retryCoordinatesFromAssist(physicalAssist, options) {
+  if (options.explicitCoordinates) {
+    return options.explicitCoordinates;
+  }
+  const screen = physicalAssist?.screen_coordinates ?? {};
+  const correctedDrag = physicalAssist?.coordinate_transform?.vision_correction?.screen_estimate?.drag;
+  const estimatedDrag = physicalAssist?.coordinate_transform?.screen_estimate?.drag;
+  const from = coordinatePoint(
+    finiteNumber(screen.x) ?? correctedDrag?.from?.x ?? estimatedDrag?.from?.x,
+    finiteNumber(screen.y) ?? correctedDrag?.from?.y ?? estimatedDrag?.from?.y,
+  );
+  const toYCandidate = finiteNumber(screen.to_y)
+    ?? correctedDrag?.to?.y
+    ?? estimatedDrag?.to?.y
+    ?? from?.y;
+  const toCandidates = [
+    finiteNumber(screen.to_x),
+    finiteNumber(correctedDrag?.to?.x),
+    finiteNumber(estimatedDrag?.to?.x),
+  ].filter((value) => value !== null);
+  if (!from || toCandidates.length === 0 || finiteNumber(toYCandidate) === null) {
+    return null;
+  }
+  const baseToX = Math.max(...toCandidates);
+  return {
+    source: "retry_from_prior_vision_or_estimate_with_overshoot",
+    from: coordinatePoint(
+      from.x + options.retryStartOffsetX,
+      from.y + options.retryStartOffsetY,
+    ),
+    to: coordinatePoint(
+      baseToX + options.retryOvershootX + options.retryEndOffsetX,
+      toYCandidate + options.retryEndOffsetY,
+    ),
+  };
+}
+
+function buildPhysicalAssistAttemptPlan(attemptIndex, previousAssist, options = {}) {
+  const retry = attemptIndex > 1;
+  const coordinates = retry
+    ? retryCoordinatesFromAssist(previousAssist, options)
+    : options.explicitCoordinates;
+  const dragDurationMs = retry ? options.retryDragDurationMs : options.dragDurationMs;
+  const dragSteps = retry ? options.retryDragSteps : options.dragSteps;
+  const args = {
+    run_vision_correction: true,
+    use_vision_corrected_coordinates: true,
+    confirm_corrected_coordinates: true,
+    confirm_physical_input: true,
+    drag_duration_ms: dragDurationMs,
+    drag_steps: dragSteps,
+    pre_input_settle_ms: options.preInputSettleMs,
+    wait_after_ms: 5_000,
+  };
+  if (coordinates?.from && coordinates?.to) {
+    args.screen_x = coordinates.from.x;
+    args.screen_y = coordinates.from.y;
+    args.screen_to_x = coordinates.to.x;
+    args.screen_to_y = coordinates.to.y;
+  }
+  return {
+    attempt: attemptIndex,
+    strategy: coordinates?.source
+      ?? (retry ? "vision_corrected_retry_slow_without_explicit_coordinates" : "vision_corrected_primary"),
+    args,
+    requested_screen_coordinates: coordinates?.from && coordinates?.to
+      ? {
+        x: coordinates.from.x,
+        y: coordinates.from.y,
+        to_x: coordinates.to.x,
+        to_y: coordinates.to.y,
+        coordinate_system: "screen_pixels",
+        source: coordinates.source,
+      }
+      : undefined,
+  };
+}
+
+async function runSinglePhysicalAttempt({
+  attemptIndex,
+  attemptOptions,
+  callTool,
+  physicalAssist,
+  physicalAttempts,
+  physicalCompletion,
+  tabId,
+  toolArgs,
+  workspaceKey,
+}) {
+  const attemptPlan = buildPhysicalAssistAttemptPlan(attemptIndex, physicalAssist, attemptOptions);
+  const nextPhysicalAssist = await callTool("browser_auth_ops", {
+    ...toolArgs,
+    action: "assist_captcha",
+    tab_id: tabId,
+    workspace_key: workspaceKey,
+    assist_target: "slider",
+    ...attemptPlan.args,
+  });
+  if (nextPhysicalAssist.status !== "success") {
+    throw physicalGateError("physical assist did not report success", nextPhysicalAssist, physicalCompletion, physicalAttempts);
+  }
+  if (nextPhysicalAssist.activation?.method !== "tmwd_tabs_switch") {
+    throw physicalGateError("physical assist did not activate managed tab via TMWD switch", nextPhysicalAssist, physicalCompletion, physicalAttempts);
+  }
+  if (typeof nextPhysicalAssist.physical_input_provider?.provider_id !== "string") {
+    throw physicalGateError("physical assist did not report physical input provider id", nextPhysicalAssist, physicalCompletion, physicalAttempts);
+  }
+  if (typeof nextPhysicalAssist.physical_input_provider_selection?.reason !== "string") {
+    throw physicalGateError("physical assist did not report provider selection reason", nextPhysicalAssist, physicalCompletion, physicalAttempts);
+  }
+  const nextPhysicalCompletion = await callTool("browser_execute_js", {
+    ...toolArgs,
+    tab_id: tabId,
+    script: "return { checked: true, slider_completed: document.body.dataset.sliderCompleted === 'true', slider_started: document.body.dataset.sliderStarted === 'true', slider_delta: document.body.dataset.sliderDelta || null, status_text: document.querySelector('#slider-status')?.textContent || null, active_element_id: document.activeElement?.id || null };",
+  });
+  const nextPhysicalAttempts = [
+    ...physicalAttempts,
+    {
+      attempt: attemptPlan.attempt,
+      strategy: attemptPlan.strategy,
+      requested: {
+        drag_duration_ms: attemptPlan.args.drag_duration_ms,
+        drag_steps: attemptPlan.args.drag_steps,
+        pre_input_settle_ms: attemptPlan.args.pre_input_settle_ms,
+        screen_coordinates: attemptPlan.requested_screen_coordinates,
+      },
+      physical_assist: compactPhysicalAssist(nextPhysicalAssist),
+      physical_completion: nextPhysicalCompletion?.js_return ?? nextPhysicalCompletion,
+    },
+  ];
+  return {
+    physicalAssist: nextPhysicalAssist,
+    physicalCompletion: nextPhysicalCompletion,
+    physicalAttempts: nextPhysicalAttempts,
+  };
+}
+
+async function runPhysicalAttemptSequence(state) {
+  const next = await runSinglePhysicalAttempt(state);
+  if (
+    next.physicalCompletion?.js_return?.slider_completed === true
+    || state.attemptIndex >= state.attemptOptions.maxAttempts
+  ) {
+    return next;
+  }
+  return runPhysicalAttemptSequence({
+    ...state,
+    attemptIndex: state.attemptIndex + 1,
+    physicalAssist: next.physicalAssist,
+    physicalCompletion: next.physicalCompletion,
+    physicalAttempts: next.physicalAttempts,
+  });
 }
 
 async function runPhysicalAssistIfEnabled({
@@ -113,58 +337,41 @@ async function runPhysicalAssistIfEnabled({
     reason: "set TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and TMWD_CAPTCHA_ASSIST_CONFIRM=1 to opt in",
   };
   let physicalCompletion = { checked: false };
+  let physicalAttempts = [];
   if (envEnabled("TMWD_CAPTCHA_ASSIST_PHYSICAL")) {
     assert.equal(
       envEnabled("TMWD_CAPTCHA_ASSIST_CONFIRM"),
       true,
       "physical CAPTCHA assist requires TMWD_CAPTCHA_ASSIST_CONFIRM=1",
     );
-    const dragDurationMs = envNumber("TMWD_CAPTCHA_ASSIST_DRAG_MS", 900);
-    const dragSteps = envNumber("TMWD_CAPTCHA_ASSIST_DRAG_STEPS", 24);
-    physicalAssist = await callTool("browser_auth_ops", {
-      ...toolArgs,
-      action: "assist_captcha",
-      tab_id: tabId,
-      workspace_key: workspaceKey,
-      assist_target: "slider",
-      run_vision_correction: true,
-      use_vision_corrected_coordinates: true,
-      confirm_corrected_coordinates: true,
-      confirm_physical_input: true,
-      drag_duration_ms: dragDurationMs,
-      drag_steps: dragSteps,
-      wait_after_ms: 5_000,
-    });
-    if (physicalAssist.status !== "success") {
-      throw physicalGateError("physical assist did not report success", physicalAssist, physicalCompletion);
-    }
-    if (physicalAssist.activation?.method !== "tmwd_tabs_switch") {
-      throw physicalGateError("physical assist did not activate managed tab via TMWD switch", physicalAssist, physicalCompletion);
-    }
-    if (typeof physicalAssist.physical_input_provider?.provider_id !== "string") {
-      throw physicalGateError("physical assist did not report physical input provider id", physicalAssist, physicalCompletion);
-    }
-    if (typeof physicalAssist.physical_input_provider_selection?.reason !== "string") {
-      throw physicalGateError("physical assist did not report provider selection reason", physicalAssist, physicalCompletion);
-    }
-    physicalCompletion = await callTool("browser_execute_js", {
-      ...toolArgs,
-      tab_id: tabId,
-      script: "return { checked: true, slider_completed: document.body.dataset.sliderCompleted === 'true', slider_delta: document.body.dataset.sliderDelta || null, status_text: document.querySelector('#slider-status')?.textContent || null };",
-    });
+    const attemptOptions = physicalAttemptOptionsFromEnv();
+    ({ physicalAssist, physicalCompletion, physicalAttempts } = await runPhysicalAttemptSequence({
+      attemptIndex: 1,
+      attemptOptions,
+      callTool,
+      physicalAssist,
+      physicalAttempts,
+      physicalCompletion,
+      tabId,
+      toolArgs,
+      workspaceKey,
+    }));
     if (physicalCompletion?.js_return?.slider_completed !== true) {
-      throw physicalGateError("physical drag did not complete local slider fixture", physicalAssist, physicalCompletion);
+      throw physicalGateError("physical drag did not complete local slider fixture", physicalAssist, physicalCompletion, physicalAttempts);
     }
   }
 
   return {
     physicalAssist,
     physicalCompletion,
+    physicalAttempts,
   };
 }
 
 export {
+  buildPhysicalAssistAttemptPlan,
   compactPhysicalAssist,
   physicalDiagnostics,
+  physicalAttemptOptionsFromEnv,
   runPhysicalAssistIfEnabled,
 };

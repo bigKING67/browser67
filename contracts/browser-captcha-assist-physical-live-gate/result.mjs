@@ -72,6 +72,15 @@ function buildPhysicalResultPayload(parsed) {
     planning_only: parsed.planning_only,
     physical_assist_status: parsed.physical_assist_status,
     physical_completion: parsed.physical_completion,
+    physical_attempt_count: parsed.physical_attempt_count,
+    physical_attempts: Array.isArray(parsed.physical_attempts)
+      ? parsed.physical_attempts.map((attempt) => ({
+        attempt: attempt.attempt,
+        strategy: attempt.strategy,
+        requested: attempt.requested,
+        physical_completion: attempt.physical_completion,
+      }))
+      : undefined,
     finalized_closed: parsed.finalized_closed,
     matrix_case_count: Array.isArray(parsed.matrix_results) ? parsed.matrix_results.length : 0,
     child_workspace_key: parsed.workspace_key,

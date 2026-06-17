@@ -3,6 +3,7 @@ import {
   finiteNumber,
   normalizeDragDurationMs,
   normalizeDragSteps,
+  normalizePreInputSettleMs,
   normalizeWaitAfterMs,
 } from "../captcha/coordinates.mjs";
 import { CAPTCHA_ASSIST_REASONS } from "../captcha/reasons.mjs";
@@ -207,6 +208,11 @@ async function handleAssistCaptcha(args) {
     }
   }
 
+  const preInputSettleMs = normalizePreInputSettleMs(args?.pre_input_settle_ms);
+  if (preInputSettleMs > 0) {
+    await sleep(preInputSettleMs);
+  }
+
   const physicalInput = planned.assist_target === "slider"
     ? await runPhysicalInputAction("drag", {
       from_x: screenX,
@@ -256,6 +262,7 @@ async function handleAssistCaptcha(args) {
     native_input: nativeInput,
     physical_input_provider: physicalInput.provider,
     physical_input_provider_selection: physicalInput.provider_selection,
+    pre_input_settle_ms: preInputSettleMs,
     screen_coordinates: {
       x: Math.round(screenX),
       y: Math.round(screenY),

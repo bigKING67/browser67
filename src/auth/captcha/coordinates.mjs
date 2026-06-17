@@ -34,6 +34,14 @@ function normalizeDragSteps(raw) {
   return Math.max(1, Math.min(240, Math.round(parsed)));
 }
 
+function normalizePreInputSettleMs(raw) {
+  const parsed = finiteNumber(raw);
+  if (parsed === null) {
+    return 0;
+  }
+  return Math.max(0, Math.min(5_000, Math.round(parsed)));
+}
+
 function buildSliderDragHint(target) {
   const rect = target?.rect;
   if (!rect || target?.role !== "slider") {
@@ -203,6 +211,7 @@ export {
   finiteNumber,
   normalizeDragDurationMs,
   normalizeDragSteps,
+  normalizePreInputSettleMs,
   normalizeWaitAfterMs,
   roundCoordinate,
 };

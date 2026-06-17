@@ -36,6 +36,9 @@ function buildPhysicalProof(parsed, options = {}) {
       coordinate_source: parsed.physical_assist_coordinates_source || "vision_corrected_region_capture",
       provider_selection_reason: parsed.physical_assist_provider_selection_reason || "not_reported",
       vision_correction_status: parsed.vision_correction_status,
+      physical_attempt_count: Number.isFinite(Number(parsed.physical_attempt_count))
+        ? Number(parsed.physical_attempt_count)
+        : undefined,
       matrix_case_count: Array.isArray(parsed.matrix_results) ? parsed.matrix_results.length : 0,
       finalized_closed: parsed.finalized_closed,
       browser_private_state_access: false,

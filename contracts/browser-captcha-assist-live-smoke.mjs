@@ -352,7 +352,7 @@ async function run() {
       workspaceKey,
     });
 
-    const { physicalAssist, physicalCompletion } = await runPhysicalAssistIfEnabled({
+    const { physicalAssist, physicalCompletion, physicalAttempts } = await runPhysicalAssistIfEnabled({
       callTool,
       tabId,
       toolArgs,
@@ -397,6 +397,8 @@ async function run() {
       physical_assist_provider_selection_reason: physicalAssist.physical_input_provider_selection?.reason ?? null,
       physical_assist_coordinates_source: physicalAssist.screen_coordinates?.source ?? null,
       physical_assist_diagnostics: compactPhysicalAssist(physicalAssist),
+      physical_attempt_count: physicalAttempts.length,
+      physical_attempts: physicalAttempts,
       physical_completion: physicalCompletion?.js_return ?? physicalCompletion,
       finalized_closed: finalize.close_unkept.closed.length,
     };
