@@ -75,6 +75,19 @@ credentials, cookies, tokens, secrets, or session material. Do not store browser
 cookies, IdP tokens, screenshots with private data, passwords, authorization
 headers, or raw profile/session state in proof files.
 
+The audit reports invalid candidate files when a proof targets the right
+requirement but still fails validation, for example when a generated
+`*.template.json` file is present, when a placeholder command remains, when a
+proof is expired, when required click/drag actions are missing, or when evidence
+does not explicitly state the safe boundaries. A passing proof must be explicit
+about these invariants:
+
+- Native proofs include both `click` and `drag` actions.
+- Native proofs set `evidence.managed_tab_only:true`.
+- Native proofs set `evidence.fullscreen_screenshot:false`.
+- Native and IdP proofs set `evidence.secrets_redacted:true`.
+- Local CAPTCHA physical proofs set `evidence.browser_private_state_access:false`.
+
 ## Local CAPTCHA physical proof example
 
 ```json
@@ -118,7 +131,8 @@ cross-host local CAPTCHA proofs do not satisfy the local physical gate.
   "evidence": {
     "fixture": "local TMWD-owned managed tab",
     "managed_tab_only": true,
-    "fullscreen_screenshot": false
+    "fullscreen_screenshot": false,
+    "secrets_redacted": true
   }
 }
 ```

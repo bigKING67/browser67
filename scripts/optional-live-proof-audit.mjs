@@ -9,6 +9,7 @@ const DEFAULT_OPTIONAL_LIVE_PROOF_DIR = join(homedir(), ".tmwd-browser-mcp", "op
 const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|authorization|credential)/i;
 const PLACEHOLDER_COMMAND_PATTERN = /(?:replace with exact|placeholder|template-only|template only)/i;
 const SAFE_REDACTION_STATUS_KEYS = new Set(["secrets_redacted", "credentials_redacted"]);
+const VALID_IDP_PROVIDER_KINDS = new Set(["oauth_popup", "cross_domain_sso", "mfa"]);
 
 const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
   {
@@ -28,6 +29,7 @@ const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
       "fullscreen_screenshot",
       "js_cdp_widget_click",
       "secrets_redacted",
+      "evidence",
     ],
   },
 ];
@@ -38,35 +40,35 @@ const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     type: "native_live",
     title: "Linux native physical-input live proof",
     matches: { platform: "linux" },
-    required_fields: ["platform", "provider_id", "actions", "checked_at", "command"],
+    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "evidence"],
   },
   {
     id: "native-live-win32",
     type: "native_live",
     title: "Windows native physical-input live proof",
     matches: { platform: "win32" },
-    required_fields: ["platform", "provider_id", "actions", "checked_at", "command"],
+    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "evidence"],
   },
   {
     id: "idp-oauth-popup",
     type: "idp_live",
     title: "External OAuth popup handoff/resume live proof",
     matches: { provider_kind: "oauth_popup" },
-    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified"],
+    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified", "evidence"],
   },
   {
     id: "idp-cross-domain-sso",
     type: "idp_live",
     title: "External cross-domain SSO handoff/resume live proof",
     matches: { provider_kind: "cross_domain_sso" },
-    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified"],
+    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified", "evidence"],
   },
   {
     id: "idp-mfa",
     type: "idp_live",
     title: "External MFA handoff/resume live proof",
     matches: { provider_kind: "mfa" },
-    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified"],
+    required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified", "evidence"],
   },
 ];
 
@@ -183,6 +185,18 @@ function proofMatchesRequirement(proof, requirement) {
   return true;
 }
 
+function proofTargetsRequirement(proof, requirement) {
+  if (!isPlainObject(proof) || proof.type !== requirement.type) {
+    return false;
+  }
+  for (const [key, expected] of Object.entries(requirement.matches)) {
+    if (proof[key] !== expected) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function validateProof(proof, requirement) {
   const errors = [];
   if (!proofMatchesRequirement(proof, requirement)) {
@@ -205,6 +219,14 @@ function validateProof(proof, requirement) {
   if (proof.expires_at !== undefined && Date.parse(proof.expires_at) <= Date.now()) {
     errors.push("expired");
   }
+  if (
+    validIsoTimestamp(proof.checked_at)
+    && proof.expires_at !== undefined
+    && validIsoTimestamp(proof.expires_at)
+    && Date.parse(proof.expires_at) <= Date.parse(proof.checked_at)
+  ) {
+    errors.push("expires_at_must_be_after_checked_at");
+  }
   if (typeof proof.command !== "string" || proof.command.trim().length === 0) {
     errors.push("command_required");
   } else if (PLACEHOLDER_COMMAND_PATTERN.test(proof.command)) {
@@ -213,6 +235,25 @@ function validateProof(proof, requirement) {
   if (requirement.type === "native_live") {
     if (!Array.isArray(proof.actions) || proof.actions.length === 0) {
       errors.push("native_actions_required");
+    }
+    if (!Array.isArray(proof.actions) || !proof.actions.includes("click")) {
+      errors.push("native_click_action_required");
+    }
+    if (!Array.isArray(proof.actions) || !proof.actions.includes("drag")) {
+      errors.push("native_drag_action_required");
+    }
+    if (!isPlainObject(proof.evidence)) {
+      errors.push("evidence_object_required");
+    } else {
+      if (proof.evidence.managed_tab_only !== true) {
+        errors.push("native_managed_tab_only_must_be_true");
+      }
+      if (proof.evidence.fullscreen_screenshot !== false) {
+        errors.push("native_fullscreen_screenshot_must_be_false");
+      }
+      if (proof.evidence.secrets_redacted !== true) {
+        errors.push("native_secrets_redacted_must_be_true");
+      }
     }
   }
   if (requirement.type === "captcha_physical_live") {
@@ -234,13 +275,26 @@ function validateProof(proof, requirement) {
     if (proof.secrets_redacted !== true) {
       errors.push("secrets_redacted_must_be_true");
     }
+    if (!isPlainObject(proof.evidence)) {
+      errors.push("evidence_object_required");
+    } else if (proof.evidence.browser_private_state_access !== false) {
+      errors.push("browser_private_state_access_must_be_false");
+    }
   }
   if (requirement.type === "idp_live") {
+    if (!VALID_IDP_PROVIDER_KINDS.has(proof.provider_kind)) {
+      errors.push("invalid_provider_kind");
+    }
     if (proof.manual_required_verified !== true) {
       errors.push("manual_required_verified_must_be_true");
     }
     if (proof.resume_verified !== true) {
       errors.push("resume_verified_must_be_true");
+    }
+    if (!isPlainObject(proof.evidence)) {
+      errors.push("evidence_object_required");
+    } else if (proof.evidence.secrets_redacted !== true) {
+      errors.push("idp_secrets_redacted_must_be_true");
     }
   }
   const sensitiveKeys = findSensitiveKeys(proof);
@@ -256,7 +310,7 @@ function validateProof(proof, requirement) {
 function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREMENTS) {
   return requirements.map((requirement) => {
     const candidates = rows
-      .filter((row) => row.proof && proofMatchesRequirement(row.proof, requirement))
+      .filter((row) => row.proof && proofTargetsRequirement(row.proof, requirement))
       .map((row) => ({
         path: row.path,
         validation: validateProof(row.proof, requirement),
@@ -358,5 +412,6 @@ export {
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
   LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  proofTargetsRequirement,
   validateProof,
 };
