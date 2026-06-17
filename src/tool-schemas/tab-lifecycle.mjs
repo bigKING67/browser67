@@ -1,0 +1,77 @@
+const TAB_LIFECYCLE_TOOL_SCHEMAS = {
+  browser_tab_lifecycle: {
+    description: "Managed browser tab lifecycle wrapper. Use select_or_create for TMWD-owned tab reuse and finalize_task for task-end cleanup; unmanaged user tabs are ignored and never closed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["create_managed", "select_or_create", "mark_keep", "list_managed", "prune_stale", "close_unkept", "finalize_task"],
+        },
+        url: { type: "string" },
+        active: { type: "boolean", default: true },
+        keep: { type: "boolean", default: false },
+        fresh: { type: "boolean", default: false },
+        reuse: { type: "boolean", default: true },
+        ownership_policy: { type: "string", enum: ["tmwd_only", "fresh"], default: "tmwd_only" },
+        reuse_scope: { type: "string", enum: ["exact", "origin_path", "origin", "none"], default: "origin_path" },
+        workspace_key: { type: "string" },
+        reuse_key: { type: "string" },
+        task_id: { type: "string" },
+        scope: {
+          type: "string",
+          enum: ["workspace", "task", "all"],
+          description: "Cleanup scope for action=close_unkept or finalize_task. Runtime requires workspace_key or task_id unless scope is all.",
+        },
+        all: {
+          type: "boolean",
+          default: false,
+          description: "Explicitly allow action=close_unkept to target all managed workspaces.",
+        },
+        confirm_all: {
+          type: "boolean",
+          default: false,
+          description: "Explicit confirmation alias for action=close_unkept across all managed workspaces.",
+        },
+        navigate_reused: { type: "boolean", default: true },
+        wait_until: { type: "string", enum: ["none", "listed"], default: "listed" },
+        wait_timeout_ms: { type: "number", minimum: 0, maximum: 10_000 },
+        wait_poll_ms: { type: "number", minimum: 50, maximum: 1_000 },
+        include_disconnected: { type: "boolean", default: false },
+        history: { type: "boolean", default: false },
+        prune_stale: { type: "boolean", default: false },
+        summary_only: {
+          type: "boolean",
+          default: false,
+          description: "Return counts and metadata without expanding managed tab, group, stale, pruned, or kept arrays.",
+        },
+        max_items: {
+          type: "number",
+          minimum: 0,
+          maximum: 500,
+          description: "Maximum managed tab/group/prune rows returned by list_managed and prune_stale. Counts still report full totals.",
+        },
+        max_stale_items: {
+          type: "number",
+          minimum: 0,
+          maximum: 500,
+          description: "Maximum live_filter.stale rows returned by list_managed. Counts still report full totals.",
+        },
+        dry_run: { type: "boolean", default: false },
+        tab_id: { type: "string" },
+        switch_tab_id: { type: "string" },
+        session_id: { type: "string" },
+        session_url_pattern: { type: "string" },
+        tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "auto" },
+        tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
+        tmwd_ws_endpoint: { type: "string" },
+        tmwd_link_endpoint: { type: "string" },
+        cdp_endpoint: { type: "string" },
+        timeout_ms: { type: "number", minimum: 100, maximum: 120_000 },
+      },
+      required: ["action"],
+    },
+  },
+};
+
+export { TAB_LIFECYCLE_TOOL_SCHEMAS };
