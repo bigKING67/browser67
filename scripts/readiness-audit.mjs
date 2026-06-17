@@ -7,6 +7,7 @@ import {
   buildChangeSetReport,
 } from "./change-set-lib.mjs";
 import { buildOptionalLiveProofAudit } from "./optional-live-proof-audit.mjs";
+import { detectNativeInputCapabilities } from "../src/native-input.mjs";
 import { getLjqCtrlPhysicalInputProviderCapabilities } from "../src/physical-input/providers/ljq-ctrl.mjs";
 
 const DEFAULT_FAIL_BELOW = 99.0;
@@ -203,6 +204,30 @@ function buildLjqCtrlGap(probe = {}) {
   );
 }
 
+function buildNativePointerGap(capabilities = {}) {
+  const supportedActions = Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [];
+  if (supportedActions.includes("drag") && supportedActions.includes("click")) {
+    return null;
+  }
+  const checks = capabilities.checks ?? {};
+  const requirements = Array.isArray(capabilities.requirements) ? capabilities.requirements : [];
+  const evidence = [
+    `platform=${capabilities.platform ?? process.platform}`,
+    `driver=${capabilities.driver ?? "unknown"}`,
+    `click=${supportedActions.includes("click")}`,
+    `drag=${supportedActions.includes("drag")}`,
+    `checks=${compactText(JSON.stringify(checks), 220)}`,
+    `requirements=${compactText(requirements.join("; "), 260)}`,
+  ].join(" ");
+  return createGap(
+    "native_pointer_actions_unavailable",
+    "informational",
+    0,
+    evidence,
+    "Fix the native pointer provider requirements before running physical CAPTCHA assist; on macOS this usually means granting Accessibility permission to the current terminal/Codex host.",
+  );
+}
+
 function buildRequiredChecks({ packageJson, readme, skill, verifySource, report }) {
   const scriptNames = [
     "check:syntax",
@@ -285,9 +310,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
 
 async function buildOptionalGaps({ report }) {
   const gaps = [];
-  const [optionalProofAudit, ljqCtrlProbe] = await Promise.all([
+  const [optionalProofAudit, ljqCtrlProbe, nativeCapabilities] = await Promise.all([
     buildOptionalLiveProofAudit({}),
     probeLjqCtrlReadiness(),
+    detectNativeInputCapabilities({ refresh: true, cache_ttl_ms: 0 }),
   ]);
 
   if (report.changed_paths_count > 0) {
@@ -301,6 +327,10 @@ async function buildOptionalGaps({ report }) {
   }
 
   gaps.push(buildLjqCtrlGap(ljqCtrlProbe));
+  const nativePointerGap = buildNativePointerGap(nativeCapabilities);
+  if (nativePointerGap) {
+    gaps.push(nativePointerGap);
+  }
 
   const localCaptchaPhysicalProof = optionalProofAudit.local_requirements
     ?.find((requirement) => requirement.id === "captcha-assist-physical-local" && requirement.satisfied === true);
