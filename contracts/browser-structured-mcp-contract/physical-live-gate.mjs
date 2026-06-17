@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { buildPhysicalAssistAttemptPlan } from "../browser-captcha-assist-live-smoke/physical-gate.mjs";
 import { parseLastJsonLine } from "../browser-captcha-assist-physical-live-gate/child-runner.mjs";
 import { buildPhysicalProof } from "../browser-captcha-assist-physical-live-gate/proof.mjs";
 import { runPhysicalLiveGate } from "../browser-captcha-assist-physical-live-gate/runner.mjs";
@@ -36,6 +37,8 @@ function successfulChildPayload(overrides = {}) {
     physical_assist_status: "success",
     physical_assist_provider_id: "native-os",
     physical_assist_coordinates_source: "vision_corrected_region_capture",
+    physical_attempt_count: 1,
+    physical_attempts: [{ attempt: 1, strategy: "vision_corrected_primary" }],
     physical_completion: { slider_completed: true },
     matrix_results: [{ case: "slider" }],
     finalized_closed: 1,
@@ -204,11 +207,63 @@ async function assertPhysicalLiveGateContract() {
   });
   assert.equal(proof.platform, "contract-os");
   assert.equal(proof.slider_completed, true);
+  assert.equal(proof.evidence.physical_attempt_count, 1);
   assert.equal(proof.managed_tab_only, true);
   assert.equal(proof.fullscreen_screenshot, false);
   assert.equal(proof.js_cdp_widget_click, false);
   assert.equal(proof.secrets_redacted, true);
   assert.equal(proof.evidence.browser_private_state_access, false);
+
+  const primaryAttempt = buildPhysicalAssistAttemptPlan(1, null, {
+    dragDurationMs: 900,
+    dragSteps: 24,
+    retryDragDurationMs: 1_400,
+    retryDragSteps: 36,
+    preInputSettleMs: 500,
+  });
+  assert.equal(primaryAttempt.strategy, "vision_corrected_primary");
+  assert.equal(primaryAttempt.args.drag_duration_ms, 900);
+  assert.equal(primaryAttempt.args.pre_input_settle_ms, 500);
+  assert.equal(primaryAttempt.requested_screen_coordinates, undefined);
+
+  const retryAttempt = buildPhysicalAssistAttemptPlan(2, {
+    screen_coordinates: {
+      x: 75,
+      y: 314,
+      to_x: 335,
+      to_y: 314,
+    },
+    coordinate_transform: {
+      vision_correction: {
+        screen_estimate: {
+          drag: {
+            from: { x: 75, y: 314 },
+            to: { x: 335, y: 314 },
+          },
+        },
+      },
+    },
+  }, {
+    retryDragDurationMs: 1_400,
+    retryDragSteps: 36,
+    preInputSettleMs: 500,
+    retryOvershootX: 32,
+    retryStartOffsetX: 0,
+    retryStartOffsetY: 0,
+    retryEndOffsetX: 0,
+    retryEndOffsetY: 0,
+  });
+  assert.equal(retryAttempt.strategy, "retry_from_prior_vision_or_estimate_with_overshoot");
+  assert.equal(retryAttempt.args.drag_duration_ms, 1_400);
+  assert.equal(retryAttempt.args.drag_steps, 36);
+  assert.deepEqual(retryAttempt.requested_screen_coordinates, {
+    x: 75,
+    y: 314,
+    to_x: 367,
+    to_y: 314,
+    coordinate_system: "screen_pixels",
+    source: "retry_from_prior_vision_or_estimate_with_overshoot",
+  });
 }
 
 export { assertPhysicalLiveGateContract };

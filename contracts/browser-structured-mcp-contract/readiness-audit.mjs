@@ -126,6 +126,8 @@ async function assertReadinessLjqCtrlProbeContract() {
       assertPermissionRecoveryPlan(defaultNativePointerGap.permission_recovery);
     }
     const defaultCaptchaBlockedGap = findGap(defaultAudit, "captcha_physical_live_gate_blocked_by_native_pointer");
+    const defaultCaptchaProofGap = defaultCaptchaBlockedGap
+      ?? findGap(defaultAudit, "captcha_physical_live_gate_not_executed");
     if (defaultCaptchaBlockedGap?.permission_recovery) {
       assertPermissionRecoveryPlan(defaultCaptchaBlockedGap.permission_recovery);
       assert.equal(
@@ -133,9 +135,9 @@ async function assertReadinessLjqCtrlProbeContract() {
         defaultNativePointerGap?.permission_recovery?.blocker,
       );
     }
-    assert.equal(defaultCaptchaBlockedGap?.proof_plan?.command, "npm run plan:optional-live-proofs -- --json");
+    assert.equal(defaultCaptchaProofGap?.proof_plan?.command, "npm run plan:optional-live-proofs -- --json");
     assert.equal(
-      defaultCaptchaBlockedGap?.proof_plan?.missing.includes("captcha-assist-physical-local"),
+      defaultCaptchaProofGap?.proof_plan?.missing.includes("captcha-assist-physical-local"),
       true,
     );
     const crossOsGap = findGap(defaultAudit, "cross_os_native_live_not_proven");

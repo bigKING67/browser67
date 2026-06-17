@@ -110,6 +110,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(authTool?.inputSchema?.properties?.confirm_corrected_coordinates?.type, "boolean");
   assert.equal(authTool?.inputSchema?.properties?.screen_to_x?.type, "number");
   assert.equal(authTool?.inputSchema?.properties?.drag_steps?.maximum, 240);
+  assert.equal(authTool?.inputSchema?.properties?.pre_input_settle_ms?.maximum, 5_000);
   assert.equal(authTool?.inputSchema?.properties?.wait_after_ms?.minimum, 5_000);
   assert.equal(authTool?.inputSchema?.properties?.tmwd_mode?.default, "tmwd");
 

@@ -149,6 +149,12 @@ const AUTH_TOOL_SCHEMAS = {
           maximum: 240,
           description: "Optional physical drag interpolation step count for assist_captcha slider drag.",
         },
+        pre_input_settle_ms: {
+          type: "number",
+          minimum: 0,
+          maximum: 5_000,
+          description: "Optional foreground-window settle delay after activation and before native physical input.",
+        },
         window_title: {
           type: "string",
           description: "Optional native window title selector fallback used to activate the browser window before physical input when TMWD tabs.switch is unavailable.",
