@@ -66,6 +66,7 @@
     "check:captcha-assist-physical-live": "node contracts/browser-captcha-assist-physical-live-gate.mjs --tmwd-mode tmwd --tmwd-transport auto",
     "check:ljqctrl": "node contracts/ljqctrl-doctor.mjs",
     "check:optional-live-proofs": "node scripts/optional-live-proof-audit.mjs",
+    "proof:optional-live-template": "node scripts/optional-live-proof-template.mjs",
     "launchd:install": "node scripts/install-launchd.mjs",
     "launchd:uninstall": "node scripts/uninstall-launchd.mjs",
     "verify": "node scripts/verify.mjs",

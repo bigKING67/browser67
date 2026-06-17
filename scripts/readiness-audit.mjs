@@ -90,6 +90,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "check:ljqctrl",
     "check:optional-live-proofs",
     "check:readiness",
+    "proof:optional-live-template",
     "verify",
   ];
 

@@ -5,11 +5,12 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_PROOF_DIR = join(homedir(), ".tmwd-browser-mcp", "optional-live-proofs");
+const DEFAULT_OPTIONAL_LIVE_PROOF_DIR = join(homedir(), ".tmwd-browser-mcp", "optional-live-proofs");
 const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|authorization|credential)/i;
+const PLACEHOLDER_COMMAND_PATTERN = /(?:replace with exact|placeholder|template-only|template only)/i;
 const SAFE_REDACTION_STATUS_KEYS = new Set(["secrets_redacted", "credentials_redacted"]);
 
-const REQUIREMENTS = [
+const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
   {
     id: "native-live-linux",
     type: "native_live",
@@ -51,7 +52,7 @@ function parseArgs(argv) {
   const parsed = {
     json: false,
     strict: false,
-    proof_dir: process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_PROOF_DIR,
+    proof_dir: process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
@@ -146,7 +147,7 @@ function proofMatchesRequirement(proof, requirement) {
   if (!isPlainObject(proof)) {
     return false;
   }
-  if (proof.type !== requirement.type || proof.ok !== true) {
+  if (proof.type !== requirement.type || proof.ok !== true || proof.template_only === true) {
     return false;
   }
   for (const [key, expected] of Object.entries(requirement.matches)) {
@@ -162,6 +163,9 @@ function validateProof(proof, requirement) {
   if (!proofMatchesRequirement(proof, requirement)) {
     errors.push("requirement_match_failed");
   }
+  if (proof.template_only === true) {
+    errors.push("template_only_not_accepted");
+  }
   for (const field of requirement.required_fields) {
     if (!Object.prototype.hasOwnProperty.call(proof, field)) {
       errors.push(`missing_field:${field}`);
@@ -175,6 +179,11 @@ function validateProof(proof, requirement) {
   }
   if (proof.expires_at !== undefined && Date.parse(proof.expires_at) <= Date.now()) {
     errors.push("expired");
+  }
+  if (typeof proof.command !== "string" || proof.command.trim().length === 0) {
+    errors.push("command_required");
+  } else if (PLACEHOLDER_COMMAND_PATTERN.test(proof.command)) {
+    errors.push("placeholder_command_not_accepted");
   }
   if (requirement.type === "native_live") {
     if (!Array.isArray(proof.actions) || proof.actions.length === 0) {
@@ -200,7 +209,7 @@ function validateProof(proof, requirement) {
 }
 
 function evaluateRequirements(rows) {
-  return REQUIREMENTS.map((requirement) => {
+  return OPTIONAL_LIVE_PROOF_REQUIREMENTS.map((requirement) => {
     const candidates = rows
       .filter((row) => row.proof && proofMatchesRequirement(row.proof, requirement))
       .map((row) => ({
@@ -220,7 +229,7 @@ function evaluateRequirements(rows) {
 }
 
 async function buildOptionalLiveProofAudit(args = {}) {
-  const proofDir = resolve(args.proof_dir || process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_PROOF_DIR);
+  const proofDir = resolve(args.proof_dir || process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR);
   const rows = await readProofFiles(proofDir);
   const invalid_files = rows
     .filter((row) => row.error)
@@ -242,7 +251,7 @@ async function buildOptionalLiveProofAudit(args = {}) {
     requirements,
     missing,
     summary: {
-      required_count: REQUIREMENTS.length,
+      required_count: OPTIONAL_LIVE_PROOF_REQUIREMENTS.length,
       satisfied_count: requirements.filter((requirement) => requirement.satisfied).length,
       missing_count: missing.length,
       invalid_file_count: invalid_files.length,
@@ -284,4 +293,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
 
 export {
   buildOptionalLiveProofAudit,
+  DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
+  OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  validateProof,
 };
