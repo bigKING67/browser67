@@ -27,6 +27,10 @@ const GROUPS = [
     commit_message: "Add guarded CAPTCHA assist planning",
     verification: [
       "npm run check:auth-live",
+      "npm run check:captcha-router",
+      "npm run check:captcha-provider-jfbym",
+      "npm run check:captcha-provider-jfbym-setup",
+      "npm run check:captcha-provider-jfbym-coordinate",
       "npm run check:captcha-assist-live",
       "npm run check:ljqctrl",
       "npm run check:change-set",
@@ -39,7 +43,7 @@ const GROUPS = [
     patterns: [
       /^src\/auth\/(?:captcha|captcha-assist|manual-challenge)\b/,
       /^src\/physical-input\//,
-      /^contracts\/browser-captcha-assist(?:-live-smoke|-physical-live-gate)?(?:\.mjs|\/)/,
+      /^contracts\/browser-captcha-(?:assist(?:-live-smoke|-physical-live-gate)?|router-contract|provider-jfbym(?:-setup|-coordinate)?-contract)(?:\.mjs|\/)/,
       /^contracts\/ljqctrl-doctor\.mjs$/,
       /^docs\/ljqCtrl-SOP\.md$/,
     ],
@@ -211,7 +215,7 @@ const GROUPS = [
     ],
     patterns: [
       /^package\.json$/,
-      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record)\.mjs$/,
+      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|setup-captcha-provider-jfbym|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record)\.mjs$/,
     ],
   },
 ];

@@ -9,6 +9,7 @@ import {
 import { buildOptionalLiveProofAudit } from "./optional-live-proof-audit.mjs";
 import { buildNativePointerReadinessReport } from "../src/native-capabilities/pointer-readiness.mjs";
 import { detectNativeInputCapabilities } from "../src/native-input.mjs";
+import { loadJfbymProviderConfig } from "../src/auth/captcha/providers/config.mjs";
 import { getLjqCtrlPhysicalInputProviderCapabilities } from "../src/physical-input/providers/ljq-ctrl.mjs";
 
 const DEFAULT_FAIL_BELOW = 99.0;
@@ -311,6 +312,51 @@ function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, poi
   );
 }
 
+function buildJfbymProviderGap(config = {}) {
+  const evidence = [
+    `config_file_present=${config.config_file_present === true}`,
+    `enabled=${config.enabled === true}`,
+    `token_configured=${config.token_configured === true}`,
+    `coordinate_solver_enabled=${config.coordinate_solver_enabled === true}`,
+    `protocol_solver_enabled=${config.protocol_solver_enabled === true}`,
+    `min_confidence=${config.min_confidence}`,
+    `slider_result_mode=${config.slider_result_mode}`,
+    `allowed_origins=${Array.isArray(config.allowed_origins) ? config.allowed_origins.length : 0}`,
+    `allowed_kinds=${Array.isArray(config.allowed_kinds) ? config.allowed_kinds.join(",") : ""}`,
+    `config_path=${config.config_path ?? "unknown"}`,
+  ].join(" ");
+
+  if (config.enabled === true && config.token_configured !== true) {
+    return createGap(
+      "jfbym_config_invalid",
+      "optional_live",
+      0.004,
+      evidence,
+      "Add TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN to the repo-external jfbym.env file or disable TMWD_CAPTCHA_PROVIDER_JFBYM_ENABLED.",
+    );
+  }
+
+  if (config.configured === true) {
+    return createGap(
+      config.protocol_solver_enabled === true
+        ? "jfbym_provider_configured_with_protocol"
+        : "jfbym_provider_configured_coordinate_only",
+      "informational",
+      0,
+      evidence,
+      "Keep JFBYM/Yunma config repo-external; use npm run setup:captcha-provider:jfbym for writes and run provider checks after config changes. Protocol routes remain allowlist + confirmation gated.",
+    );
+  }
+
+  return createGap(
+    "jfbym_provider_not_configured",
+    "informational",
+    0,
+    evidence,
+    "Optional: run npm run setup:captcha-provider:jfbym -- --allowed-origin <origin> --write with TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN set to enable provider coordinate planning for approved origins.",
+  );
+}
+
 function buildRequiredChecks({ packageJson, readme, skill, verifySource, report }) {
   const scriptNames = [
     "check:syntax",
@@ -320,6 +366,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "check:auth-live",
     "check:captcha-assist-live",
     "check:captcha-assist-physical-live",
+    "check:captcha-router",
+    "check:captcha-provider-jfbym",
+    "check:captcha-provider-jfbym-setup",
+    "check:captcha-provider-jfbym-coordinate",
     "check:native-pointer",
     "check:ljqctrl",
     "check:optional-live-proofs",
@@ -355,6 +405,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:change-set",
         "check:readiness",
         "check:captcha-assist-live",
+        "check:captcha-router",
+        "check:captcha-provider-jfbym",
+        "check:captcha-provider-jfbym-setup",
+        "check:captcha-provider-jfbym-coordinate",
         "check:native-pointer",
         "check:ljqctrl",
         "check:optional-live-proofs",
@@ -380,6 +434,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run check:change-set",
         "npm run plan:scoped-commits",
         "npm run check:captcha-assist-live",
+        "npm run check:captcha-router",
+        "npm run check:captcha-provider-jfbym",
+        "npm run check:captcha-provider-jfbym-setup",
+        "npm run check:captcha-provider-jfbym-coordinate",
         "npm run check:native-pointer",
         "npm run check:ljqctrl",
         "npm run plan:optional-live-proofs",
@@ -395,6 +453,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "assist_captcha",
         "check:native-pointer",
         "check:captcha-assist-physical-live",
+        "check:captcha-router",
+        "check:captcha-provider-jfbym",
+        "check:captcha-provider-jfbym-setup",
+        "check:captcha-provider-jfbym-coordinate",
         "check:ljqctrl",
         "Do not keep trying selectors",
       ]),
@@ -405,10 +467,11 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
 
 async function buildOptionalGaps({ report }) {
   const gaps = [];
-  const [optionalProofAudit, ljqCtrlProbe, nativeCapabilities] = await Promise.all([
+  const [optionalProofAudit, ljqCtrlProbe, nativeCapabilities, jfbymConfig] = await Promise.all([
     buildOptionalLiveProofAudit({}),
     probeLjqCtrlReadiness(),
     detectNativeInputCapabilities({ refresh: true, cache_ttl_ms: 0 }),
+    loadJfbymProviderConfig({}),
   ]);
   const nativePointerReadiness = buildNativePointerReadinessReport(nativeCapabilities, {
     verify_command: "npm run check:native-pointer",
@@ -425,6 +488,7 @@ async function buildOptionalGaps({ report }) {
     ));
   }
 
+  gaps.push(buildJfbymProviderGap(jfbymConfig));
   gaps.push(buildLjqCtrlGap(ljqCtrlProbe));
   const nativePointerGap = buildNativePointerGap(nativeCapabilities, nativePointerReadiness);
   if (nativePointerGap) {
