@@ -102,6 +102,8 @@ async function assertCaptchaBlocked(context, captchaTabId) {
   assert.equal(captchaBlocked.manual_context?.kind, "captcha");
   assert.equal(captchaBlocked.manual_context?.captcha_kind, "hcaptcha");
   assert.equal(captchaBlocked.manual_context?.captcha_assist?.assist_mode, "manual_or_native_physical");
+  assert.equal(captchaBlocked.manual_context?.captcha_assist?.strategy_id, "captcha_router_v2");
+  assert.equal(captchaBlocked.manual_context?.captcha_assist?.policy_id, "hybrid_policy_v1");
   assert.equal(captchaBlocked.manual_context?.captcha_assist?.retry_after_ms, 5_000);
   assert.equal(captchaBlocked.manual_context?.captcha_assist?.vision_policy?.fullscreen_screenshot_allowed, false);
   assert.equal(captchaBlocked.manual_context?.captcha_assist?.native_input_policy?.mode, "physical_mouse_keyboard");
@@ -153,6 +155,12 @@ async function assertCaptchaPlan({ callTool, cli, workspaceKey }, captchaTabId) 
   assert.equal(typeof captchaPlan.coordinate_transform?.vision_correction_plan?.executable_region_capture_available, "boolean");
   assert.equal(typeof captchaPlan.coordinate_transform?.vision_correction_plan?.screenshot_clip?.x, "number");
   assert.equal(typeof captchaPlan.coordinate_transform?.screen_estimate?.click?.x, "number");
+  assert.equal(captchaPlan.captcha_policy?.strategy_id, "captcha_router_v2");
+  assert.equal(captchaPlan.captcha_policy?.protocol_solver_default_enabled, false);
+  assert.equal(captchaPlan.captcha_router?.selected_route?.route_type, "physical_coordinate");
+  assert.equal(captchaPlan.captcha_router?.protocol_block_reason, "protocol_solver_not_requested");
+  assert.equal(Array.isArray(captchaPlan.captcha_providers), true);
+  assert.equal(captchaPlan.captcha_providers?.some((provider) => provider.provider_id === "jfbym"), true);
   assert.equal(captchaPlan.captcha_assist?.prohibited_operations?.includes("js_or_cdp_click_on_captcha"), true);
   assert.equal(Array.isArray(captchaPlan.candidate_targets), true);
   assert.ok(captchaPlan.candidate_targets.length >= 1, "captcha planner should return at least one target candidate");

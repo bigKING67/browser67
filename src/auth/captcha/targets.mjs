@@ -64,6 +64,7 @@ function buildCaptchaAssistInspectorJs(manualChallengeDetectorJs) {
         el.id || "",
         String(el.className || ""),
         String(el.getAttribute("data-captcha") || ""),
+        String(el.getAttribute("data-sitekey") || ""),
         String(el.getAttribute("aria-label") || ""),
         String(el.getAttribute("role") || "")
       ].join(" ");
@@ -79,6 +80,7 @@ function buildCaptchaAssistInspectorJs(manualChallengeDetectorJs) {
         tag,
         id: el.id || undefined,
         class_name: String(el.className || "").slice(0, 160) || undefined,
+        sitekey_present: Boolean(el.getAttribute("data-sitekey")),
         iframe_src: tag === "iframe" ? String(el.getAttribute("src") || "").slice(0, 220) || undefined : undefined,
         text_hint: text || undefined,
         rect,
@@ -217,6 +219,10 @@ function buildCaptchaAssistInspectorJs(manualChallengeDetectorJs) {
       }
     };
     inspectDocument(document, { depth: 0, frame_path: "top", offset: { left: 0, top: 0 } });
+    const sitekeys = Array.from(new Set(safeQueryAll(document, "[data-sitekey]")
+      .map((el) => String(el.getAttribute("data-sitekey") || "").trim())
+      .filter(Boolean)))
+      .slice(0, 8);
     const roleRank = { checkbox: 0, slider: 1, unknown: 2 };
     const confidenceRank = { high: 0, medium: 1, low: 2 };
     candidates.sort((left, right) => {
@@ -256,6 +262,11 @@ function buildCaptchaAssistInspectorJs(manualChallengeDetectorJs) {
       ready_state: document.readyState,
       ...challenge,
       viewport,
+      protocol_hints: {
+        page_url: location.href,
+        sitekey_count: sitekeys.length,
+        sitekey_present: sitekeys.length > 0
+      },
       candidate_targets: candidates.slice(0, 12),
       target: candidates[0] || null
     };

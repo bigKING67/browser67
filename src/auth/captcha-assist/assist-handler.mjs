@@ -6,6 +6,7 @@ import {
   normalizePreInputSettleMs,
   normalizeWaitAfterMs,
 } from "../captcha/coordinates.mjs";
+import { solveJfbymCoordinateChallenge } from "../captcha/providers/jfbym-coordinate.mjs";
 import { CAPTCHA_ASSIST_REASONS } from "../captcha/reasons.mjs";
 import {
   activateManagedTabForPhysicalInput,
@@ -142,11 +143,51 @@ async function handleAssistCaptcha(args) {
       escalation: "manual_user_handoff",
     });
   }
+  const selectedRoute = planned.captcha_router?.selected_route;
+  if (selectedRoute?.route_type === "manual_handoff") {
+    return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.ROUTER_MANUAL_HANDOFF_REQUIRED, {
+      escalation: "manual_user_handoff",
+      captcha_router_reason: selectedRoute.reason,
+    });
+  }
+  if (selectedRoute?.route_type === "protocol_solver") {
+    return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.PROTOCOL_SOLVER_APPLY_NOT_IMPLEMENTED, {
+      escalation: "manual_user_handoff",
+      captcha_router_route_id: selectedRoute.route_id,
+      next_implementation_step: "add an allowlisted provider apply path with explicit response injection contract",
+    });
+  }
+  const useProviderCoordinates = args?.use_provider_coordinates === true;
+  if (useProviderCoordinates && selectedRoute?.solver_provider !== "jfbym") {
+    return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.PROVIDER_COORDINATES_ROUTE_UNAVAILABLE, {
+      captcha_router_route_id: selectedRoute?.route_id,
+      captcha_router_provider_coordinate_block_reason: planned.captcha_router?.provider_coordinate_block_reason,
+      required_args: [
+        'captcha_locator_provider:"jfbym"',
+        "run_vision_correction:true",
+        "confirm_provider_coordinates:true",
+      ],
+    });
+  }
   if (args?.confirm_physical_input !== true) {
     return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.CONFIRM_PHYSICAL_INPUT_REQUIRED);
   }
   const autoScreenCoordinates = args?.auto_screen_coordinates === true;
   const useCorrectedCoordinates = args?.use_vision_corrected_coordinates === true;
+  if (useProviderCoordinates && args?.confirm_provider_coordinates !== true) {
+    return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.CONFIRM_PROVIDER_COORDINATES_REQUIRED, {
+      required_confirmations: [
+        "confirm_physical_input:true",
+        "confirm_provider_coordinates:true",
+      ],
+    });
+  }
+  if (useProviderCoordinates && args?.run_vision_correction !== true) {
+    return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.PROVIDER_COORDINATE_ARTIFACT_REQUIRED, {
+      required: "run_vision_correction:true",
+      fullscreen_allowed: false,
+    });
+  }
   if (autoScreenCoordinates && args?.confirm_auto_coordinates !== true) {
     return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.CONFIRM_AUTO_COORDINATES_REQUIRED, {
       required_confirmations: ["confirm_physical_input:true", "confirm_auto_coordinates:true"],
@@ -173,15 +214,17 @@ async function handleAssistCaptcha(args) {
     });
   }
 
-  const initialCoordinates = selectScreenCoordinates(args, planned, {
-    autoScreenCoordinates,
-    useCorrectedCoordinates,
-  });
-  const initialCoordinateBlock = coordinateBlock(planned, initialCoordinates, autoScreenCoordinates);
-  if (initialCoordinateBlock) {
-    return assistBlocked(planned, initialCoordinateBlock.reason, {
-      required_coordinates: initialCoordinateBlock.required_coordinates,
+  if (!useProviderCoordinates) {
+    const initialCoordinates = selectScreenCoordinates(args, planned, {
+      autoScreenCoordinates,
+      useCorrectedCoordinates,
     });
+    const initialCoordinateBlock = coordinateBlock(planned, initialCoordinates, autoScreenCoordinates);
+    if (initialCoordinateBlock) {
+      return assistBlocked(planned, initialCoordinateBlock.reason, {
+        required_coordinates: initialCoordinateBlock.required_coordinates,
+      });
+    }
   }
   if (planned.assist_target === "slider") {
     if (planned.coordinate_support?.physical_drag_supported !== true) {
@@ -237,7 +280,10 @@ async function handleAssistCaptcha(args) {
 
   let planForInput = planned;
   let coordinateRefresh = coordinateRefreshSkipped("caller_supplied_screen_coordinates");
-  if (autoScreenCoordinates || useCorrectedCoordinates) {
+  if (useProviderCoordinates) {
+    coordinateRefresh = coordinateRefreshSkipped("provider_coordinate_region_capture");
+  }
+  if (autoScreenCoordinates || useCorrectedCoordinates || useProviderCoordinates) {
     const refreshed = await handlePlanCaptchaAssist(args);
     coordinateRefresh = coordinateRefreshPerformed(planned, refreshed);
     if (refreshed.status !== "planned") {
@@ -257,6 +303,16 @@ async function handleAssistCaptcha(args) {
     }
     planForInput = refreshed;
   }
+  const refreshedRoute = planForInput.captcha_router?.selected_route;
+  if (useProviderCoordinates && refreshedRoute?.solver_provider !== "jfbym") {
+    return assistBlocked(planForInput, CAPTCHA_ASSIST_REASONS.PROVIDER_COORDINATES_ROUTE_UNAVAILABLE, {
+      activation,
+      pre_input_settle_ms: preInputSettleMs,
+      coordinate_refresh: coordinateRefresh,
+      captcha_router_route_id: refreshedRoute?.route_id,
+      captcha_router_provider_coordinate_block_reason: planForInput.captcha_router?.provider_coordinate_block_reason,
+    });
+  }
 
   const refreshedVisionBlock = useCorrectedCoordinates ? visionCorrectionBlock(planForInput) : null;
   if (refreshedVisionBlock) {
@@ -273,16 +329,50 @@ async function handleAssistCaptcha(args) {
       ],
     });
   }
-  const coordinates = selectScreenCoordinates(args, planForInput, {
-    autoScreenCoordinates,
-    useCorrectedCoordinates,
-  });
-  const refreshedCoordinateBlock = coordinateBlock(planForInput, coordinates, autoScreenCoordinates);
+  let providerCoordinateResult = null;
+  const selectedCoordinates = useProviderCoordinates
+    ? null
+    : selectScreenCoordinates(args, planForInput, {
+      autoScreenCoordinates,
+      useCorrectedCoordinates,
+    });
+  if (useProviderCoordinates) {
+    providerCoordinateResult = await solveJfbymCoordinateChallenge({ args, plan: planForInput });
+    if (providerCoordinateResult.ok !== true) {
+      return assistBlocked(
+        planForInput,
+        providerCoordinateResult.reason || CAPTCHA_ASSIST_REASONS.PROVIDER_COORDINATE_SOLVER_FAILED,
+        {
+          activation,
+          pre_input_settle_ms: preInputSettleMs,
+          coordinate_refresh: coordinateRefresh,
+          provider_coordinate_result: providerCoordinateResult,
+        },
+      );
+    }
+  }
+  const inputCoordinates = useProviderCoordinates
+    ? {
+      screenX: finiteNumber(providerCoordinateResult.screen_coordinates?.x),
+      screenY: finiteNumber(providerCoordinateResult.screen_coordinates?.y),
+      screenToX: finiteNumber(providerCoordinateResult.screen_coordinates?.to_x),
+      screenToY: finiteNumber(providerCoordinateResult.screen_coordinates?.to_y),
+      source: "jfbym_coordinate_solver",
+    }
+    : selectedCoordinates;
+  const refreshedCoordinateBlock = coordinateBlock(
+    planForInput,
+    inputCoordinates,
+    autoScreenCoordinates || useProviderCoordinates,
+  );
   if (refreshedCoordinateBlock) {
-    return assistBlocked(planForInput, refreshedCoordinateBlock.reason, {
+    return assistBlocked(planForInput, useProviderCoordinates
+      ? CAPTCHA_ASSIST_REASONS.PROVIDER_COORDINATES_UNAVAILABLE
+      : refreshedCoordinateBlock.reason, {
       activation,
       pre_input_settle_ms: preInputSettleMs,
       coordinate_refresh: coordinateRefresh,
+      provider_coordinate_result: providerCoordinateResult ?? undefined,
       required_coordinates: refreshedCoordinateBlock.required_coordinates,
     });
   }
@@ -300,10 +390,10 @@ async function handleAssistCaptcha(args) {
 
   const physicalInput = planForInput.assist_target === "slider"
     ? await runPhysicalInputAction("drag", {
-      from_x: coordinates.screenX,
-      from_y: coordinates.screenY,
-      to_x: coordinates.screenToX,
-      to_y: coordinates.screenToY,
+      from_x: inputCoordinates.screenX,
+      from_y: inputCoordinates.screenY,
+      to_x: inputCoordinates.screenToX,
+      to_y: inputCoordinates.screenToY,
       button: "left",
       duration_ms: normalizeDragDurationMs(args?.drag_duration_ms),
       steps: normalizeDragSteps(args?.drag_steps),
@@ -312,8 +402,8 @@ async function handleAssistCaptcha(args) {
       preferred_provider: args?.physical_input_provider,
     })
     : await runPhysicalInputAction("click", {
-      x: coordinates.screenX,
-      y: coordinates.screenY,
+      x: inputCoordinates.screenX,
+      y: inputCoordinates.screenY,
       button: "left",
       timeout_ms: args?.timeout_ms,
     }, {
@@ -329,6 +419,7 @@ async function handleAssistCaptcha(args) {
       executed: false,
       activation,
       coordinate_refresh: coordinateRefresh,
+      provider_coordinate_result: providerCoordinateResult ?? undefined,
       physical_input_provider: physicalInput.provider,
       physical_input_provider_selection: physicalInput.provider_selection,
       provider_error: nativeInput,
@@ -346,17 +437,18 @@ async function handleAssistCaptcha(args) {
     executed: true,
     activation,
     coordinate_refresh: coordinateRefresh,
+    provider_coordinate_result: providerCoordinateResult ?? undefined,
     native_input: nativeInput,
     physical_input_provider: physicalInput.provider,
     physical_input_provider_selection: physicalInput.provider_selection,
     pre_input_settle_ms: preInputSettleMs,
     screen_coordinates: {
-      x: Math.round(coordinates.screenX),
-      y: Math.round(coordinates.screenY),
-      to_x: coordinates.screenToX === null ? undefined : Math.round(coordinates.screenToX),
-      to_y: coordinates.screenToY === null ? undefined : Math.round(coordinates.screenToY),
+      x: Math.round(inputCoordinates.screenX),
+      y: Math.round(inputCoordinates.screenY),
+      to_x: inputCoordinates.screenToX === null ? undefined : Math.round(inputCoordinates.screenToX),
+      to_y: inputCoordinates.screenToY === null ? undefined : Math.round(inputCoordinates.screenToY),
       coordinate_system: "screen_pixels",
-      source: coordinates.source,
+      source: inputCoordinates.source,
     },
     waited_ms: waitAfterMs,
     next_step: "browser_auth_ops.ensure_login",

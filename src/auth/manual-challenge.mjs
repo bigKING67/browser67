@@ -14,17 +14,22 @@ const CAPTCHA_ASSIST_SOP_REFS = Object.freeze([
 ]);
 
 const CAPTCHA_ASSIST_MODE = "manual_or_native_physical";
+const CAPTCHA_ASSIST_STRATEGY_ID = "captcha_router_v2";
+const CAPTCHA_ASSIST_POLICY_ID = "hybrid_policy_v1";
 const CAPTCHA_ASSIST_RETRY_AFTER_MS = 5_000;
 
 const CAPTCHA_ASSIST_ALLOWED_OPERATIONS = Object.freeze([
   "bring_tab_to_front",
   "window_scoped_screenshot",
   "native_mouse_keyboard_input",
+  "allowlisted_provider_coordinate_solver",
+  "allowlisted_provider_protocol_solver",
 ]);
 
 const CAPTCHA_ASSIST_PROHIBITED_OPERATIONS = Object.freeze([
   "js_or_cdp_click_on_captcha",
   "captcha_token_or_cookie_extraction",
+  "browser_token_or_cookie_extraction",
   "rapid_retry",
   "full_screen_screenshot",
 ]);
@@ -99,10 +104,22 @@ function captchaAssistPolicy(captchaKind = "") {
   return {
     captcha_kind: String(captchaKind || "unknown"),
     assist_mode: CAPTCHA_ASSIST_MODE,
+    strategy_id: CAPTCHA_ASSIST_STRATEGY_ID,
+    policy_id: CAPTCHA_ASSIST_POLICY_ID,
     next_step: "complete_challenge_then_ensure_login",
     allowed_operations: CAPTCHA_ASSIST_ALLOWED_OPERATIONS,
     prohibited_operations: CAPTCHA_ASSIST_PROHIBITED_OPERATIONS,
     cdp_allowed_for: CAPTCHA_ASSIST_CDP_ALLOWED_FOR,
+    hybrid_router_policy: {
+      default_route: "manual_or_physical_coordinate",
+      coordinate_solver_enabled: true,
+      protocol_solver_default_enabled: false,
+      protocol_solver_requires_allowlist: true,
+      protocol_solver_requires_confirmation: true,
+      provider_config_repo_external_only: true,
+      js_cdp_widget_click_allowed: false,
+      token_cookie_extraction_allowed: false,
+    },
     vision_policy: {
       last_resort: true,
       target_window_required: true,
@@ -148,9 +165,11 @@ export {
   CAPTCHA_ASSIST_CDP_ALLOWED_FOR,
   CAPTCHA_ASSIST_HANDOFF_CONDITIONS,
   CAPTCHA_ASSIST_MODE,
+  CAPTCHA_ASSIST_POLICY_ID,
   CAPTCHA_ASSIST_PROHIBITED_OPERATIONS,
   CAPTCHA_ASSIST_RETRY_AFTER_MS,
   CAPTCHA_ASSIST_SOP_REFS,
+  CAPTCHA_ASSIST_STRATEGY_ID,
   MANUAL_CHALLENGE_DETECTOR_JS,
   captchaAssistPolicy,
   manualCaptchaContextFields,

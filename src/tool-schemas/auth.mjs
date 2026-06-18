@@ -1,6 +1,6 @@
 const AUTH_TOOL_SCHEMAS = {
   browser_auth_ops: {
-    description: "Profile-driven login helpers for TMWD managed tabs: list/validate local login profiles, inspect login pages, suggest or save repo-external local profiles, ensure an already-open tab is authenticated, or plan/perform explicitly confirmed CAPTCHA physical assist. Credentials are loaded from/saved to repo-external local profiles and never returned. Redacted lifecycle metadata may be stored in sidecar files. CAPTCHA/MFA/SSO-only/OAuth-popup pages return manual_required_* plus non-secret manual_context instead of continued automatic guessing; CAPTCHA contexts may include captcha_kind and a manual/native-physical captcha_assist policy with window/region screenshot boundaries.",
+    description: "Profile-driven login helpers for TMWD managed tabs: list/validate local login profiles, inspect login pages, suggest or save repo-external local profiles, ensure an already-open tab is authenticated, or plan/perform explicitly confirmed CAPTCHA assist. Credentials are loaded from/saved to repo-external local profiles and never returned. Redacted lifecycle metadata may be stored in sidecar files. CAPTCHA/MFA/SSO-only/OAuth-popup pages return manual_required_* plus non-secret manual_context instead of continued automatic guessing; CAPTCHA contexts may include captcha_kind, a hybrid captcha_router policy, bounded coordinate planning, physical-input boundaries, and optional repo-external provider capability status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -84,6 +84,37 @@ const AUTH_TOOL_SCHEMAS = {
           enum: ["auto", "checkbox", "slider"],
           default: "auto",
           description: "CAPTCHA assist target type for planning/execution. Slider execution requires physical drag support and screen start/end coordinates supplied by caller or coordinate_transform estimates.",
+        },
+        captcha_solver_mode: {
+          type: "string",
+          enum: ["auto", "coordinate_only", "protocol_allowed", "manual_only"],
+          default: "auto",
+          description: "Hybrid CAPTCHA router mode. auto/coordinate_only use bounded local/vision/provider coordinates plus physical input; protocol_allowed only plans allowlisted provider protocol solving when confirm_protocol_solver is true; manual_only returns a manual handoff route.",
+        },
+        captcha_locator_provider: {
+          type: "string",
+          enum: ["auto", "local", "vision", "jfbym"],
+          default: "auto",
+          description: "Preferred visible-challenge locator/coordinate provider for plan_captcha_assist. Provider configuration is repo-external and outputs are redacted.",
+        },
+        captcha_provider_config_dir: {
+          type: "string",
+          description: "Optional repo-external CAPTCHA provider config directory. Defaults to ~/.tmwd-browser-mcp/captcha-providers and must not live in the repository.",
+        },
+        confirm_protocol_solver: {
+          type: "boolean",
+          default: false,
+          description: "Required true before the router can select an allowlisted provider protocol-solver plan. The current assist_captcha executor does not inject provider responses automatically.",
+        },
+        use_provider_coordinates: {
+          type: "boolean",
+          default: false,
+          description: "For assist_captcha, call the selected repo-external coordinate provider (currently jfbym) against a bounded region artifact from run_vision_correction, then use the returned screen coordinates for physical input. Requires confirm_provider_coordinates and confirm_physical_input.",
+        },
+        confirm_provider_coordinates: {
+          type: "boolean",
+          default: false,
+          description: "Required true when assist_captcha uses provider-returned coordinates because an external solver result can still be wrong and will drive native physical input.",
         },
         physical_input_provider: {
           type: "string",

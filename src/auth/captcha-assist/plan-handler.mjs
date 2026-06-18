@@ -2,6 +2,7 @@ import { detectPhysicalInputCapabilities } from "../../physical-input/index.mjs"
 import { publicChallengeFields } from "../manual-challenge.mjs";
 import { buildPlan } from "../captcha/plan.mjs";
 import { CAPTCHA_ASSIST_REASONS } from "../captcha/reasons.mjs";
+import { buildCaptchaRouterPlan } from "../captcha/router.mjs";
 import { runCaptchaVisionCorrection } from "../captcha/vision-correction.mjs";
 import {
   getManagedTabContext,
@@ -18,6 +19,10 @@ async function handlePlanCaptchaAssist(args) {
   const nativeCapabilities = physicalCapabilities.native_compat;
   const managedTab = await getManagedTabContext(args);
   const planned = buildPlan(pageState, nativeCapabilities, args, physicalCapabilities);
+  const routed = await buildCaptchaRouterPlan({ args, pageState, plan: planned });
+  planned.captcha_policy = routed.policy;
+  planned.captcha_router = routed.router;
+  planned.captcha_providers = routed.providers;
   const visionCorrection = await runCaptchaVisionCorrection(args, pageState, planned);
   if (visionCorrection && planned.coordinate_transform?.vision_correction_plan) {
     planned.coordinate_transform.vision_correction_plan = {
@@ -57,6 +62,7 @@ async function handlePlanCaptchaAssist(args) {
     managed_tab_required_for_execution: true,
     managed_tab_matched: managedTab.managed,
     viewport: pageState.viewport,
+    protocol_hints: pageState.protocol_hints,
     candidate_targets: pageState.candidate_targets,
     target: pageState.target,
     native_input_capabilities: {

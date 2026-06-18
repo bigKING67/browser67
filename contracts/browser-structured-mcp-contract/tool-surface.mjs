@@ -101,6 +101,18 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(authTool?.inputSchema?.properties?.action?.enum?.includes("plan_captcha_assist"), true);
   assert.equal(authTool?.inputSchema?.properties?.action?.enum?.includes("assist_captcha"), true);
   assert.equal(authTool?.inputSchema?.properties?.assist_target?.enum?.includes("slider"), true);
+  assert.deepEqual(
+    authTool?.inputSchema?.properties?.captcha_solver_mode?.enum,
+    ["auto", "coordinate_only", "protocol_allowed", "manual_only"],
+  );
+  assert.deepEqual(
+    authTool?.inputSchema?.properties?.captcha_locator_provider?.enum,
+    ["auto", "local", "vision", "jfbym"],
+  );
+  assert.equal(authTool?.inputSchema?.properties?.captcha_provider_config_dir?.type, "string");
+  assert.equal(authTool?.inputSchema?.properties?.confirm_protocol_solver?.type, "boolean");
+  assert.equal(authTool?.inputSchema?.properties?.use_provider_coordinates?.type, "boolean");
+  assert.equal(authTool?.inputSchema?.properties?.confirm_provider_coordinates?.type, "boolean");
   assert.equal(authTool?.inputSchema?.properties?.physical_input_provider?.enum?.includes("ljq-ctrl"), true);
   assert.equal(authTool?.inputSchema?.properties?.confirm_physical_input?.type, "boolean");
   assert.equal(authTool?.inputSchema?.properties?.auto_screen_coordinates?.type, "boolean");
