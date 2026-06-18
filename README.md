@@ -213,10 +213,15 @@ CAPTCHA, MFA, SSO-only, and OAuth popup flows are reported as
 `manual_required_*` and block automatic submission/continuation. These blocked
 states include a non-secret `manual_context` with the manual flow kind and
 `resume_action:"ensure_login"`; it is a handoff hint, not a credential/session
-container. CAPTCHA contexts may include a `captcha_kind` and `captcha_assist`
-policy. The default policy is human/manual or native physical input only:
-bring the managed tab to the foreground, use window-scoped screenshots if
-vision is needed, and avoid JS/CDP clicks on CAPTCHA widgets, token/cookie
+container. CAPTCHA contexts may include a `captcha_kind`, `captcha_assist`
+policy, and `captcha_router` plan. The default route is still human/manual or
+native physical input for visible UI challenges, but the policy is now hybrid:
+bounded DOM/vision/provider coordinate planning can be used for checkbox,
+slider, rotate, and image-click style challenges, and an optional repo-external
+provider protocol route can be planned only for explicitly allowlisted origins.
+Even in protocol mode, the default remains disabled until the caller sets
+`captcha_solver_mode:"protocol_allowed"` and `confirm_protocol_solver:true`.
+TMWD still avoids JS/CDP clicks on CAPTCHA widgets, browser token/cookie
 extraction, fullscreen screenshots, and rapid retries.
 
 For CAPTCHA diagnostics, `browser_auth_ops.plan_captcha_assist` is a dry-run
@@ -224,7 +229,8 @@ planner. It inspects the selected tab, returns non-secret challenge metadata,
 candidate DOM client rectangles, viewport coordinates, native input capability
 status, physical-input provider selection (`native-os` plus guarded `ljq-ctrl`
 metadata/execution bridge), `coordinate_transform` screen-pixel estimates, a window/region
-`vision_correction_plan`, and a replay plan without clicking or taking
+`vision_correction_plan`, `captcha_policy`, `captcha_router`, redacted
+`captcha_providers` status, and a replay plan without clicking or taking
 screenshots. Set `run_vision_correction:true` to capture only the planned
 browser viewport/region via CDP, write a bounded temporary PNG artifact under
 the OS temp directory, and return first-pass corrected slider or checkbox
@@ -246,7 +252,9 @@ shift final physical pixels.
 TMWD-owned managed `tab_id`, `confirm_physical_input:true`, and either
 caller-supplied screen coordinates, `auto_screen_coordinates:true` plus
 `confirm_auto_coordinates:true`, or `use_vision_corrected_coordinates:true` plus
-`confirm_corrected_coordinates:true`. It uses TMWD `tabs.switch` to foreground the
+`confirm_corrected_coordinates:true`, or `use_provider_coordinates:true` plus
+`confirm_provider_coordinates:true` after `run_vision_correction:true` has
+created a bounded region artifact for an allowlisted provider route. It uses TMWD `tabs.switch` to foreground the
 managed tab/window before physical provider input; `window_title`, `window_pid`,
 and `window_active_confirmed:true` are fallbacks for unusual window-manager
 cases. `physical_input_provider:"auto"` prefers `ljq-ctrl` once it becomes
@@ -276,6 +284,54 @@ with `TMWD_CAPTCHA_ASSIST_PRE_INPUT_SETTLE_MS`,
 screen coordinates. These knobs are for the local proof fixture only; real
 site challenges still use explicit confirmation and manual handoff boundaries.
 
+Optional JFBYM/Yunma provider planning is configured outside the repository at
+`~/.tmwd-browser-mcp/captcha-providers/jfbym.env` or an explicit
+`captcha_provider_config_dir`. The planner redacts provider secrets and only
+reports whether the token is configured. Example keys:
+
+Use the setup helper instead of pasting a token into source, docs, or shell
+history. It reads the token from the environment, writes only the repo-external
+config file, chmods the directory/file to `0700`/`0600`, and prints redacted
+JSON:
+
+```bash
+read -r -s TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN
+export TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN
+npm run setup:captcha-provider:jfbym -- --allowed-origin https://dy.feigua.cn --write
+unset TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN
+```
+
+Use `--overwrite` only for an intentional provider config refresh.
+
+```text
+TMWD_CAPTCHA_PROVIDER_JFBYM_ENABLED=1
+TMWD_CAPTCHA_PROVIDER_JFBYM_BASE_URL=https://api.jfbym.com/api/YmServer/customApi
+TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN=<secret>
+TMWD_CAPTCHA_PROVIDER_JFBYM_TIMEOUT_MS=60000
+TMWD_CAPTCHA_PROVIDER_JFBYM_MAX_ATTEMPTS=1
+TMWD_CAPTCHA_PROVIDER_JFBYM_MIN_CONFIDENCE=0.65
+TMWD_CAPTCHA_PROVIDER_JFBYM_ALLOWED_ORIGINS=https://dy.feigua.cn
+TMWD_CAPTCHA_PROVIDER_JFBYM_ALLOWED_KINDS=checkbox,slider,image_click,rotate,hcaptcha,recaptcha,turnstile
+TMWD_CAPTCHA_PROVIDER_JFBYM_COORDINATE_SOLVER=1
+TMWD_CAPTCHA_PROVIDER_JFBYM_PROTOCOL_SOLVER=0
+TMWD_CAPTCHA_PROVIDER_JFBYM_TYPE_CHECKBOX=30009
+TMWD_CAPTCHA_PROVIDER_JFBYM_TYPE_SLIDER=20110
+TMWD_CAPTCHA_PROVIDER_JFBYM_TYPE_HCAPTCHA=30009
+TMWD_CAPTCHA_PROVIDER_JFBYM_SLIDER_RESULT_MODE=target_x
+```
+
+Coordinate solving is still a visible-UI physical-input path: the provider only
+returns coordinates from the bounded PNG artifact, TMWD converts them through
+the artifact clip and refreshed viewport metrics, and native click/drag remains
+guarded by `confirm_physical_input:true`. Provider coordinates are origin
+allowlist gated, never use fullscreen screenshots, and do not expose image
+base64, token, cookies, or sitekeys in tool results.
+Keep `TMWD_CAPTCHA_PROVIDER_JFBYM_PROTOCOL_SOLVER=0` unless a target origin has
+an approved protocol-solver contract. The current `assist_captcha` executor
+does not inject provider protocol responses; it blocks such routes with
+`protocol_solver_apply_not_implemented` until an explicit apply contract is
+added.
+
 ## Quality gates
 
 ```bash
@@ -289,6 +345,10 @@ npm run check:live:doctor
 npm run check:auth-live
 npm run check:captcha-assist-live
 npm run check:captcha-assist-physical-live
+npm run check:captcha-router
+npm run check:captcha-provider-jfbym
+npm run check:captcha-provider-jfbym-setup
+npm run check:captcha-provider-jfbym-coordinate
 npm run check:native-pointer
 npm run check:ljqctrl
 npm run check:optional-live-proofs
@@ -346,6 +406,17 @@ available, but it does not activate windows, click, drag, capture screenshots,
 or access clipboard. Use `TMWD_LJQCTRL_REQUIRE=1`,
 `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` only for a
 machine-local hard gate.
+`check:captcha-router` validates the deterministic hybrid route contract:
+default protocol solving remains disabled, unknown/degraded challenges route to
+manual handoff, coordinate-only mode cannot select a protocol route, and
+allowlisted provider protocol planning still requires explicit confirmation.
+`check:captcha-provider-jfbym` validates repo-external JFBYM/Yunma config
+loading, origin/kind allowlists, and redaction; it uses fake contract secrets
+and never requires or prints a real provider token.
+`check:captcha-provider-jfbym-coordinate` validates provider coordinate parsing,
+bounded artifact-to-viewport-to-screen conversion, slider target interpretation,
+origin allowlist blocking, malformed/low-confidence response blocking, and
+redaction of fake tokens/image base64.
 `check:optional-live-proofs` validates sanitized JSON proof artifacts under
 `~/.tmwd-browser-mcp/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. It is
 non-blocking by default and exists for optional local CAPTCHA physical proof,

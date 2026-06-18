@@ -131,16 +131,20 @@ manual_context.kind=oauth_popup. manual_context is a non-secret handoff hint
 only; it must not contain credentials, cookies, tokens, browser session data, or
 page content. After the user completes the manual step, call ensure_login again
 on the same managed tab/workspace to validate the resumed authenticated state.
-CAPTCHA handoff may include captcha_kind and captcha_assist metadata. Treat it
-as a physical/manual flow: bring the TMWD-owned tab to the foreground if needed,
-capture only the browser window/region for vision assistance, never take
-fullscreen screenshots, never use JS/CDP to click CAPTCHA widgets, never extract
-CAPTCHA tokens/cookies, wait before retrying, and hand off to the user if the
-challenge becomes multi-round. Use browser_auth_ops.plan_captcha_assist for
-dry-run planning and coordinate diagnostics before any physical input. It can
-return candidate DOM client rects, viewport metadata, coordinate_transform screen
-estimates, slider drag hints, physical-input provider selection, and region-only
-vision correction clips. With run_vision_correction=true it captures only the
+CAPTCHA handoff may include captcha_kind, captcha_assist, and captcha_router
+metadata. Treat the default visible-UI path as a physical/manual flow: bring the
+TMWD-owned tab to the foreground if needed, capture only the browser
+window/region for vision assistance, never take fullscreen screenshots, never
+use JS/CDP to click CAPTCHA widgets, never extract browser CAPTCHA
+tokens/cookies, wait before retrying, and hand off to the user if the challenge
+becomes multi-round. Use browser_auth_ops.plan_captcha_assist for dry-run
+planning and coordinate diagnostics before any physical input. It can return
+candidate DOM client rects, viewport metadata, coordinate_transform screen
+estimates, slider drag hints, physical-input provider selection, redacted
+JFBYM/Yunma provider status, captcha_router route selection, and region-only
+vision correction clips. Provider protocol routes are default-off and require
+captcha_solver_mode=protocol_allowed, confirm_protocol_solver=true, and a
+repo-external origin allowlist. With run_vision_correction=true it captures only the
 planned viewport/region, writes a bounded temporary PNG artifact outside the
 repo, returns path/sha256/clip/TTL metadata plus scroll-adjusted CDP clip
 metadata when needed, and runs first-pass slider visual correction.
@@ -150,6 +154,19 @@ browser_auth_ops.assist_captcha requires a managed tab,
 confirm_physical_input=true, and either supplied screen coordinates or
 auto_screen_coordinates=true plus confirm_auto_coordinates=true, or
 use_vision_corrected_coordinates=true plus confirm_corrected_coordinates=true.
+For repo-external JFBYM/Yunma coordinate solving, it also supports
+use_provider_coordinates=true plus confirm_provider_coordinates=true, but only
+after run_vision_correction=true has captured a bounded non-fullscreen region
+artifact and the current origin/kind matches the provider allowlist. Provider
+results are converted through the artifact clip and refreshed viewport metrics;
+tool results must not contain provider tokens, image base64, cookies, or
+sitekeys.
+Configure JFBYM/Yunma with `npm run setup:captcha-provider:jfbym -- --allowed-origin <origin> --write`.
+The helper reads the token from `TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN`, writes only
+repo-external `jfbym.env`, enforces `0700`/`0600` permissions, and prints
+redacted JSON. Do not paste provider tokens into prompts, docs, source, or shell
+history; use `read -r -s TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN` and unset it after
+setup.
 Cross-origin captcha-like iframes are degraded/manual-only: keep the iframe rect
 and clipped screenshot plan, but do not infer inner controls or send physical
 input into the frame.
@@ -231,6 +248,14 @@ redaction, manual handoff context, and finalizer cleanup.
 After CAPTCHA assist changes, run `npm run check:captcha-assist-live`; it
 validates normal, scrolled, same-origin iframe, and synthetic visual-movement
 slider fixtures, and is planning-only. Use
+`npm run check:captcha-router`, `npm run check:captcha-provider-jfbym`, and
+`npm run check:captcha-provider-jfbym-setup`, and
+`npm run check:captcha-provider-jfbym-coordinate` after CAPTCHA router/provider
+changes; these validate default-off protocol routing, provider config redaction,
+repo-external setup permissions, coordinate parsing, artifact-to-screen
+conversion, and malformed/low-confidence blocking without requiring a real
+provider token.
+Use
 `npm run check:captcha-assist-physical-live` for the optional
 local GUI gate; it is skipped unless both TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 are set, and can be made fail-on-skip with

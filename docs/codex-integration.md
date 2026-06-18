@@ -177,6 +177,8 @@ Manual-required results may include:
     "captcha_kind": "hcaptcha|recaptcha|turnstile|cloudflare|slider|generic",
     "captcha_assist": {
       "assist_mode": "manual_or_native_physical",
+      "strategy_id": "captcha_router_v2",
+      "policy_id": "hybrid_policy_v1",
       "next_step": "complete_challenge_then_ensure_login"
     },
     "tab_id": "...",
@@ -193,14 +195,30 @@ captured DOM content. After the user completes the manual step, call
 expected successful path is already-authenticated validation, not replaying
 stored credentials across an external identity provider.
 
-For CAPTCHA handoff, TMWD follows the Sophub physical-input pattern rather than
-token extraction: CDP is acceptable for bringing the managed tab to the
-foreground or window-scoped screenshots, but CAPTCHA widgets must not be clicked
-with JS/CDP. If visual assistance is required, capture only the relevant browser
-window/region before calling a vision backend; fullscreen screenshots are not
-part of this policy. If a challenge escalates into
+For CAPTCHA handoff, TMWD now uses a hybrid router. The default visible-UI path
+still follows the Sophub physical-input pattern: CDP is acceptable for bringing
+the managed tab to the foreground or window-scoped screenshots, but CAPTCHA
+widgets must not be clicked with JS/CDP. If visual assistance is required,
+capture only the relevant browser window/region before calling a vision backend;
+fullscreen screenshots are not part of this policy. Provider coordinate solving
+may be planned for checkbox/slider/image-click/rotate style challenges when a
+repo-external provider is configured. Coordinate solving is still a visible-UI
+physical-input path: it requires an origin/kind allowlist, a bounded
+non-fullscreen region artifact from `run_vision_correction:true`,
+`use_provider_coordinates:true`, `confirm_provider_coordinates:true`, and
+`confirm_physical_input:true`; provider tokens and image base64 are never
+returned. Provider protocol solving for
+hCaptcha/reCAPTCHA/Turnstile is default-off and only planned when the caller sets
+`captcha_solver_mode:"protocol_allowed"`, `confirm_protocol_solver:true`, and
+the provider config allowlists the current origin. If a challenge escalates into
 multi-round image/puzzle solving, stop and hand off to the user instead of
 rapidly retrying.
+
+Configure the repo-external JFBYM/Yunma file with
+`npm run setup:captcha-provider:jfbym -- --allowed-origin <origin> --write`.
+The helper reads the token from `TMWD_CAPTCHA_PROVIDER_JFBYM_TOKEN`, writes only
+`~/.tmwd-browser-mcp/captcha-providers/jfbym.env` or the selected config dir,
+enforces `0700`/`0600` permissions, and prints only redacted JSON.
 
 For a CAPTCHA dry-run, call `browser_auth_ops` with
 `action:"plan_captcha_assist"` and the same managed `tab_id`/`workspace_key`.
@@ -209,9 +227,10 @@ viewport CSS pixels, viewport/DPR metadata, native input capability status,
 physical-input provider selection (`native-os` plus planned `ljq-ctrl`
 integration), and the policy gates needed before any physical input. It also
 returns a
-`coordinate_transform` object with estimated screen pixels and a
-`vision_correction_plan` that is limited to browser window/region screenshot
-clips. Add `run_vision_correction:true` only when you need executable
+`coordinate_transform` object with estimated screen pixels, plus
+`vision_correction_plan`, `captcha_policy`, `captcha_router`, and redacted
+`captcha_providers` status. Vision captures remain limited to browser
+window/region screenshot clips. Add `run_vision_correction:true` only when you need executable
 coordinate correction: it captures the planned viewport/region with CDP, stores
 a bounded temporary PNG artifact outside the repo, returns artifact metadata
 (`path`, `sha256`, dimensions, clip, TTL, `fullscreen:false`, and the
@@ -234,7 +253,11 @@ TMWD-owned managed tab, requires `confirm_physical_input:true`, requires a
 foreground window, and requires either caller-supplied screen coordinates or
 `auto_screen_coordinates:true` plus `confirm_auto_coordinates:true`, or
 `use_vision_corrected_coordinates:true` plus
-`confirm_corrected_coordinates:true`. For normal
+`confirm_corrected_coordinates:true`, or an allowlisted provider coordinate
+route with `use_provider_coordinates:true` plus
+`confirm_provider_coordinates:true`. Provider coordinates are converted through
+the region artifact clip and refreshed viewport metrics before native input.
+For normal
 TMWD-owned tabs, it foregrounds the target with TMWD `tabs.switch` before
 physical provider input, waits for `pre_input_settle_ms`, then refreshes the
 planner/vision coordinates against the now-active window before sending native
@@ -324,6 +347,7 @@ sites to use the generic profile directory above.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
 - Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, CAPTCHA assist dry-run planning, manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.
 - Run `npm run check:captcha-assist-live` after CAPTCHA assist changes. It opens isolated local slider/checkbox fixtures, validates dry-run coordinate transforms, region-only screenshot artifact creation, scroll-adjusted CDP clips, same-origin iframe coordinate conversion, cross-origin iframe degraded/manual handoff, first-pass slider/checkbox vision correction, synthetic slider visual movement, and finalizes the managed tabs. It is planning-only.
+- Run `npm run check:captcha-router`, `npm run check:captcha-provider-jfbym`, `npm run check:captcha-provider-jfbym-setup`, and `npm run check:captcha-provider-jfbym-coordinate` after CAPTCHA router/provider changes. These deterministic contracts validate default-off protocol routes, repo-external provider config redaction, setup permissions, origin/kind allowlists, coordinate response parsing, bounded artifact-to-screen conversion, slider target handling, and malformed/low-confidence blocking without a real provider token.
 - Run `npm run check:captcha-assist-physical-live` only for the optional local GUI gate. It is skipped by default and runs the physical slider drag plus checkbox click fixtures only when `TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set. Add `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when the local gate should fail instead of skip. Skipped/blocked paths explicitly report `physical_input_executed:false` and `pointer_moved:false` plus the exact `physical_gate_command`. The wrapper performs native pointer preflight before opening the GUI fixture or creating a managed tab; missing click/drag requirements return structured skipped/blocked output without foregrounding Chrome or attempting physical input. Native pointer actions must be genuinely available; run `npm run check:native-pointer` first for a no-input readiness check. On macOS, `cliclick` is treated as pointer-capable only when its diagnostic probe does not report missing Accessibility privileges for the current terminal/Codex host. A passing physical branch must report both the slider completion/visible movement (`slider_visual_offset` / `handle_transform`) and checkbox completion/inside-hotspot click before it writes a sanitized local CAPTCHA proof under `~/.tmwd-browser-mcp/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that write or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail if proof persistence fails.
 - Run `npm run check:native-pointer` after native provider or local OS permission changes. It is diagnostic-only by default, does not move the mouse, and reports whether the current provider supports `click` and `drag`; add `-- --require-pointer` only for a local hard gate. On macOS, when `cliclick` is installed but Accessibility permission is missing, its JSON/text output includes a `permission_recovery` plan with the System Settings path, a copyable `open` command, the verification command, and the explicit physical CAPTCHA gate command to run after readiness passes.
 - Run `npm run check:ljqctrl` after `ljq-ctrl` provider changes. It is a diagnostic-only default gate and exits successfully when the local driver is not configured; use `TMWD_LJQCTRL_REQUIRE=1`, `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` for machine-local hard gates.
