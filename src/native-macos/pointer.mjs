@@ -37,6 +37,32 @@ function buildCliclickDragCommands({
   };
 }
 
+function buildCliclickClickCommands({
+  action,
+  button,
+  x,
+  y,
+}) {
+  const base = button === "right" ? "rc" : (button === "middle" ? "mc" : "c");
+  const count = action === "double_click" ? 2 : 1;
+  const preMoveX = Math.max(0, Math.round(x - 6));
+  const preMoveY = Math.max(0, Math.round(y - 4));
+  const commands = [
+    `m:${String(preMoveX)},${String(preMoveY)}`,
+    ...Array.from({ length: count }, () => `${base}:${String(x)},${String(y)}`),
+  ];
+  return {
+    wait_ms: 140,
+    commands,
+    command_sequence: commands.map((command) => String(command).split(":", 1)[0]),
+    pre_move: true,
+    pre_move_point: {
+      x: preMoveX,
+      y: preMoveY,
+    },
+  };
+}
+
 async function movePointer(args, timeoutMs) {
   const x = normalizeCoordinate(args?.x, "x");
   const y = normalizeCoordinate(args?.y, "y");
@@ -89,17 +115,24 @@ async function clickPointer(action, args, timeoutMs) {
   const x = normalizeCoordinate(args?.x, "x");
   const y = normalizeCoordinate(args?.y, "y");
   const button = normalizeMouseButton(args?.button);
-  const base = button === "right" ? "rc" : (button === "middle" ? "mc" : "c");
-  const count = action === "double_click" ? 2 : 1;
-  const commands = Array.from({ length: count }, () => `${base}:${String(x)},${String(y)}`);
-  const result = await runNativeCommand("cliclick", commands, { timeoutMs });
+  const clickPlan = buildCliclickClickCommands({
+    action,
+    button,
+    x,
+    y,
+  });
+  const result = await runNativeCommand("cliclick", ["-w", String(clickPlan.wait_ms), ...clickPlan.commands], { timeoutMs });
   ensureNativeCommandOk(result, "cliclick click");
   return {
     driver: "macos-cliclick",
     x,
     y,
     button,
-    count,
+    count: action === "double_click" ? 2 : 1,
+    command_sequence: clickPlan.command_sequence,
+    pre_move: clickPlan.pre_move,
+    pre_move_point: clickPlan.pre_move_point,
+    wait_ms: clickPlan.wait_ms,
   };
 }
 
@@ -118,6 +151,7 @@ async function scrollPointer(args, timeoutMs) {
 }
 
 export {
+  buildCliclickClickCommands,
   buildCliclickDragCommands,
   clickPointer,
   dragPointer,

@@ -155,6 +155,18 @@ function explicitCoordinatesFromEnv() {
   return null;
 }
 
+function explicitClickCoordinatesFromEnv() {
+  const x = optionalEnvNumber("TMWD_CAPTCHA_ASSIST_CLICK_X");
+  const y = optionalEnvNumber("TMWD_CAPTCHA_ASSIST_CLICK_Y");
+  if (x !== null && y !== null) {
+    return {
+      source: "env_explicit_click_screen_coordinates",
+      point: { x: Math.round(x), y: Math.round(y) },
+    };
+  }
+  return null;
+}
+
 function physicalAttemptOptionsFromEnv() {
   return {
     maxAttempts: clampInteger(envNumber("TMWD_CAPTCHA_ASSIST_MAX_ATTEMPTS", 2), 2, 1, 3),
@@ -168,7 +180,10 @@ function physicalAttemptOptionsFromEnv() {
     retryStartOffsetY: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_START_OFFSET_Y", 0), 0, -200, 200),
     retryEndOffsetX: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_END_OFFSET_X", 0), 0, -200, 200),
     retryEndOffsetY: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_DRAG_END_OFFSET_Y", 0), 0, -200, 200),
+    retryClickOffsetX: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_CLICK_RETRY_OFFSET_X", 0), 0, -120, 120),
+    retryClickOffsetY: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_CLICK_RETRY_OFFSET_Y", 0), 0, -120, 120),
     explicitCoordinates: explicitCoordinatesFromEnv(),
+    explicitClickCoordinates: explicitClickCoordinatesFromEnv(),
   };
 }
 
@@ -221,6 +236,70 @@ function retryCoordinatesFromAssist(physicalAssist, options) {
   };
 }
 
+function screenPointFromViewportClient(point, viewport = {}, transform = {}) {
+  const origin = transform?.viewport_origin_screen_estimate;
+  const originX = finiteNumber(origin?.x);
+  const originY = finiteNumber(origin?.y);
+  const clientX = finiteNumber(point?.x);
+  const clientY = finiteNumber(point?.y);
+  if (originX === null || originY === null || clientX === null || clientY === null) {
+    return null;
+  }
+  const visual = viewport?.visual_viewport && typeof viewport.visual_viewport === "object"
+    ? viewport.visual_viewport
+    : {};
+  const offsetLeft = finiteNumber(visual.offset_left) ?? 0;
+  const offsetTop = finiteNumber(visual.offset_top) ?? 0;
+  const scale = finiteNumber(visual.scale) ?? 1;
+  return coordinatePoint(
+    originX + ((clientX - offsetLeft) * scale),
+    originY + ((clientY - offsetTop) * scale),
+  );
+}
+
+function checkboxRetryCoordinatesFromAssist(previousAssist, previousCompletion, options) {
+  if (options.explicitClickCoordinates) {
+    return options.explicitClickCoordinates;
+  }
+  const completion = previousCompletion?.js_return ?? previousCompletion ?? {};
+  const fakeBox = completion.fake_box_rect;
+  const transform = previousAssist?.coordinate_refresh?.refreshed_coordinate_transform
+    ?? previousAssist?.coordinate_transform;
+  const viewport = previousAssist?.coordinate_refresh?.refreshed_viewport
+    ?? previousAssist?.viewport
+    ?? {};
+  if (fakeBox) {
+    const centerPoint = {
+      x: (Number(fakeBox.left) + Number(fakeBox.right)) / 2,
+      y: (Number(fakeBox.top) + Number(fakeBox.bottom)) / 2,
+    };
+    const screenPoint = screenPointFromViewportClient(centerPoint, viewport, transform);
+    if (screenPoint) {
+      return {
+        source: "retry_from_dom_fake_box_center_and_refreshed_viewport",
+        point: coordinatePoint(
+          screenPoint.x + options.retryClickOffsetX,
+          screenPoint.y + options.retryClickOffsetY,
+        ),
+      };
+    }
+  }
+  const priorScreen = coordinatePoint(
+    previousAssist?.screen_coordinates?.x,
+    previousAssist?.screen_coordinates?.y,
+  );
+  if (priorScreen) {
+    return {
+      source: "retry_from_prior_click_screen_coordinates",
+      point: coordinatePoint(
+        priorScreen.x + options.retryClickOffsetX,
+        priorScreen.y + options.retryClickOffsetY,
+      ),
+    };
+  }
+  return null;
+}
+
 function buildPhysicalAssistAttemptPlan(attemptIndex, previousAssist, options = {}) {
   const retry = attemptIndex > 1;
   const coordinates = retry
@@ -255,6 +334,39 @@ function buildPhysicalAssistAttemptPlan(attemptIndex, previousAssist, options = 
         y: coordinates.from.y,
         to_x: coordinates.to.x,
         to_y: coordinates.to.y,
+        coordinate_system: "screen_pixels",
+        source: coordinates.source,
+      }
+      : undefined,
+  };
+}
+
+function buildCheckboxPhysicalAssistAttemptPlan(attemptIndex, previousAssist, previousCompletion, options = {}) {
+  const retry = attemptIndex > 1;
+  const coordinates = retry
+    ? checkboxRetryCoordinatesFromAssist(previousAssist, previousCompletion, options)
+    : options.explicitClickCoordinates;
+  const args = {
+    run_vision_correction: true,
+    use_vision_corrected_coordinates: true,
+    confirm_corrected_coordinates: true,
+    confirm_physical_input: true,
+    pre_input_settle_ms: options.preInputSettleMs,
+    wait_after_ms: 5_000,
+  };
+  if (coordinates?.point) {
+    args.screen_x = coordinates.point.x;
+    args.screen_y = coordinates.point.y;
+  }
+  return {
+    attempt: attemptIndex,
+    strategy: coordinates?.source
+      ?? (retry ? "vision_corrected_checkbox_retry_without_explicit_coordinates" : "vision_corrected_checkbox_click"),
+    args,
+    requested_screen_coordinates: coordinates?.point
+      ? {
+        x: coordinates.point.x,
+        y: coordinates.point.y,
         coordinate_system: "screen_pixels",
         source: coordinates.source,
       }
@@ -437,24 +549,29 @@ function checkboxCompletionScript() {
 }
 
 async function runCheckboxPhysicalAttempt({
+  attemptIndex = 1,
   attemptOptions,
   callTool,
+  previousAssist,
+  previousCompletion,
+  previousAttempts = [],
   tabId,
   toolArgs,
   workspaceKey,
 }) {
+  const attemptPlan = buildCheckboxPhysicalAssistAttemptPlan(
+    attemptIndex,
+    previousAssist,
+    previousCompletion,
+    attemptOptions,
+  );
   const checkboxPhysicalAssist = await callTool("browser_auth_ops", {
     ...toolArgs,
     action: "assist_captcha",
     tab_id: tabId,
     workspace_key: workspaceKey,
     assist_target: "checkbox",
-    run_vision_correction: true,
-    use_vision_corrected_coordinates: true,
-    confirm_corrected_coordinates: true,
-    confirm_physical_input: true,
-    pre_input_settle_ms: attemptOptions.preInputSettleMs,
-    wait_after_ms: 5_000,
+    ...attemptPlan.args,
   });
   if (checkboxPhysicalAssist.status !== "success") {
     throw physicalGateError("physical checkbox assist did not report success", checkboxPhysicalAssist, null);
@@ -480,28 +597,40 @@ async function runCheckboxPhysicalAttempt({
     script: checkboxCompletionScript(),
   });
   const checkboxCompletion = checkboxPhysicalCompletion?.js_return ?? {};
-  const checkboxPhysicalAttempts = [{
-    attempt: 1,
-    strategy: "vision_corrected_checkbox_click",
-    requested: {
-      pre_input_settle_ms: attemptOptions.preInputSettleMs,
+  const checkboxPhysicalAttempts = [
+    ...previousAttempts,
+    {
+      attempt: attemptPlan.attempt,
+      strategy: attemptPlan.strategy,
+      requested: {
+        pre_input_settle_ms: attemptPlan.args.pre_input_settle_ms,
+        screen_coordinates: attemptPlan.requested_screen_coordinates,
+      },
+      physical_assist: compactPhysicalAssist(checkboxPhysicalAssist),
+      physical_completion: checkboxCompletion,
     },
-    physical_assist: compactPhysicalAssist(checkboxPhysicalAssist),
-    physical_completion: checkboxCompletion,
-  }];
-  if (checkboxCompletion.checkbox_completed !== true || checkboxCompletion.checkbox_click_inside !== true) {
-    throw physicalGateError(
-      "physical checkbox click did not complete local checkbox fixture",
-      checkboxPhysicalAssist,
-      checkboxPhysicalCompletion,
-      checkboxPhysicalAttempts,
-    );
-  }
+  ];
   return {
     checkboxPhysicalAssist,
     checkboxPhysicalCompletion,
     checkboxPhysicalAttempts,
   };
+}
+
+async function runCheckboxPhysicalAttemptSequence(state) {
+  const next = await runCheckboxPhysicalAttempt(state);
+  const completed = next.checkboxPhysicalCompletion?.js_return?.checkbox_completed === true
+    && next.checkboxPhysicalCompletion?.js_return?.checkbox_click_inside === true;
+  if (completed || state.attemptIndex >= state.attemptOptions.maxAttempts) {
+    return next;
+  }
+  return runCheckboxPhysicalAttemptSequence({
+    ...state,
+    attemptIndex: state.attemptIndex + 1,
+    previousAssist: next.checkboxPhysicalAssist,
+    previousCompletion: next.checkboxPhysicalCompletion,
+    previousAttempts: next.checkboxPhysicalAttempts,
+  });
 }
 
 async function runPhysicalAssistIfEnabled({
@@ -557,13 +686,25 @@ async function runPhysicalAssistIfEnabled({
       toolArgs,
       workspaceKey,
     });
-    ({ checkboxPhysicalAssist, checkboxPhysicalCompletion, checkboxPhysicalAttempts } = await runCheckboxPhysicalAttempt({
+    ({ checkboxPhysicalAssist, checkboxPhysicalCompletion, checkboxPhysicalAttempts } = await runCheckboxPhysicalAttemptSequence({
+      attemptIndex: 1,
       attemptOptions,
       callTool,
       tabId: checkboxTabId,
       toolArgs,
       workspaceKey,
     }));
+    if (
+      checkboxPhysicalCompletion?.js_return?.checkbox_completed !== true
+      || checkboxPhysicalCompletion?.js_return?.checkbox_click_inside !== true
+    ) {
+      throw physicalGateError(
+        "physical checkbox click did not complete local checkbox fixture",
+        checkboxPhysicalAssist,
+        checkboxPhysicalCompletion,
+        checkboxPhysicalAttempts,
+      );
+    }
   }
 
   return {
