@@ -11,6 +11,7 @@
 - `network.jsonl`
 - `scripts.jsonl`
 - `runtime-evidence.jsonl`
+- `frames.jsonl` 或 frame tree section（有 iframe / 微前端 / cross-origin widget 时）
 - `cookies.json`
 - `env/entry.js`
 - `env/env.js`
@@ -23,4 +24,5 @@
 - 给 Codex / Claude / Gemini 续做同一个任务
 - 回看页面观察证据
 - 对齐本地补环境状态
+- 复核 `evidence.v1` 的 source/confidence/request/script/artifact 关联
 - 进入后续 AST 去混淆或 VMP 深挖

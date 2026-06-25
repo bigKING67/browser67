@@ -14,6 +14,7 @@ Full tool reference organized by function. All tools are prefixed with `mcp__js-
 | `list_websocket_connections` / `get_websocket_messages` | WebSocket traffic |
 | `get_request_initiator` | Call stack trace for a network request |
 | `get_dom_structure` | DOM tree snapshot |
+| `list_frames` | Frame tree with `frame_path`, geometry, same-origin accessibility, child counts, and cross-origin degraded metadata |
 
 ## Runtime Monitoring (Hook System)
 | Tool | Purpose |
@@ -48,7 +49,7 @@ Full tool reference organized by function. All tools are prefixed with `mcp__js-
 ## Evidence & Export
 | Tool | Purpose |
 |------|---------|
-| `record_reverse_evidence` | Save findings to task artifact (channel: `runtime-evidence`) |
+| `record_reverse_evidence` | Save normalized `evidence.v1` findings to task artifact (channel: `runtime-evidence`) |
 | `export_session_report` | Export full session report |
 | `export_rebuild_bundle` | Export local Node.js rebuild package |
 | `diff_env_requirements` | Compare local vs. browser environment gaps |
@@ -69,5 +70,7 @@ Full tool reference organized by function. All tools are prefixed with `mcp__js-
 | `get_hook_data` view | `summary`, maxRecords=80 |
 | First-round hook types | `fetch` + `xhr` |
 | `record_reverse_evidence` channel | `runtime-evidence` |
+| `record_reverse_evidence` schema | `evidence.v1`; include `source`, `confidence`, `request_ids`, `script_ids`, and `artifacts` when known |
+| `list_frames` cross-origin behavior | degraded metadata only; do not infer inner DOM |
 | `export_rebuild_bundle` output | `env/entry.js` + `env/env.js` + `env/polyfills.js` + `env/capture.json` |
 | Breakpoints | Disabled by default — enable only as fallback |

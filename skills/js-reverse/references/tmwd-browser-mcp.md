@@ -12,6 +12,10 @@ Use `tmwd_browser` when the task needs:
 - CDP bridge commands against the real browser tab
 - background tab screenshots or DOM/CDP actions
 - generic real-browser automation before switching to reverse-specific tooling
+- transport health checks with `browser_transport_health`
+- first-class readiness waits with `browser_wait`
+- repo-external task run artifacts with `browser_run_ops`
+- long-running browser JS through `browser_job_ops` when synchronous results would be brittle
 
 Use `js-reverse` when the task needs:
 
@@ -19,6 +23,7 @@ Use `js-reverse` when the task needs:
 - script search and code collection
 - fetch/xhr/websocket/eval/timer/cookie/function hooks
 - runtime evidence recording
+- frame tree listing with `list_frames`
 - local Node rebuild bundle export
 
 Default arguments:
@@ -43,6 +48,10 @@ Default arguments:
 
 - `tmwd_browser` is for real-browser state, cookies, page-visible runtime evidence, and CDP bridge operations.
 - `js-reverse` is for observe-first reverse workflows on the same TMWD-backed real browser: scripts, performance resources, runtime hooks, evidence, and rebuild bundles.
+- Use `browser_execute_js output_mode:"compact"` with explicit `max_return_chars` when collecting large DOM/network payloads for reverse tasks.
+- `browser_job_ops` is intentionally in-process (`durable:false`); `cancel` records intent but does not preempt page-side JS.
+- `record_reverse_evidence` is normalized to `evidence.v1`; include source/confidence/request/script/artifact links whenever known.
+- `list_frames` lists same-origin descendants recursively and degrades cross-origin frames to element metadata. Do not infer inner DOM for inaccessible frames.
 - Persistent `Debugger.pause`, callframe stepping, and breakpoint state are intentionally explicit remote CDP/debug-browser work. If remote CDP opens a separate profile, do not assume it has the user's logged-in cookies. First sample with TMWD, then decide whether to log in to debug Chrome or port non-sensitive evidence.
 
 ## File upload strategy

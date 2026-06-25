@@ -6,6 +6,7 @@
    - `check_browser_health`
    - `new_page` + 可选 `restore_session_state`
    - `analyze_target`
+   - iframe / 微前端 / cross-origin widget 场景先 `list_frames`
    - `search_in_scripts`
    - `list_network_requests` / `get_request_initiator`
    - 设定目标边界：`targetKeywords`、`targetUrlPatterns`、`targetFunctionNames`、`targetActionDescription`
@@ -16,6 +17,7 @@
    - 触发动作
    - `get_hook_data(summary)`
    - 命中后 `get_hook_data(raw)` + `record_reverse_evidence`
+   - `record_reverse_evidence` 按 `evidence.v1` 标注 source、confidence、request/script/artifact 关联
 
 3. 本地补环境
    - `export_rebuild_bundle`
@@ -36,4 +38,5 @@
 - 本地补环境先于深度去混淆
 - 补环境默认遵循“代理日志 + `first divergence` + 最小因果单元”
 - 每一步都要写 task artifact
+- 涉及 iframe 时记录 frame tree 和 frame_path；cross-origin frame 只能作为 degraded metadata 证据
 - 参数名不明显时，优先靠请求、函数、时间窗和动作描述锁定目标

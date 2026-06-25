@@ -13,6 +13,10 @@ for Codex, grobot, and JS reverse workflows.
 - MCP tools:
   - `browser_scan`
   - `browser_execute_js`
+  - `browser_wait`
+  - `browser_transport_health`
+  - `browser_run_ops`
+  - `browser_job_ops`
   - `browser_extract`
   - `browser_diff`
   - `browser_tab_ops`
@@ -25,6 +29,7 @@ for Codex, grobot, and JS reverse workflows.
 - JS reverse MCP server:
   - `check_browser_health`
   - `list_scripts` / `search_in_scripts`
+  - `list_frames`
   - `list_network_requests` / `get_request_initiator`
   - `create_hook` / `inject_hook` / `get_hook_data`
   - `record_reverse_evidence` / `export_rebuild_bundle`
@@ -131,6 +136,23 @@ Useful machine-readable variants:
 npm run doctor:json
 npm run check:live:doctor
 ```
+
+## Structured task templates
+
+Reusable task templates live under `templates/tasks/` and can be checked or
+rendered without touching a browser:
+
+```bash
+npm run tasks:templates
+npm run check:task-templates
+node scripts/task-template.mjs render --template browser-run --task-id demo --workspace-key demo --json
+node scripts/task-template.mjs render --template js-reverse-task --task-id demo --workspace-key demo --json
+```
+
+The browser template uses `browser_run_ops`, `browser_transport_health`,
+`browser_wait`, `browser_job_ops`, and `browser_tab_lifecycle.finalize_task`.
+The JS reverse template uses `new_page`, `analyze_target`, `list_frames`,
+`record_reverse_evidence`, and `finalize_task`.
 
 ## Run MCP server
 
@@ -337,6 +359,9 @@ added.
 ```bash
 npm run verify
 npm run check:syntax
+npm run check:performance-smoke
+npm run check:task-templates
+npm run check:regression-matrix
 npm run check:change-set
 npm run plan:scoped-commits
 npm run check:readiness
@@ -360,7 +385,8 @@ npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
 
-`npm run check` runs deterministic MCP/schema/hub-control contracts. `check:live:*`
+`npm run check` runs deterministic MCP/schema/hub-control contracts plus the
+performance smoke, task-template, and regression-matrix gates. `check:live:*`
 uses the current local browser environment and can fail when the extension or hub
 is not connected. `check:captcha-assist-live` is planning-only by default and now
 also validates region-only screenshot artifact creation, scroll-adjusted CDP
@@ -485,7 +511,8 @@ local release gate should fail on optional gaps too.
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
 all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
-contracts, live doctor readiness, JS reverse live readiness, auth-profile
+contracts, performance smoke, task-template validation, regression-matrix
+availability, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
 popup resume paths), diagnostic-only `ljqCtrl` probing, and npm audit.
 It also runs the optional proof audit in non-blocking mode so missing external

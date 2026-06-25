@@ -45,12 +45,14 @@ See `docs/codex-integration.md` and `docs/agent-setup.md` for full config.
 3. Use `tmwd_browser` for logged-in Chrome/Edge tabs, managed tab lifecycle,
    downloads/uploads, clipboard wrappers, and browser-visible workflows.
 4. Use `js-reverse` for API/interface discovery, request initiator tracing,
-   scripts, Network/WS sampling, runtime hooks, evidence export, and local
-   rebuild bundles.
+   scripts, frame listing, Network/WS sampling, runtime hooks, evidence export,
+   and local rebuild bundles.
 5. Do not export cookies, passwords, unrelated session stores, unrelated
    history, unrelated tabs, or personal account data.
 6. Rebuild locally only after the target request, initiator, relevant scripts,
    and runtime samples are known.
+7. Use `record_reverse_evidence` for durable findings; evidence is normalized
+   to `evidence.v1` so downstream run artifacts and reports can consume it.
 
 ## Standard workflow
 
@@ -62,6 +64,8 @@ Goal: prove what is executing now.
 - `analyze_target`
 - `list_network_requests`
 - `list_scripts`
+- `list_frames` when the page may involve iframe widgets, microfrontends,
+  embedded login, captcha, or cross-origin app shells
 - `search_in_scripts`
 - `get_dom_structure`
 - `get_storage` only when scoped and necessary
@@ -126,6 +130,22 @@ Every completed reverse task should include:
 - Patch log and rollback steps.
 - Confidence and remaining uncertainty.
 - Task artifact path.
+- Frame tree summary when iframe/microfrontend behavior affected the target.
+
+## Structured templates
+
+Task templates under `templates/tasks/` provide replayable starting points for
+browser and JS reverse work:
+
+```bash
+npm run tasks:templates
+npm run check:task-templates
+node scripts/task-template.mjs render --template js-reverse-task --task-id demo --workspace-key demo --json
+```
+
+The JS reverse template includes `new_page`, `analyze_target`, `list_frames`,
+`record_reverse_evidence`, and `finalize_task` so new tasks inherit the current
+managed-tab and evidence boundaries.
 
 ## Reference map
 
@@ -148,6 +168,7 @@ After editing js-reverse playbook material:
 ```bash
 npm run skills:check
 npm run check:js-reverse-mcp
+npm run check:task-templates
 ```
 
 For a live local browser profile:

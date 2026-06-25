@@ -19,6 +19,18 @@ approval_mode = "approve"
 [mcp_servers.tmwd_browser.tools.browser_execute_js]
 approval_mode = "approve"
 
+[mcp_servers.tmwd_browser.tools.browser_wait]
+approval_mode = "approve"
+
+[mcp_servers.tmwd_browser.tools.browser_transport_health]
+approval_mode = "approve"
+
+[mcp_servers.tmwd_browser.tools.browser_run_ops]
+approval_mode = "approve"
+
+[mcp_servers.tmwd_browser.tools.browser_job_ops]
+approval_mode = "approve"
+
 [mcp_servers.tmwd_browser.tools.browser_extract]
 approval_mode = "approve"
 
@@ -65,6 +77,9 @@ approval_mode = "approve"
 [mcp_servers.js-reverse.tools.list_network_requests]
 approval_mode = "approve"
 
+[mcp_servers.js-reverse.tools.list_frames]
+approval_mode = "approve"
+
 [mcp_servers.js-reverse.tools.create_hook]
 approval_mode = "approve"
 
@@ -74,6 +89,9 @@ approval_mode = "approve"
 [mcp_servers.js-reverse.tools.get_hook_data]
 approval_mode = "approve"
 
+[mcp_servers.js-reverse.tools.record_reverse_evidence]
+approval_mode = "approve"
+
 [mcp_servers.js-reverse.tools.export_rebuild_bundle]
 approval_mode = "approve"
 ```
@@ -81,7 +99,7 @@ approval_mode = "approve"
 ## Tool routing
 
 - `tmwd_browser`: primary path for real browser tasks, logged-in pages, existing tabs, cookies, CDP bridge, background tabs, batch actions, downloads/uploads, file chooser planning, clipboard write/paste wrappers, and managed tab lifecycle.
-- `js-reverse`: primary path for page API/interface discovery, request initiator tracing, signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context. JS reverse pages created with `new_page` are also TMWD-managed; end reverse tasks with `finalize_task` for the current `workspace_key` / `task_id` unless evidence collection requires keeping the page open.
+- `js-reverse`: primary path for page API/interface discovery, frame listing, request initiator tracing, signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context. JS reverse pages created with `new_page` are also TMWD-managed; end reverse tasks with `finalize_task` for the current `workspace_key` / `task_id` unless evidence collection requires keeping the page open.
 - in-app Browser: localhost/file previews without Chrome profile state.
 - Computer Use: desktop UI and pure visual pointer/keyboard actions.
 - `remote_cdp`: explicit debug Chrome/CI/JS reverse protocol work, not ordinary login-state tasks.
@@ -93,6 +111,22 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 ## Wrapper tools
 
+- `browser_execute_js`: direct TMWD/CDP JavaScript execution. Use
+  `output_mode:"compact"` plus `max_return_chars` for large DOM/network payloads
+  so tool results stay bounded and context-safe.
+- `browser_wait`: first-class selector/text/function/DOM-stable/network-idle
+  wait helper. Prefer it over ad-hoc sleeps when a page needs readiness gating.
+- `browser_transport_health`: probes TMWD `ws` and/or `link` transports and
+  returns `healthy`, `degraded`, or `broken` diagnostics with a preferred
+  transport and actionable suggestion.
+- `browser_run_ops`: creates externalized run folders under
+  `~/.tmwd-browser-mcp/runtime/runs` by default. Each run owns `run.json`,
+  `events.ndjson`, `artifacts/`, and `logs/`; evidence records are normalized
+  to `evidence.v1`.
+- `browser_job_ops`: starts in-process background browser execution jobs backed
+  by `browser_execute_js`, then exposes `status`, `result`, `cancel`, and
+  `list`. Current jobs are intentionally `durable:false`; cancel is a
+  best-effort intent marker and does not preempt already-running page code.
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
 - `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, preserves `keep:true`, and ignores unmanaged user tabs.

@@ -47,6 +47,8 @@ args = ["/path/to/browser67/src/js-reverse-server.mjs"]
 4. **一次一补丁** — 多个问题时只修第一个失败点（first divergence），复跑，确认前移，再修下一个。批量补丁出错后无法定位是哪个补丁的问题。
 5. **服务端验证为准** — 本地输出匹配浏览器是必要不充分条件，必须用真实服务器请求验证。
 6. **TMWD-owned tabs only** — `new_page` 默认只复用 JS reverse/TMWD 自己创建的 managed tab；如果用户自己已经打开同一个页面，不接管该 tab，而是新开或复用 `workspace_key` 下的 TMWD-owned tab。任务结束默认对同一 `workspace_key`/`task_id` 执行 `finalize_task`，除非需要保留页面做证据复核。若 `new_page` 返回 `finalize_hint.required:true`，交付前按提示收尾。
+7. **Frame-aware first pass** — 遇到 iframe、微前端、验证码 widget、嵌入登录或跨域应用壳时，先用 `list_frames` 建 frame tree。same-origin frame 可继续递归观察；cross-origin frame 只信 element metadata / rect / sandbox / name / src 等 degraded 证据，不推断内部 DOM。
+8. **Structured evidence** — `record_reverse_evidence` 统一写入 `evidence.v1` 结构；每条证据标注 source、confidence、request/script/artifact 关联，便于 run artifact、报告和 handoff 复用。
 
 ---
 
@@ -59,10 +61,11 @@ args = ["/path/to/browser67/src/js-reverse-server.mjs"]
 步骤：
 1. `check_browser_health` 验证连接
 2. `new_page`/`navigate_page` 导航到目标页；主动工作默认传稳定 `workspace_key`，让 `new_page` 在 TMWD-owned tab pool 内复用，不影响用户 unmanaged tab
-3. `list_network_requests` 找目标 API（sign/token/_signature/h5st/nonce/x-bogus）
-4. `get_request_initiator` 追溯调用栈
-5. `search_in_scripts` 定位脚本和函数
-6. 设定目标边界：`targetKeywords`、`targetUrlPatterns`、`targetFunctionNames`、`targetActionDescription`
+3. `list_frames` 在 iframe / 微前端 / cross-origin widget 场景建立 frame tree
+4. `list_network_requests` 找目标 API（sign/token/_signature/h5st/nonce/x-bogus）
+5. `get_request_initiator` 追溯调用栈
+6. `search_in_scripts` 定位脚本和函数
+7. 设定目标边界：`targetKeywords`、`targetUrlPatterns`、`targetFunctionNames`、`targetActionDescription`
 
 退出条件：能回答 — 谁发起请求、哪个脚本、如何触发。
 
@@ -79,6 +82,7 @@ args = ["/path/to/browser67/src/js-reverse-server.mjs"]
 关键规则：
 - **首屏初始化场景**：先 `inject_preload_script` 挂早期采样，再导航页面
 - 命中后先看 summary 去噪，再按需看 raw
+- `record_reverse_evidence` 尽量包含 `source`、`confidence`、`request_ids`、`script_ids` 和 artifact path；缺字段会按 `evidence.v1` 默认值归一化，但不要用空证据替代取证。
 - Hook 不足时才考虑断点
 
 退出条件：至少一组可复用的运行时样本（输入/输出数据）。
@@ -171,16 +175,17 @@ get_script_source → deobfuscate_code → understand_code → summarize_code
 1. `check_browser_health`
 2. `new_page` 或 `select_page`（可选 `restore_session_state`）
 3. `analyze_target`
-4. `search_in_scripts`
-5. `list_network_requests` + `get_request_initiator`
-6. 首屏场景：先 `inject_preload_script`
-7. `record_reverse_evidence`
-8. `create_hook` + `inject_hook`
-9. 触发动作
-10. `get_hook_data(summary)` → 命中后 `get_hook_data(raw)` + `record_reverse_evidence`
-11. `export_rebuild_bundle`
-12. 本地补环境（Phase 4 循环）
-13. `finalize_task(workspace_key|task_id)` 清理 `keep:false` managed pages；若要保留现场，显式说明并使用 `keep:true`；若 `new_page` 返回 `finalize_hint.required:true`，按 `finalize_hint.suggested_arguments` 收尾
+4. `list_frames`（iframe / 微前端 / cross-origin widget 场景）
+5. `search_in_scripts`
+6. `list_network_requests` + `get_request_initiator`
+7. 首屏场景：先 `inject_preload_script`
+8. `record_reverse_evidence`
+9. `create_hook` + `inject_hook`
+10. 触发动作
+11. `get_hook_data(summary)` → 命中后 `get_hook_data(raw)` + `record_reverse_evidence`
+12. `export_rebuild_bundle`
+13. 本地补环境（Phase 4 循环）
+14. `finalize_task(workspace_key|task_id)` 清理 `keep:false` managed pages；若要保留现场，显式说明并使用 `keep:true`；若 `new_page` 返回 `finalize_hint.required:true`，按 `finalize_hint.suggested_arguments` 收尾
 
 ---
 
@@ -209,6 +214,7 @@ JSReverser-MCP 用自管 Puppeteer Chrome 或 remote-debugging CDP；`tmwd-brows
 - 提取 HttpOnly Cookie（TMWD bridge：`'{"cmd": "cookies"}'`）
 - 操控跨域 iframe
 - 文件上传（真实本地文件优先同 batch CDP `DOM.setFileInputFiles`；内存构造文件可用 DataTransfer API）
+- 长任务 readiness / 证据化作业：用 `browser_transport_health` 诊断 TMWD `ws`/`link`，用 `browser_wait` 替代固定 sleep，用 `browser_run_ops` 写 repo 外 run artifact，用 `browser_job_ops` 承载长 JS 任务（当前 `durable:false`，`cancel` 不抢占页面 JS）
 
 默认参数：
 ```json
@@ -238,6 +244,7 @@ JSReverser-MCP 用自管 Puppeteer Chrome 或 remote-debugging CDP；`tmwd-brows
 
 完成的逆向任务必须产出：
 - 目标接口与签名字段
+- frame tree / frame_path 证据（当 iframe、微前端、验证码 widget、嵌入登录或 cross-origin shell 影响目标）
 - 函数路径
 - 运行时证据（Hook 记录 + request 关联）
 - 输入输出样例
@@ -245,6 +252,18 @@ JSReverser-MCP 用自管 Puppeteer Chrome 或 remote-debugging CDP；`tmwd-brows
 - 置信度与不确定点
 - task artifact 路径
 - 本地补环境状态（已补/未补）
+
+## 结构化任务模板
+
+`templates/tasks/js-reverse-task-template.json` 是新任务默认模板。检查或渲染：
+
+```bash
+npm run tasks:templates
+npm run check:task-templates
+node scripts/task-template.mjs render --template js-reverse-task --task-id demo --workspace-key demo --json
+```
+
+模板默认包含 `new_page`、`analyze_target`、`list_frames`、`record_reverse_evidence`、`export_rebuild_bundle`、`finalize_task`，用于让新任务继承 managed-tab、frame listing 和 `evidence.v1` 边界。
 
 ---
 
