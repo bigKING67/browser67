@@ -65,6 +65,44 @@ async function runToolCases(rpc, cli) {
   assertTextJsonContent(unsupportedCall.result, "js-reverse unsupported debugger result");
   assert.equal(unsupportedPayload?.status, "not_supported");
   assert.equal(typeof unsupportedPayload?.fallback, "string");
+
+  const evidenceCall = await rpc.call(
+    "tools/call",
+    {
+      name: "record_reverse_evidence",
+      arguments: {
+        task_id: "contract",
+        channel: "evidence-schema",
+        evidence: {
+          source: "hook",
+          confidence: "exact",
+          title: "contract hook evidence",
+          data: { sample: true },
+        },
+      },
+    },
+    cli.timeout_ms,
+  );
+  const evidencePayload = firstJsonContent(evidenceCall.result);
+  assert.equal(evidencePayload?.ok, true);
+  assert.equal(typeof evidencePayload?.evidence_id, "string");
+
+  const reportCall = await rpc.call(
+    "tools/call",
+    {
+      name: "export_session_report",
+      arguments: {
+        task_id: "contract",
+      },
+    },
+    cli.timeout_ms,
+  );
+  const reportPayload = firstJsonContent(reportCall.result);
+  assert.equal(reportPayload?.ok, true);
+  const foundEvidence = reportPayload?.evidence?.find((entry) => entry.channel === "evidence-schema");
+  assert.equal(foundEvidence?.schema_version, "evidence.v1");
+  assert.equal(foundEvidence?.source, "hook");
+  assert.equal(foundEvidence?.confidence, "exact");
 }
 
 export {

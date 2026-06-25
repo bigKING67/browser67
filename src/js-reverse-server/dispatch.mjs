@@ -34,6 +34,7 @@ import {
   handleUnhookFunction,
   unsupportedDebugger,
 } from "./hooks.mjs";
+import { handleListFrames } from "./frames.mjs";
 import {
   handleCheckBrowserHealth,
   handleFinalizeTask,
@@ -74,6 +75,7 @@ async function dispatchToolCall(name, args = {}) {
   if (name === "list_websocket_connections") return makeResult(await handleWebSockets(args));
   if (name === "get_websocket_messages") return makeResult(await handleGetWebSocketMessages(args));
   if (name === "get_dom_structure") return makeResult(await handleGetDomStructure(args));
+  if (name === "list_frames") return makeResult(await handleListFrames(args));
   if (name === "create_hook") return makeResult(await handleCreateHook(args));
   if (name === "inject_hook") return makeResult(await handleInjectHook(args));
   if (name === "get_hook_data") return makeResult(await handleGetHookData(args));

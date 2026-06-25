@@ -34,6 +34,7 @@ function assertRequiredTools(tools) {
     "analyze_target",
     "search_in_scripts",
     "list_network_requests",
+    "list_frames",
     "create_hook",
     "inject_hook",
     "get_hook_data",
@@ -50,6 +51,10 @@ function assertRequiredTools(tools) {
   const newPageTool = tools.find((entry) => entry?.name === "new_page");
   assert.equal(newPageTool?.inputSchema?.properties?.ownership_policy?.default, "tmwd_only");
   assert.equal(newPageTool?.inputSchema?.properties?.reuse_scope?.default, "origin_path");
+  const listFramesTool = tools.find((entry) => entry?.name === "list_frames");
+  assert.equal(listFramesTool?.inputSchema?.properties?.frame_path?.type, "string");
+  const evidenceTool = tools.find((entry) => entry?.name === "record_reverse_evidence");
+  assert.equal(evidenceTool?.inputSchema?.properties?.evidence?.type, "object");
   return names;
 }
 

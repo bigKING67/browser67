@@ -6,6 +6,7 @@ import {
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import { normalizeEvidenceRecord } from "../evidence-schema.mjs";
 import { runtimeRoot } from "./paths.mjs";
 import { serverEvidence, serverHooks } from "./state.mjs";
 import { pageEval } from "./tmwd-adapter.mjs";
@@ -18,12 +19,17 @@ async function writeJsonFile(path, payload) {
 async function appendEvidence(args) {
   const taskId = String(args?.task_id ?? "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
   const channel = String(args?.channel ?? "runtime-evidence").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const evidenceInput = args?.evidence && typeof args.evidence === "object"
+    ? args.evidence
+    : { data: args?.data ?? {} };
   const payload = {
-    id: `evidence_${randomUUID()}`,
-    ts: new Date().toISOString(),
+    ...normalizeEvidenceRecord(evidenceInput, {
+      id: `evidence_${randomUUID()}`,
+      source: args?.source ?? "tool",
+      confidence: args?.confidence ?? "unknown",
+    }),
     task_id: taskId,
     channel,
-    data: args?.data ?? {},
   };
   serverEvidence.push(payload);
   const path = resolve(runtimeRoot, "evidence", taskId, `${channel}-${payload.id}.json`);
