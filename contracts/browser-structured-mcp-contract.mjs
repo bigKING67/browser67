@@ -23,6 +23,7 @@ import { assertAuthOpsContract } from "./browser-structured-mcp-contract/auth-op
 import { assertToolSurface } from "./browser-structured-mcp-contract/tool-surface.mjs";
 import { assertReadinessLjqCtrlProbeContract } from "./browser-structured-mcp-contract/readiness-audit.mjs";
 import { assertManagedTabCleanupBaselineContract } from "./browser-structured-mcp-contract/managed-tab-cleanup.mjs";
+import { assertRunWaitHealthOpsContract } from "./browser-structured-mcp-contract/run-wait-health-ops.mjs";
 
 function parseArgs(argv) {
   const parsed = {
@@ -178,6 +179,11 @@ async function run() {
       tmpTooManyLoginProfileDir,
     });
 
+    const runWaitHealthSummary = await assertRunWaitHealthOpsContract({
+      rpc,
+      timeoutMs: cli.timeout_ms,
+    });
+
     const fallbackSummary = await assertExecuteJsFallbackPolicy({
       rpc,
       timeoutMs: cli.timeout_ms,
@@ -218,6 +224,8 @@ async function run() {
         wrapper_tab_lifecycle_unmanaged_ignored: tabLifecycleSummary.tabCloseUnmanagedPayload?.unmanaged_tabs_ignored,
         wrapper_auth_ops_ok: true,
         wrapper_clipboard_ops_ok: ioOpsSummary.clipboardDryRunPayload?.status === "success",
+        wrapper_run_ops_ok: Boolean(runWaitHealthSummary.run_id),
+        wrapper_transport_health_status: runWaitHealthSummary.transport_health_status,
         ws_endpoint: cli.ws_endpoint,
       })}\n`,
     );

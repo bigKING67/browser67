@@ -1,4 +1,5 @@
 import {
+  clipContent,
   mergeTransportAttempts,
   normalizeEndpoint,
   normalizeTmwdTransportLabel,
@@ -34,6 +35,34 @@ import {
   resolvePreferredBrowserContext,
   resolveTmwdContext,
 } from "../../tmwd-runtime.mjs";
+
+function compactJsReturn(value, maxChars) {
+  const type = Array.isArray(value) ? "array" : typeof value;
+  if (value === null || value === undefined) {
+    return { type, value, truncated: false, original_length: 0 };
+  }
+  const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  const clipped = clipContent(serialized, maxChars);
+  return {
+    type,
+    preview: clipped.value,
+    truncated: clipped.truncated,
+    original_length: clipped.original_length,
+  };
+}
+
+function applyOutputMode(payload, args) {
+  if (String(args?.output_mode ?? "full") !== "compact") {
+    return payload;
+  }
+  const maxChars = Math.max(200, Math.min(300_000, Number(args?.max_return_chars ?? 4_000)));
+  return {
+    ...payload,
+    js_return: compactJsReturn(payload.js_return, maxChars),
+    output_mode: "compact",
+    max_return_chars: maxChars,
+  };
+}
 
 async function getTransientTexts(args) {
   try {
@@ -85,7 +114,7 @@ async function handleBrowserExecuteJs(args) {
     const transportAttempts = Array.isArray(contextError?.transportAttempts)
       ? contextError.transportAttempts
       : [];
-    return {
+    return applyOutputMode({
       status,
       transport: "unresolved",
       transport_attempts: transportAttempts,
@@ -112,7 +141,7 @@ async function handleBrowserExecuteJs(args) {
         newTabs: [],
         reloaded: false,
       },
-    };
+    }, args ?? {});
   }
   const command = parseBridgeCommand(scriptInput.value);
   let jsReturn = null;
@@ -251,7 +280,7 @@ async function handleBrowserExecuteJs(args) {
   const status = error
     ? (nativeAutoFallback?.executed === true ? "fallback_executed" : "failed")
     : "success";
-  return {
+  return applyOutputMode({
     status,
     transport: responseTransport,
     transport_attempts: mergeTransportAttempts(
@@ -282,7 +311,7 @@ async function handleBrowserExecuteJs(args) {
       reloaded: false,
     },
     script_source: scriptInput.source,
-  };
+  }, args ?? {});
 }
 
 export {

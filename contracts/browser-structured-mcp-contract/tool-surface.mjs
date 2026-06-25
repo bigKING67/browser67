@@ -11,6 +11,10 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(names.includes("browser_scan"), true);
   assert.equal(names.includes("browser_execute_js"), true);
   assert.equal(names.includes("browser_extract"), true);
+  assert.equal(names.includes("browser_wait"), true);
+  assert.equal(names.includes("browser_transport_health"), true);
+  assert.equal(names.includes("browser_run_ops"), true);
+  assert.equal(names.includes("browser_job_ops"), true);
   assert.equal(names.includes("browser_tab_ops"), true);
   assert.equal(names.includes("browser_native_input"), true);
   assert.equal(names.includes("browser_file_ops"), true);
@@ -20,6 +24,28 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(names.includes("browser_clipboard_ops"), true);
 
   const executeJsTool = tools.find((entry) => entry?.name === "browser_execute_js");
+  assert.equal(executeJsTool?.inputSchema?.properties?.output_mode?.enum?.includes("compact"), true);
+  assert.equal(executeJsTool?.inputSchema?.properties?.max_return_chars?.maximum, 300_000);
+
+  const waitTool = tools.find((entry) => entry?.name === "browser_wait");
+  assert.equal(waitTool?.inputSchema?.properties?.type?.enum?.includes("selector"), true);
+  assert.equal(waitTool?.inputSchema?.properties?.type?.enum?.includes("dom_stable"), true);
+  assert.equal(waitTool?.inputSchema?.properties?.timeout_ms?.maximum, 120_000);
+
+  const runOpsTool = tools.find((entry) => entry?.name === "browser_run_ops");
+  assert.equal(runOpsTool?.inputSchema?.properties?.action?.enum?.includes("prepare"), true);
+  assert.equal(runOpsTool?.inputSchema?.properties?.action?.enum?.includes("record_event"), true);
+  assert.equal(runOpsTool?.inputSchema?.properties?.evidence?.type, "object");
+
+  const transportHealthTool = tools.find((entry) => entry?.name === "browser_transport_health");
+  assert.equal(transportHealthTool?.inputSchema?.properties?.tmwd_transport?.enum?.includes("ws"), true);
+
+  const jobOpsTool = tools.find((entry) => entry?.name === "browser_job_ops");
+  assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("start"), true);
+  assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("result"), true);
+  assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("cancel"), true);
+  assert.equal(jobOpsTool?.inputSchema?.properties?.output_mode?.default, "compact");
+
   assert.equal(
     executeJsTool?.inputSchema?.properties?.native_auto_fallback?.type,
     "boolean",
