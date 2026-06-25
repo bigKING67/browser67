@@ -360,6 +360,9 @@ function buildJfbymProviderGap(config = {}) {
 function buildRequiredChecks({ packageJson, readme, skill, verifySource, report }) {
   const scriptNames = [
     "check:syntax",
+    "check:performance-smoke",
+    "check:regression-matrix",
+    "check:task-templates",
     "check:change-set",
     "plan:scoped-commits",
     "check:mcp",
@@ -402,6 +405,9 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     createCheck(
       "verify_includes_governance_gates",
       textIncludesAll(verifySource, [
+        "check:performance-smoke",
+        "check:regression-matrix",
+        "check:task-templates",
         "check:change-set",
         "check:readiness",
         "check:captcha-assist-live",

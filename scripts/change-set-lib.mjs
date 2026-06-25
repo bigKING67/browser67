@@ -87,6 +87,7 @@ const GROUPS = [
       /^src\/server(?:\.mjs|\/)/,
       /^src\/browser-wrappers(?:\.mjs|\/)/,
       /^src\/tool-schemas(?:\.mjs|\/)/,
+      /^src\/(?:evidence-schema|run-lifecycle)\.mjs$/,
       /^contracts\/browser-structured-mcp-contract(?:\.mjs|\/)/,
     ],
   },
@@ -197,6 +198,8 @@ const GROUPS = [
     patterns: [
       /^README\.md$/,
       /^docs\/(?:agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs)\.md$/,
+      /^docs\/js-reverse(?:-SOP\.md|\/)/,
+      /^skills\/js-reverse\//,
       /^skills\/tmwd-browser-mcp\//,
     ],
   },
@@ -215,7 +218,8 @@ const GROUPS = [
     ],
     patterns: [
       /^package\.json$/,
-      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|setup-captcha-provider-jfbym|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record)\.mjs$/,
+      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|setup-captcha-provider-jfbym|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template)\.mjs$/,
+      /^templates\/tasks\//,
     ],
   },
 ];

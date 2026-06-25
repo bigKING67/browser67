@@ -1,0 +1,73 @@
+{
+  "schema_version": "tmwd.task_template.v1",
+  "id": "js-reverse-task",
+  "title": "JS reverse observe-capture task",
+  "description": "Default task skeleton for observe-first JS reverse work using TMWD-managed pages, frame listing, hook evidence, and finalizer cleanup.",
+  "inputs": {
+    "workspace_key": "{{workspace_key}}",
+    "task_id": "{{task_id}}",
+    "url": "{{url}}",
+    "keywords": "{{keywords}}"
+  },
+  "steps": [
+    {
+      "tool": "check_browser_health",
+      "arguments": {
+        "tmwd_mode": "tmwd",
+        "tmwd_transport": "auto"
+      }
+    },
+    {
+      "tool": "new_page",
+      "arguments": {
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}",
+        "url": "{{url}}",
+        "ownership_policy": "tmwd_only",
+        "reuse_scope": "origin_path"
+      }
+    },
+    {
+      "tool": "analyze_target",
+      "arguments": {
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}",
+        "keywords": "{{keywords}}"
+      }
+    },
+    {
+      "tool": "list_frames",
+      "arguments": {
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}"
+      }
+    },
+    {
+      "tool": "record_reverse_evidence",
+      "arguments": {
+        "task_id": "{{task_id}}",
+        "channel": "template",
+        "evidence": {
+          "source": "manual",
+          "confidence": "partial",
+          "title": "{{title}} evidence marker",
+          "data": {
+            "keywords": "{{keywords}}"
+          }
+        }
+      }
+    },
+    {
+      "tool": "finalize_task",
+      "arguments": {
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}"
+      }
+    }
+  ],
+  "verification": [
+    "npm run check:js-reverse-mcp",
+    "npm run check:task-templates",
+    "npm run check:regression-matrix"
+  ]
+}

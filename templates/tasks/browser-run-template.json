@@ -1,0 +1,74 @@
+{
+  "schema_version": "tmwd.task_template.v1",
+  "id": "browser-run",
+  "title": "Structured browser run",
+  "description": "Default task skeleton for TMWD-owned browser work with run lifecycle, transport health, wait, background job, and finalizer steps.",
+  "inputs": {
+    "workspace_key": "{{workspace_key}}",
+    "task_id": "{{task_id}}",
+    "url": "{{url}}",
+    "wait_selector": "{{wait_selector}}"
+  },
+  "steps": [
+    {
+      "tool": "browser_run_ops",
+      "arguments": {
+        "action": "prepare",
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}",
+        "title": "{{title}}"
+      }
+    },
+    {
+      "tool": "browser_transport_health",
+      "arguments": {
+        "tmwd_transport": "auto",
+        "timeout_ms": 1500
+      }
+    },
+    {
+      "tool": "browser_tab_lifecycle",
+      "arguments": {
+        "action": "select_or_create",
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}",
+        "url": "{{url}}",
+        "ownership_policy": "tmwd_only",
+        "reuse_scope": "origin_path"
+      }
+    },
+    {
+      "tool": "browser_wait",
+      "arguments": {
+        "type": "selector",
+        "selector": "{{wait_selector}}",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "tool": "browser_job_ops",
+      "arguments": {
+        "action": "start",
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}",
+        "title": "{{title}} background probe",
+        "code": "return { url: location.href, title: document.title };",
+        "output_mode": "compact",
+        "max_return_chars": 4000
+      }
+    },
+    {
+      "tool": "browser_tab_lifecycle",
+      "arguments": {
+        "action": "finalize_task",
+        "workspace_key": "{{workspace_key}}",
+        "task_id": "{{task_id}}"
+      }
+    }
+  ],
+  "verification": [
+    "npm run check:mcp",
+    "npm run check:performance-smoke",
+    "npm run check:regression-matrix"
+  ]
+}
