@@ -30,7 +30,7 @@ async function executeTmwdJs(args, tmwdContext, code) {
         tabId: bridgeTabId,
         code: codePayload,
       },
-      Math.min(20_000, timeoutMs + 2_000),
+      Math.max(500, timeoutMs + 2_000),
     );
     const raw = response.success
       ? { ok: true, data: response.result, newTabs: response.newTabs }
@@ -67,7 +67,7 @@ async function executeTmwdJs(args, tmwdContext, code) {
       code,
       timeout: String(timeoutSecs),
     },
-    Math.min(20_000, timeoutMs + 2_000),
+    Math.max(500, timeoutMs + 2_000),
   );
   const raw = exec.value;
   if (raw && typeof raw === "object" && typeof raw.error === "string" && raw.error.length > 0) {

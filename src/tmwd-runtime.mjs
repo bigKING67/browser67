@@ -11,4 +11,5 @@ export {
 export {
   resolvePreferredBrowserContext,
   resolveTmwdContext,
+  resolveTmwdContextWithTransport,
 } from "./tmwd-runtime/context.mjs";
