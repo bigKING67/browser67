@@ -59,6 +59,10 @@ function createGenericAgentFixture(kind) {
     const file = path.resolve(sourceDir, "disable_dialogs.js");
     writeFileSync(file, `${readFileSync(file, "utf8")}\n// fixture upstream dialog drift\n`);
   }
+  if (kind === "disable-dialogs-final-newline-only") {
+    const file = path.resolve(sourceDir, "disable_dialogs.js");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/\n$/, ""));
+  }
   if (kind === "background-missing-local-features") {
     writeFileSync(
       path.resolve(sourceDir, "background.js"),
@@ -125,6 +129,7 @@ function assertChangedFileClassifier() {
     assert.deepEqual(json.extension_diff.changed, ["disable_dialogs.js"]);
     assert.equal(json.safe_to_direct_sync, false);
     assert.equal(json.extension_review.recommended_merge_mode, "selective_cherry_pick");
+    assert.equal(json.extension_review.files[0].diff_kind, "content");
     assert.equal(json.extension_review.files[0].recommended_action, "selective_cherry_pick_after_behavior_review");
 
     const text = runAudit([
@@ -134,6 +139,37 @@ function assertChangedFileClassifier() {
     ]).stdout;
     assert.match(text, /extension_review merge_mode=selective_cherry_pick/);
     assert.match(text, /review disable_dialogs\.js: risk=medium action=selective_cherry_pick_after_behavior_review/);
+  } finally {
+    fixture.cleanup();
+  }
+}
+
+function assertFinalNewlineOnlyClassifier() {
+  const fixture = createGenericAgentFixture("disable-dialogs-final-newline-only");
+  try {
+    const { json } = runAudit([
+      "--source", fixture.sourceDir,
+      "--genericagent-root", fixture.root,
+      "--no-remote",
+      "--json",
+    ]);
+    assert.equal(json.ok, true);
+    assert.equal(json.extension_diff.ok, false);
+    assert.deepEqual(json.extension_diff.changed, ["disable_dialogs.js"]);
+    assert.equal(json.safe_to_direct_sync, true);
+    assert.equal(json.manual_review_required, false);
+    assert.equal(json.extension_review.recommended_merge_mode, "no_behavior_changes_keep_local");
+    assert.equal(json.extension_review.files[0].diff_kind, "final_newline_only");
+    assert.equal(json.extension_review.files[0].risk, "none");
+    assert.equal(json.extension_review.files[0].recommended_action, "keep_local_no_behavior_change");
+
+    const text = runAudit([
+      "--source", fixture.sourceDir,
+      "--genericagent-root", fixture.root,
+      "--no-remote",
+    ]).stdout;
+    assert.match(text, /extension_review merge_mode=no_behavior_changes_keep_local/);
+    assert.match(text, /review disable_dialogs\.js: risk=none action=keep_local_no_behavior_change diff_kind=final_newline_only/);
   } finally {
     fixture.cleanup();
   }
@@ -154,6 +190,7 @@ function assertMissingBridgeFeatureClassifier() {
     assert.equal(json.extension_review.files[0].file, "background.js");
     assert.equal(json.extension_review.files[0].risk, "high");
     assert.ok(json.extension_review.local_only_enhanced_features.includes("tabs_get"));
+    assert.ok(json.extension_review.local_only_enhanced_features.includes("numeric_tab_id_validation"));
     assert.ok(json.recommended_actions.some((action) => action.includes("Do not direct-sync")));
   } finally {
     fixture.cleanup();
@@ -201,6 +238,7 @@ function assertLatestTempLocalClone() {
 function main() {
   assertAlignedAudit();
   assertChangedFileClassifier();
+  assertFinalNewlineOnlyClassifier();
   assertMissingBridgeFeatureClassifier();
   assertMissingSourceFailsClosed();
   assertLatestTempLocalClone();
@@ -210,6 +248,7 @@ function main() {
     scenarios: [
       "aligned",
       "changed-file-classifier",
+      "final-newline-only-classifier",
       "missing-bridge-feature-classifier",
       "missing-source",
       "latest-temp-local-clone",

@@ -54,6 +54,26 @@ const ENHANCED_BRIDGE_FEATURES = [
     description: "batch tab commands use the same handleTabs capability surface",
     fragments: ["R.push(await handleTabs(c))"],
   },
+  {
+    id: "numeric_tab_id_validation",
+    description: "tabId inputs are normalized and rejected when not integer-like",
+    fragments: ["function normalizeNumericTabId(raw)", "function requireNumericTabId(raw)"],
+  },
+  {
+    id: "cookies_tabid_validation",
+    description: "cookie lookup validates tabId before chrome.tabs.get",
+    fragments: ["chrome.tabs.get(requireNumericTabId(msg.tabId))"],
+  },
+  {
+    id: "cdp_tabid_validation",
+    description: "CDP command path validates tabId before debugger attach",
+    fragments: ["normalizeNumericTabId(msg.tabId ?? sender.tab?.id)", "invalid or missing numeric tabId"],
+  },
+  {
+    id: "ws_exec_tabid_validation",
+    description: "WebSocket exec path validates tabId before script execution",
+    fragments: ["const tabId = normalizeNumericTabId(data.tabId)", "invalid or missing numeric tabId"],
+  },
 ];
 
 function parseArgs(argv) {
@@ -269,6 +289,25 @@ function readTextIfExists(path) {
   return existsSync(path) ? readFileSync(path, "utf8") : "";
 }
 
+function normalizeLineEndings(value) {
+  return String(value ?? "").replace(/\r\n/g, "\n");
+}
+
+function normalizeFinalNewline(value) {
+  const normalized = normalizeLineEndings(value);
+  return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
+}
+
+function classifyExtensionFileDiff(diff, file) {
+  const source = readTextIfExists(resolve(diff.source_dir, file));
+  const target = readTextIfExists(resolve(diff.target_dir, file));
+  if (source === target) return "exact";
+  if (normalizeLineEndings(source) === normalizeLineEndings(target)) return "line_ending_only";
+  if (normalizeFinalNewline(source) === normalizeFinalNewline(target)) return "final_newline_only";
+  if (source.replace(/\s+/g, "") === target.replace(/\s+/g, "")) return "whitespace_only";
+  return "content";
+}
+
 function featureMatrixFor(filePath) {
   const source = readTextIfExists(filePath);
   const features = {};
@@ -363,14 +402,40 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
   const sourceMissingLocalFeatures = localFeatures.ok === true && sourceFeatures.exists === true && sourceMissing.length > 0;
 
   for (const file of diff.changed ?? []) {
+    const diffKind = classifyExtensionFileDiff(diff, file);
+    if (diffKind === "final_newline_only" || diffKind === "line_ending_only") {
+      files.push({
+        file,
+        status: "changed",
+        diff_kind: diffKind,
+        risk: "none",
+        recommended_action: "keep_local_no_behavior_change",
+        preserve_features: [],
+        rationale: "only line-ending or final-newline formatting differs; keep local file to avoid noisy sync",
+      });
+      continue;
+    }
+    if (diffKind === "whitespace_only") {
+      files.push({
+        file,
+        status: "changed",
+        diff_kind: diffKind,
+        risk: "low",
+        recommended_action: "format_only_review_optional",
+        preserve_features: [],
+        rationale: "only whitespace differs; review only if formatting provenance matters",
+      });
+      continue;
+    }
     if (file === "background.js" && sourceMissingLocalFeatures) {
       files.push({
         file,
         status: "changed",
+        diff_kind: diffKind,
         risk: "high",
         recommended_action: "manual_merge_preserve_local_bridge_features",
         preserve_features: sourceMissing,
-        rationale: "source background.js is missing local enhanced bridge capabilities required by managed-tab lifecycle and JS reverse isolation",
+        rationale: "source background.js is missing local enhanced bridge capabilities required by managed-tab lifecycle, JS reverse isolation, and guarded tabId handling",
       });
       continue;
     }
@@ -378,6 +443,7 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
       files.push({
         file,
         status: "changed",
+        diff_kind: diffKind,
         risk: "medium",
         recommended_action: "manual_review_bridge_behavior",
         preserve_features: [],
@@ -389,6 +455,7 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
       files.push({
         file,
         status: "changed",
+        diff_kind: diffKind,
         risk: "medium",
         recommended_action: "selective_cherry_pick_after_behavior_review",
         preserve_features: [],
@@ -399,6 +466,7 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
     files.push({
       file,
       status: "changed",
+      diff_kind: diffKind,
       risk: "medium",
       recommended_action: "selective_cherry_pick_after_review",
       preserve_features: [],
@@ -431,6 +499,12 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
   let recommendedMergeMode = "no_extension_changes";
   if (sourceMissingLocalFeatures) {
     recommendedMergeMode = "manual_merge_preserve_local_bridge_features";
+  } else if (
+    diff.ok !== true
+    && files.length > 0
+    && files.every((file) => file.recommended_action === "keep_local_no_behavior_change")
+  ) {
+    recommendedMergeMode = "no_behavior_changes_keep_local";
   } else if (diff.ok !== true) {
     recommendedMergeMode = "selective_cherry_pick";
   }
@@ -445,7 +519,13 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
 
 function buildRecommendation({ diff, localFeatures, sourceFeatures, lockedCommit, localStatus, remote, extensionReview }) {
   const actions = [];
-  let safeToDirectSync = diff.ok === true;
+  const noBehaviorOnly = diff.ok !== true
+    && diff.added?.length === 0
+    && diff.removed?.length === 0
+    && Array.isArray(extensionReview?.files)
+    && extensionReview.files.length > 0
+    && extensionReview.files.every((file) => file.recommended_action === "keep_local_no_behavior_change");
+  let safeToDirectSync = diff.ok === true || noBehaviorOnly;
   let manualReviewRequired = false;
   if (diff.source_exists !== true) {
     safeToDirectSync = false;
@@ -453,8 +533,12 @@ function buildRecommendation({ diff, localFeatures, sourceFeatures, lockedCommit
     actions.push("Provide a GenericAgent checkout via --source or --genericagent-root before attempting extension review.");
   }
   if (!diff.ok) {
-    manualReviewRequired = true;
-    actions.push(`Review extension drift before syncing: changed=${diff.changed.length} added=${diff.added.length} removed=${diff.removed.length}.`);
+    if (noBehaviorOnly) {
+      actions.push(`Only non-behavioral extension formatting drift detected: changed=${diff.changed.length}; keep local files to avoid noisy sync.`);
+    } else {
+      manualReviewRequired = true;
+      actions.push(`Review extension drift before syncing: changed=${diff.changed.length} added=${diff.added.length} removed=${diff.removed.length}.`);
+    }
   }
   if (localFeatures.ok && sourceFeatures.exists && !sourceFeatures.ok) {
     safeToDirectSync = false;
@@ -585,7 +669,8 @@ function outputText(audit) {
     process.stdout.write(`source_missing_enhanced_features=${audit.source_extension_features.missing.join(",")}\n`);
   }
   for (const item of audit.extension_review.files) {
-    process.stdout.write(`review ${item.file}: risk=${item.risk} action=${item.recommended_action}\n`);
+    const diffKind = item.diff_kind ? ` diff_kind=${item.diff_kind}` : "";
+    process.stdout.write(`review ${item.file}: risk=${item.risk} action=${item.recommended_action}${diffKind}\n`);
   }
   process.stdout.write("recommended_actions:\n");
   for (const action of audit.recommended_actions) {

@@ -519,10 +519,12 @@ Use `npm run upstream:audit:latest` to audit a temporary latest upstream
 checkout without changing local files. If either command reports
 `safe_to_direct_sync:false`, do not run a blind `extension:sync`; manually
 cherry-pick useful upstream changes and preserve local bridge features such as
-`handleTabs`, `tabs.get`, `tabs.close`, and `includeUnscriptable`.
+`handleTabs`, `tabs.get`, `tabs.close`, `includeUnscriptable`, and guarded
+numeric `tabId` validation. The classifier also separates no-behavior
+formatting drift such as final-newline-only changes from real behavior changes.
 `npm run check:upstream-audit` exercises deterministic fixture scenarios for
-aligned sources, changed files, missing local bridge features, missing source,
-and latest-temp local clones.
+aligned sources, changed files, final-newline-only drift, missing local bridge
+features, missing source, and latest-temp local clones.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,

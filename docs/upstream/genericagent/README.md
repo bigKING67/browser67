@@ -49,4 +49,6 @@ npm run upstream:audit -- --source /path/to/GenericAgent/assets/tmwd_cdp_bridge 
 `recommended_action` rows. Treat `manual_merge_preserve_local_bridge_features`
 as a hard stop for blind sync: merge only the useful upstream hunks and preserve
 local bridge capabilities such as `handleTabs`, `tabs.get`, `tabs.close`, and
-`includeUnscriptable`.
+`includeUnscriptable`, plus guarded numeric `tabId` validation on cookies, CDP,
+batch, and WebSocket exec paths. Formatting-only differences such as final
+newline changes are reported as `keep_local_no_behavior_change`.

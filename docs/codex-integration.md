@@ -485,8 +485,11 @@ no-write temporary latest upstream checkout instead of the potentially stale
 sibling checkout. If the audit reports `safe_to_direct_sync:false`, do not run a
 blind `extension:sync`; manually cherry-pick useful upstream changes and
 preserve local enhanced bridge features such as `handleTabs`, `tabs.get`,
-`tabs.close`, and `includeUnscriptable`. `npm run check:upstream-audit` covers
-the deterministic fixture contract for these decisions.
+`tabs.close`, `includeUnscriptable`, and guarded numeric `tabId` validation.
+The classifier reports `diff_kind` so final-newline-only or line-ending-only
+drift can be kept local instead of producing noisy sync commits.
+`npm run check:upstream-audit` covers the deterministic fixture contract for
+these decisions.
 
 After extension source changes, run `npm run setup`, reload the unpacked
 extension from `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/`, then refresh old
