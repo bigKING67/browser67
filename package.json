@@ -42,6 +42,7 @@
     "extension:check": "node scripts/sync-genericagent-extension.mjs --check",
     "upstream:lock": "node scripts/upstream-lock.mjs --write",
     "upstream:check": "node scripts/upstream-lock.mjs --check",
+    "upstream:audit": "node scripts/upstream-audit.mjs",
     "skills:check": "node scripts/check-js-reverse-sync.mjs",
     "tasks:templates": "node scripts/task-template.mjs list --json",
     "check:syntax": "node scripts/syntax-check.mjs",

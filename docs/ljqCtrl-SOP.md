@@ -51,6 +51,22 @@ TMWD_LJQCTRL_REQUIRE_EXECUTE=1 npm run check:ljqctrl
 `TMWD_LJQCTRL_EXECUTE=1` 只开启 guarded bridge 的能力判定；实际 CAPTCHA
 assist 仍要求 `confirm_physical_input:true` 和坐标确认参数。
 
+### 1.2 上游 GenericAgent macOS reference
+
+本项目已吸收 GenericAgent 最新 macOS 控制经验作为隔离 reference：
+
+```text
+docs/upstream/genericagent/macljqCtrl.py
+docs/upstream/genericagent/ljqCtrl-notes.md
+```
+
+这些文件来自 `lsdefine/GenericAgent@c25ea7c15c4b3f217318a1d86a7ee097dfbb5085`
+的 `memory/macljqCtrl.py` 等材料。它们当前不是默认生产 provider；macOS 默认仍
+走 `native-os` provider (`osascript` + `cliclick`)。`npm run check:ljqctrl -- --json`
+会在 macOS 上输出 `macljqctrl` 诊断，检查 `Quartz`、`AppKit`、
+`ApplicationServices`、`PIL`、`cv2`、`numpy` 等可选依赖是否存在，但不会点击、
+激活窗口或截图。
+
 ## 2. 核心：High-DPI 物理坐标换算
 `ljqCtrl` 的 `Click/MoveTo` 接口接收的是**物理像素坐标**。
 当使用 `pygetwindow` 等其他工具获取窗口位置（逻辑坐标）时，必须除以缩放系数。
@@ -73,4 +89,18 @@ ljqCtrl.Click(ox + (bbox[0]+bbox[2])//2, oy + (bbox[1]+bbox[3])//2)
 - **坐标对齐**: 物理坐标 = 截图坐标；ljqCtrl 自动处理 DPI 换算，禁止手动重复计算。
 - **⚠️ 窗口坐标转换陷阱**：使用 `win32gui.GetWindowRect(hwnd)` 获取的矩形包含标题栏和边框，而截图内容是客户区。点击截图内元素时，必须用 `win32gui.ClientToScreen(hwnd, (0, 0))` 获取客户区原点的屏幕坐标，再加上截图内坐标。禁止直接用 GetWindowRect 左上角 + 截图坐标。
 - **⚠️ win32 DPI 坐标陷阱**：未调用 `SetProcessDPIAware()` 时，`GetWindowRect/ClientToScreen/GetClientRect` 等拿到的窗口/客户区坐标通常是**逻辑坐标**，必须进行换算！
+- **FindBlock score 要保留**：上游新版 `FindBlock` 会暴露 raw `max_val`
+  分数。若未来把视觉模板匹配提升为本地 provider 坐标来源，provider result
+  必须保留 score / threshold / bbox，不要只返回 bool。
+- **Click 后像素变化≈0 要停**：上游新版 click-check 会比较点击前后小区域像素。
+  如果变化接近 0，优先判断坐标转换错误、窗口未激活或点到错误区域，禁止盲目重试。
+- **macOS 裁剪图坐标转换**：`screencapture -R` 接收逻辑点，但截图结果是物理像素。
+  当检测点来自 `GrabScreen(bbox)` 的裁剪图内部坐标时，用
+  `CropToScreen(bbox, x, y)` 转成屏幕绝对物理坐标，本质是加上裁剪原点，不要再次
+  乘/除 `dpi_scale`。
+- **macOS AX 优先用于普通 UI 控件**：`AXElements` / `AXFind` / `AXPress`
+  可避免坐标点击，适合桌面 app 普通按钮/菜单；AX element 会随窗口重建失效，操作前应
+  重新枚举。当前本项目只把它作为 reference/diagnostic，不默认执行。
+- **CAPTCHA 边界不变**：即使未来启用 AX/视觉 provider，也不能默认用 AX 或 JS/CDP
+  点击验证码控件。验证码仍必须走 TMWD-owned tab、bounded region、显式确认和物理输入。
 - **文本输入**：ljqCtrl 无 TypeText/SendKeys。向输入框键入文本：先点击/三击选中字段，再 `pyperclip.copy('文本'); ljqCtrl.Press('ctrl+v')`。

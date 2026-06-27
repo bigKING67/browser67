@@ -17,6 +17,15 @@ const DEFAULT_PYTHON_CANDIDATES = process.platform === "win32" ? ["py", "python"
 const LJQ_BRIDGE_TIMEOUT_MS = 5_000;
 const CAPTURE_DIR = path.join(tmpdir(), "tmwd-physical-input-captures");
 const DEFAULT_CAPABILITY_CACHE_TTL_MS = 5_000;
+const MACLJQ_REFERENCE_SOURCE = "docs/upstream/genericagent/macljqCtrl.py";
+const MACLJQ_MODULES = [
+  "Quartz",
+  "AppKit",
+  "ApplicationServices",
+  "PIL",
+  "cv2",
+  "numpy",
+];
 let capabilityCache = null;
 
 function envEnabled(name) {
@@ -196,6 +205,75 @@ async function probeLjqCtrlApi(pythonBinary) {
   }
 }
 
+async function probeMacLjqCtrlReadiness(pythonProbe = {}) {
+  const base = {
+    platform: process.platform,
+    reference_source: MACLJQ_REFERENCE_SOURCE,
+    coordinate_model: "physical_screen_pixels_with_crop_origin",
+    optional_dependencies: [...MACLJQ_MODULES],
+    permissions: {
+      accessibility: "unknown_or_not_checked_by_default",
+      screen_recording: "unknown_or_not_checked_by_default",
+    },
+    execution_default: "disabled_reference_only",
+  };
+  if (process.platform !== "darwin") {
+    return {
+      ...base,
+      status: "not_applicable",
+      missing_dependencies: [],
+      available_dependencies: [],
+      reason: "macljqCtrl is a macOS reference path.",
+    };
+  }
+  const selected = pythonProbe.selected?.exists === true
+    ? pythonProbe.selected
+    : pythonProbe.rows?.find((row) => row.exists === true);
+  const pythonBinary = selected?.binary;
+  if (!pythonBinary) {
+    return {
+      ...base,
+      status: "not_configured",
+      python: undefined,
+      missing_dependencies: [...MACLJQ_MODULES],
+      available_dependencies: [],
+      reason: "no Python candidate available for macljqCtrl dependency diagnostics",
+    };
+  }
+  const script = [
+    "import importlib.util, json",
+    `mods = ${JSON.stringify(MACLJQ_MODULES)}`,
+    "available = {m: importlib.util.find_spec(m) is not None for m in mods}",
+    "print(json.dumps({'ok': True, 'available': available}))",
+  ].join("\n");
+  try {
+    const result = await runNativeCommand(pythonBinary, ["-c", script], { timeoutMs: LJQ_BRIDGE_TIMEOUT_MS });
+    const parsed = parseJsonFromCommandOutput(result.stdout);
+    const availableMap = parsed?.available && typeof parsed.available === "object" ? parsed.available : {};
+    const available = MACLJQ_MODULES.filter((name) => availableMap[name] === true);
+    const missing = MACLJQ_MODULES.filter((name) => availableMap[name] !== true);
+    return {
+      ...base,
+      status: missing.length === 0 ? "available_for_diagnostic" : "dependencies_missing",
+      python: pythonBinary,
+      available_dependencies: available,
+      missing_dependencies: missing,
+      reason: missing.length === 0
+        ? "all macljqCtrl reference dependencies appear importable"
+        : "install optional pyobjc/Pillow/opencv/numpy dependencies only when intentionally validating macljqCtrl",
+    };
+  } catch (error) {
+    return {
+      ...base,
+      status: "probe_failed",
+      python: pythonBinary,
+      missing_dependencies: [...MACLJQ_MODULES],
+      available_dependencies: [],
+      reason: compactReason(error?.message ?? error),
+    };
+  }
+}
+
 function supportedActionsFromProbe(probe = {}, executeEnabled = false) {
   if (!executeEnabled || probe.ok !== true) {
     return [];
@@ -261,6 +339,7 @@ async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
       summaries: [],
       selection_reason: "probe_disabled",
     };
+  const macLjqCtrlProbe = await probeMacLjqCtrlReadiness(pythonProbe);
   const python = pythonProbe.selected_binary;
   const apiProbe = probeEnabled
     ? (pythonProbe.selected?.probe ?? { ok: false, reason: "python_unavailable" })
@@ -303,6 +382,7 @@ async function getLjqCtrlPhysicalInputProviderCapabilities(options = {}) {
       python_candidates: pythonProbe.summaries,
       ljqctrl_importable: importable,
       ljqctrl_probe: apiProbe,
+      macljqctrl: macLjqCtrlProbe,
       execution_bridge_enabled: executeEnabled && importable,
     },
     cache: {

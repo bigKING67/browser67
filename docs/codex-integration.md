@@ -385,6 +385,7 @@ sites to use the generic profile directory above.
 - Run `npm run check:captcha-assist-physical-live` only for the optional local GUI gate. It is skipped by default and runs the physical slider drag plus checkbox click fixtures only when `TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set. Add `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when the local gate should fail instead of skip. Skipped/blocked paths explicitly report `physical_input_executed:false` and `pointer_moved:false` plus the exact `physical_gate_command`. The wrapper performs native pointer preflight before opening the GUI fixture or creating a managed tab; missing click/drag requirements return structured skipped/blocked output without foregrounding Chrome or attempting physical input. Native pointer actions must be genuinely available; run `npm run check:native-pointer` first for a no-input readiness check. On macOS, `cliclick` is treated as pointer-capable only when its diagnostic probe does not report missing Accessibility privileges for the current terminal/Codex host. A passing physical branch must report both the slider completion/visible movement (`slider_visual_offset` / `handle_transform`) and checkbox completion/inside-hotspot click before it writes a sanitized local CAPTCHA proof under `~/.tmwd-browser-mcp/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that write or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail if proof persistence fails.
 - Run `npm run check:native-pointer` after native provider or local OS permission changes. It is diagnostic-only by default, does not move the mouse, and reports whether the current provider supports `click` and `drag`; add `-- --require-pointer` only for a local hard gate. On macOS, when `cliclick` is installed but Accessibility permission is missing, its JSON/text output includes a `permission_recovery` plan with the System Settings path, a copyable `open` command, the verification command, and the explicit physical CAPTCHA gate command to run after readiness passes.
 - Run `npm run check:ljqctrl` after `ljq-ctrl` provider changes. It is a diagnostic-only default gate and exits successfully when the local driver is not configured; use `TMWD_LJQCTRL_REQUIRE=1`, `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` for machine-local hard gates.
+- GenericAgent's newer macOS `macljqCtrl` / AX implementation is imported only as reference material under `docs/upstream/genericagent/`. On macOS, `check:ljqctrl -- --json` reports a `macljqctrl` informational diagnostic for `Quartz`, `AppKit`, `ApplicationServices`, `PIL`, `cv2`, and `numpy`, plus the physical-pixel `CropToScreen` coordinate model. This does not promote AX, screenshots, clicks, or window activation into the default path; `native-os` remains the default macOS provider unless a future guarded provider is explicitly enabled.
 - Run `npm run check:readiness` for the near-100 governance score. Its `ljqCtrl` row is platform-aware and uses the same diagnostic-only Python capability probe as `check:ljqctrl`; it distinguishes non-Windows not-applicable defaults, Windows/default not-configured, invalid configured interpreter, importable-but-execution-gated, and execution-bridge-available states without clicking, dragging, activating windows, capturing screenshots, reading cookies, or touching clipboard. It also reports an informational native pointer row when the OS provider lacks click/drag capability or required permissions, and the local CAPTCHA physical-proof row separately distinguishes native pointer blocked, not executed, and proof-missing states. When macOS Accessibility blocks `cliclick`, the affected readiness JSON gaps include the same structured `permission_recovery` plan as `check:native-pointer`, so callers can show the Settings path and copyable recovery commands directly. Optional proof gaps also include a compact `proof_plan` with the plan command, proof directory, and missing proof ids.
 - Run `npm run check:optional-live-proofs` when collecting near-100 optional evidence from the local CAPTCHA physical gate, Linux/Windows native-input hosts, or approved external OAuth/SSO/MFA providers. Proof files live outside the repo by default under `~/.tmwd-browser-mcp/optional-live-proofs`, must be sanitized, and are documented in `docs/optional-live-proofs.md`. Use `npm run plan:optional-live-proofs` for a no-input, no-browser proof collection runbook with per-proof status, accepted proof freshness, host/provider requirements, blockers, `next_command`, `collection_steps`, commands, and evidence fields. Use `npm run proof:optional-live-status` for an operator-facing accepted/missing checklist with owner, next command, record/write/replace commands, validation command, and the no-fabricated-proof completion policy. Use `npm run proof:optional-live-template` to generate safe `ok:false` starter templates instead of hand-writing proof JSON; after a real host/provider gate produces sanitized JSON, use `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` for dry-run validation and redaction checklist output. The record validator rejects obvious Bearer/JWT/cookie-like values and unredacted IdP tenant/account/provider identifiers. Add `--write` only to persist canonical proof repo-externally, and add `--replace` only for an intentional audited refresh of an existing proof.
 
@@ -463,17 +464,25 @@ remote-debugging CDP because it may be a separate profile.
 
 ## Maintenance checks
 
-When GenericAgent changes its TMWebDriver extension, resync this standalone
-project from the local upstream checkout:
+When GenericAgent changes its TMWebDriver extension, audit before resyncing this
+standalone project from the local upstream checkout:
 
 ```bash
 cd /path/to/browser67
+npm run upstream:audit
 npm run extension:sync
 npm run extension:check
 npm run upstream:lock
 npm run check
 npm run check:js-reverse-live
 ```
+
+`npm run upstream:audit` compares the locked GenericAgent commit, the local
+GenericAgent checkout, remote `main`, and the extension bridge feature matrix.
+If it reports `safe_to_direct_sync:false`, do not run a blind `extension:sync`;
+manually cherry-pick useful upstream changes and preserve local enhanced bridge
+features such as `handleTabs`, `tabs.get`, `tabs.close`, and
+`includeUnscriptable`.
 
 After extension source changes, run `npm run setup`, reload the unpacked
 extension from `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/`, then refresh old

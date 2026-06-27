@@ -365,6 +365,7 @@ npm run check:regression-matrix
 npm run check:change-set
 npm run plan:scoped-commits
 npm run check:readiness
+npm run upstream:audit
 npm run check
 npm run check:live:doctor
 npm run check:auth-live
@@ -431,7 +432,10 @@ and the physical CAPTCHA gate command to run only after pointer readiness passes
 available, but it does not activate windows, click, drag, capture screenshots,
 or access clipboard. Use `TMWD_LJQCTRL_REQUIRE=1`,
 `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` only for a
-machine-local hard gate.
+machine-local hard gate. On macOS it also reports an informational
+`macljqctrl` section for the upstream `macljqCtrl` reference dependencies and
+`CropToScreen` physical-coordinate model; this does not make AX or screenshot
+paths default execution providers.
 `check:captcha-router` validates the deterministic hybrid route contract:
 default protocol solving remains disabled, unknown/degraded challenges route to
 manual handoff, coordinate-only mode cannot select a protocol route, and
@@ -508,6 +512,13 @@ directory, and the missing proof ids, so callers can render the next collection
 command without recomputing the audit. It is read-only; use `--strict` when a
 local release gate should fail on optional gaps too.
 
+`npm run upstream:audit` is the safe entrypoint for GenericAgent absorption
+work. It compares `UPSTREAM.lock.json`, the local GenericAgent checkout, remote
+`main`, and the extension bridge feature matrix. If it reports
+`safe_to_direct_sync:false`, do not run a blind `extension:sync`; manually
+cherry-pick useful upstream changes and preserve local bridge features such as
+`handleTabs`, `tabs.get`, `tabs.close`, and `includeUnscriptable`.
+
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
 all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
@@ -530,13 +541,17 @@ Primary upstream references:
 - `lsdefine/GenericAgent/assets/tmwd_cdp_bridge/*`
 - `lsdefine/GenericAgent/memory/tmwebdriver_sop.md`
 - `lsdefine/GenericAgent/memory/ljqCtrl_sop.md`
+- `lsdefine/GenericAgent/memory/macljqCtrl.py`
 
-The `extension/` directory is intentionally sourced from the latest GenericAgent
-extension, including `tabs.create` and `contentSettings` bridge commands.
+The `extension/` directory is sourced from GenericAgent but is not blindly
+overwritten by the latest upstream checkout. This fork owns extra managed-tab
+bridge features used by TMWD lifecycle and JS reverse isolation; newer upstream
+changes must be audited and selectively absorbed.
 
 To check or resync against the local GenericAgent checkout:
 
 ```bash
+npm run upstream:audit
 npm run upstream:check
 npm run extension:check
 npm run extension:sync
@@ -551,6 +566,15 @@ Default upstream path:
 
 Use `node scripts/sync-genericagent-extension.mjs --source <path>` when your
 GenericAgent checkout lives somewhere else.
+
+Use `npm run upstream:audit -- --source <path>` when comparing against a fresh
+latest upstream checkout rather than the default sibling checkout.
+
+Audited reference code and notes from upstream live under:
+
+```text
+docs/upstream/genericagent/
+```
 
 `extension/config.js` is intentionally not committed. `npm run setup` writes an
 install-local `config.js` with a per-install TID into

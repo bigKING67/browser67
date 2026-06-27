@@ -123,7 +123,8 @@ function buildLjqCtrlEvidence(probe = {}) {
     `importable=${probe.ljqctrl_importable === true}`,
     `execution_bridge_enabled=${probe.execution_bridge_enabled === true}`,
     `candidates=${candidateText}${moreText}`,
-  ].join(" ");
+    probe.macljqctrl ? `macljqctrl_status=${probe.macljqctrl.status ?? "unknown"}` : "",
+  ].filter(Boolean).join(" ");
 }
 
 async function probeLjqCtrlReadiness() {
@@ -149,12 +150,44 @@ async function probeLjqCtrlReadiness() {
       supports_background_capture: capabilities.supports_background_capture === true,
       supported_actions: Array.isArray(capabilities.supported_actions) ? capabilities.supported_actions : [],
       requirements: Array.isArray(capabilities.requirements) ? capabilities.requirements : [],
+      macljqctrl: checks.macljqctrl ?? null,
     };
   } catch (error) {
     return {
       error: compactText(error instanceof Error ? error.message : String(error), 300),
     };
   }
+}
+
+function buildMacLjqCtrlGap(probe = {}) {
+  const mac = probe.macljqctrl;
+  if (!mac || mac.platform !== "darwin") {
+    return null;
+  }
+  const missing = Array.isArray(mac.missing_dependencies) ? mac.missing_dependencies : [];
+  const evidence = [
+    `status=${mac.status ?? "unknown"}`,
+    `python=${mac.python ?? "none"}`,
+    `missing=${missing.join(",") || "none"}`,
+    `reference=${mac.reference_source ?? "unknown"}`,
+    `coordinate_model=${mac.coordinate_model ?? "unknown"}`,
+  ].join(" ");
+  if (mac.status === "available_for_diagnostic") {
+    return createGap(
+      "macljqctrl_reference_available",
+      "informational",
+      0,
+      evidence,
+      "Keep macljqCtrl as an optional reference/diagnostic path unless a future guarded macOS AX provider is explicitly enabled.",
+    );
+  }
+  return createGap(
+    "macljqctrl_reference_not_configured",
+    "informational",
+    0,
+    evidence,
+    "Use native-os by default on macOS; install pyobjc/Pillow/opencv/numpy only if intentionally validating the upstream macljqCtrl reference.",
+  );
 }
 
 function buildLjqCtrlGap(probe = {}) {
@@ -377,6 +410,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "check:ljqctrl",
     "check:optional-live-proofs",
     "check:readiness",
+    "upstream:audit",
     "plan:optional-live-proofs",
     "proof:optional-live-status",
     "proof:optional-live-template",
@@ -418,6 +452,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:native-pointer",
         "check:ljqctrl",
         "check:optional-live-proofs",
+        "upstream:audit",
         "plan:optional-live-proofs",
         "proof:optional-live-status",
       ]),
@@ -446,6 +481,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run check:captcha-provider-jfbym-coordinate",
         "npm run check:native-pointer",
         "npm run check:ljqctrl",
+        "npm run upstream:audit",
         "npm run plan:optional-live-proofs",
         "npm run proof:optional-live-status",
         "npm run proof:optional-live-record",
@@ -496,6 +532,10 @@ async function buildOptionalGaps({ report }) {
 
   gaps.push(buildJfbymProviderGap(jfbymConfig));
   gaps.push(buildLjqCtrlGap(ljqCtrlProbe));
+  const macLjqCtrlGap = buildMacLjqCtrlGap(ljqCtrlProbe);
+  if (macLjqCtrlGap) {
+    gaps.push(macLjqCtrlGap);
+  }
   const nativePointerGap = buildNativePointerGap(nativeCapabilities, nativePointerReadiness);
   if (nativePointerGap) {
     gaps.push(nativePointerGap);

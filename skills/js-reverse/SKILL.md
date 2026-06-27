@@ -49,6 +49,7 @@ args = ["/path/to/browser67/src/js-reverse-server.mjs"]
 6. **TMWD-owned tabs only** — `new_page` 默认只复用 JS reverse/TMWD 自己创建的 managed tab；如果用户自己已经打开同一个页面，不接管该 tab，而是新开或复用 `workspace_key` 下的 TMWD-owned tab。任务结束默认对同一 `workspace_key`/`task_id` 执行 `finalize_task`，除非需要保留页面做证据复核。若 `new_page` 返回 `finalize_hint.required:true`，交付前按提示收尾。
 7. **Frame-aware first pass** — 遇到 iframe、微前端、验证码 widget、嵌入登录或跨域应用壳时，先用 `list_frames` 建 frame tree。same-origin frame 可继续递归观察；cross-origin frame 只信 element metadata / rect / sandbox / name / src 等 degraded 证据，不推断内部 DOM。
 8. **Structured evidence** — `record_reverse_evidence` 统一写入 `evidence.v1` 结构；每条证据标注 source、confidence、request/script/artifact 关联，便于 run artifact、报告和 handoff 复用。
+9. **Native fallback is last-mile evidence** — anti-bot / `isTrusted` 问题先用 Observe/Hook/Network 证明边界；物理输入只作为 TMWD native fallback 的最后一跳执行能力。GenericAgent 的 `ljqCtrl` / `macljqCtrl` / AX 路径只作为 audited reference 和 diagnostic，不替代默认 JS reverse 观察、取证、补环境链路。
 
 ---
 
@@ -228,12 +229,17 @@ JSReverser-MCP 用自管 Puppeteer Chrome 或 remote-debugging CDP；`tmwd-brows
 
 ### screen_ocr — 验证码识别
 目标流程需过验证码时：
-1. 截图验证码区域
+1. 只截取验证码的 bounded region，不做全屏截图
 2. `screenshot_ocr()` 简单验证码 / `vision_llm_ocr()` 复杂验证码（GPT-5.4 vision）
-3. 注入识别结果继续流程
+3. 注入识别结果继续流程；不要读取 cookie、token、sitekey 或无关账号数据
 
 ### ljqCtrl — 物理键鼠模拟
-某些反 bot 系统检查 `isTrusted` 属性，JS 注入的事件会被拒绝。ljqCtrl 发送 OS 级别真实键鼠事件（`isTrusted=true`）。注意先 `activate()` 目标窗口。
+某些 anti-bot 系统检查 `isTrusted` 属性，JS 注入的事件会被拒绝。此类场景先完成请求链路、脚本路径和 Hook 证据，再切到 TMWD native fallback 做物理输入规划：
+
+- 默认优先 `browser_auth_ops.plan_captcha_assist` / `assist_captcha` 或 `browser_native_input` 的受控路径，不直接把桌面控制塞进 JS reverse 主流程。
+- GenericAgent 的 Windows `ljqCtrl` 与 macOS `macljqCtrl` / AX 实现已作为 reference 放在 `docs/upstream/genericagent/`；`npm run check:ljqctrl -- --json` 会输出 `ljqctrl` 与 `macljqctrl` diagnostic。
+- macOS `macljqCtrl` 的 `CropToScreen` / AX 查找 / AX 点击仅供后续 provider 设计参考，当前默认 provider 仍是 `native-os`，执行默认关闭。
+- CAPTCHA 边界保持不变：只在 TMWD-owned managed tab 上、显式确认后做物理输入；不做全屏截图，不读 cookie/token/sitekey，不用 JS/CDP 点击 CAPTCHA widget。
 
 ### Playwright MCP — 自动化流程模拟
 需要同时逆向分析 + 自动化用户流程时，Playwright MCP 提供导航、表单、截图、DOM 操作。与 JSReverser-MCP 互补使用。

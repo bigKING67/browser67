@@ -79,6 +79,7 @@ function compactProvider(provider = {}) {
     unsupported_actions: Array.isArray(provider.unsupported_actions) ? provider.unsupported_actions : [],
     requirements: Array.isArray(provider.requirements) ? provider.requirements : [],
     checks: provider.checks ?? {},
+    macljqctrl: provider.checks?.macljqctrl ?? null,
     cache: provider.cache ?? {},
   };
 }
@@ -123,6 +124,7 @@ function summarize(args = {}, capabilities = {}) {
     supports_background_capture: compact.supports_background_capture,
     supported_actions: compact.supported_actions,
     unsupported_actions: compact.unsupported_actions,
+    macljqctrl: compact.macljqctrl,
     selected_action: args.action,
     selected_provider_id: capabilities.provider_selection?.selected_provider_id,
     provider_selection_reason: capabilities.provider_selection?.reason,

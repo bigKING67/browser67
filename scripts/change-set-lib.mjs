@@ -204,6 +204,26 @@ const GROUPS = [
     ],
   },
   {
+    id: "upstream_genericagent_governance",
+    title: "Govern GenericAgent upstream absorption",
+    description: "GenericAgent upstream audit tooling, provenance references, and selective absorption docs.",
+    commit_message: "Add GenericAgent upstream absorption governance",
+    verification: [
+      "npm run upstream:audit",
+      "npm run check:ljqctrl",
+      "npm run check:readiness",
+      "npm run check:change-set",
+    ],
+    risk_notes: [
+      "Upstream extension files must not overwrite local enhanced bridge features without manual review.",
+      "Reference code must stay isolated from production execution paths unless explicitly promoted behind gates.",
+    ],
+    patterns: [
+      /^scripts\/upstream-audit\.mjs$/,
+      /^docs\/upstream\/genericagent(?:\/|$)/,
+    ],
+  },
+  {
     id: "package_verify_scripts",
     title: "Add verification and change-set governance scripts",
     description: "Package scripts and repository verification orchestration.",

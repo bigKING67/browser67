@@ -53,6 +53,10 @@ See `docs/codex-integration.md` and `docs/agent-setup.md` for full config.
    and runtime samples are known.
 7. Use `record_reverse_evidence` for durable findings; evidence is normalized
    to `evidence.v1` so downstream run artifacts and reports can consume it.
+8. Treat anti-bot / `isTrusted` physical-input paths as last-mile TMWD native
+   fallback. GenericAgent `ljqCtrl` / `macljqCtrl` / AX code under
+   `docs/upstream/genericagent/` is reference and diagnostic material, not the
+   default JS reverse execution path.
 
 ## Standard workflow
 
@@ -160,6 +164,8 @@ managed-tab and evidence boundaries.
 - `docs/js-reverse/references/output-contract.md`: final output format.
 - `docs/js-reverse/references/task-artifacts.md`: artifact directory layout.
 - `docs/js-reverse/references/cases/`: reusable case templates.
+- `docs/upstream/genericagent/`: audited GenericAgent references for optional
+  physical-input provider design and upstream absorption notes.
 
 ## Verification
 
@@ -169,6 +175,7 @@ After editing js-reverse playbook material:
 npm run skills:check
 npm run check:js-reverse-mcp
 npm run check:task-templates
+npm run upstream:audit
 ```
 
 For a live local browser profile:
