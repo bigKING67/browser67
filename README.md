@@ -514,10 +514,15 @@ local release gate should fail on optional gaps too.
 
 `npm run upstream:audit` is the safe entrypoint for GenericAgent absorption
 work. It compares `UPSTREAM.lock.json`, the local GenericAgent checkout, remote
-`main`, and the extension bridge feature matrix. If it reports
+`main`, the extension bridge feature matrix, and a per-file merge classifier.
+Use `npm run upstream:audit:latest` to audit a temporary latest upstream
+checkout without changing local files. If either command reports
 `safe_to_direct_sync:false`, do not run a blind `extension:sync`; manually
 cherry-pick useful upstream changes and preserve local bridge features such as
 `handleTabs`, `tabs.get`, `tabs.close`, and `includeUnscriptable`.
+`npm run check:upstream-audit` exercises deterministic fixture scenarios for
+aligned sources, changed files, missing local bridge features, missing source,
+and latest-temp local clones.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
@@ -552,6 +557,7 @@ To check or resync against the local GenericAgent checkout:
 
 ```bash
 npm run upstream:audit
+npm run check:upstream-audit
 npm run upstream:check
 npm run extension:check
 npm run extension:sync
@@ -569,6 +575,15 @@ GenericAgent checkout lives somewhere else.
 
 Use `npm run upstream:audit -- --source <path>` when comparing against a fresh
 latest upstream checkout rather than the default sibling checkout.
+
+Use `npm run upstream:audit:latest` for a no-write temporary clone of upstream
+`main`; it prints `extension_review.recommended_merge_mode` and per-file
+`recommended_action` entries so future updates can be selectively absorbed.
+For local mirrors or tests, pass a different repo/ref:
+
+```bash
+npm run upstream:audit:latest -- --latest-repo /path/to/GenericAgent --latest-ref main --json
+```
 
 Audited reference code and notes from upstream live under:
 

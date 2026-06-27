@@ -40,5 +40,13 @@ Run the local audit entrypoint before future upstream absorption work:
 
 ```bash
 npm run upstream:audit
+npm run check:upstream-audit
+npm run upstream:audit:latest
 npm run upstream:audit -- --source /path/to/GenericAgent/assets/tmwd_cdp_bridge --json
 ```
+
+`upstream:audit` reports `extension_review.recommended_merge_mode` and per-file
+`recommended_action` rows. Treat `manual_merge_preserve_local_bridge_features`
+as a hard stop for blind sync: merge only the useful upstream hunks and preserve
+local bridge capabilities such as `handleTabs`, `tabs.get`, `tabs.close`, and
+`includeUnscriptable`.

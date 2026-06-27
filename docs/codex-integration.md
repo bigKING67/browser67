@@ -470,6 +470,7 @@ standalone project from the local upstream checkout:
 ```bash
 cd /path/to/browser67
 npm run upstream:audit
+npm run check:upstream-audit
 npm run extension:sync
 npm run extension:check
 npm run upstream:lock
@@ -478,11 +479,14 @@ npm run check:js-reverse-live
 ```
 
 `npm run upstream:audit` compares the locked GenericAgent commit, the local
-GenericAgent checkout, remote `main`, and the extension bridge feature matrix.
-If it reports `safe_to_direct_sync:false`, do not run a blind `extension:sync`;
-manually cherry-pick useful upstream changes and preserve local enhanced bridge
-features such as `handleTabs`, `tabs.get`, `tabs.close`, and
-`includeUnscriptable`.
+GenericAgent checkout, remote `main`, the extension bridge feature matrix, and
+a per-file merge classifier. Run `npm run upstream:audit:latest` when you need a
+no-write temporary latest upstream checkout instead of the potentially stale
+sibling checkout. If the audit reports `safe_to_direct_sync:false`, do not run a
+blind `extension:sync`; manually cherry-pick useful upstream changes and
+preserve local enhanced bridge features such as `handleTabs`, `tabs.get`,
+`tabs.close`, and `includeUnscriptable`. `npm run check:upstream-audit` covers
+the deterministic fixture contract for these decisions.
 
 After extension source changes, run `npm run setup`, reload the unpacked
 extension from `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/`, then refresh old

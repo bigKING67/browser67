@@ -36,6 +36,12 @@ const MATRIX = [
     covers: ["browser-task-template", "js-reverse-task-template"],
   },
   {
+    id: "upstream-audit",
+    command: "npm run check:upstream-audit",
+    tier: "required",
+    covers: ["genericagent-drift", "extension-merge-classifier", "latest-temp-audit"],
+  },
+  {
     id: "live-doctor",
     command: "npm run check:live:doctor",
     tier: "live",

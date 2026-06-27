@@ -210,6 +210,7 @@ const GROUPS = [
     commit_message: "Add GenericAgent upstream absorption governance",
     verification: [
       "npm run upstream:audit",
+      "npm run check:upstream-audit",
       "npm run check:ljqctrl",
       "npm run check:readiness",
       "npm run check:change-set",
@@ -220,6 +221,7 @@ const GROUPS = [
     ],
     patterns: [
       /^scripts\/upstream-audit\.mjs$/,
+      /^contracts\/upstream-audit-contract\.mjs$/,
       /^docs\/upstream\/genericagent(?:\/|$)/,
     ],
   },
