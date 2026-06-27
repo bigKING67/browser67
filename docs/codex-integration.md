@@ -488,6 +488,10 @@ preserve local enhanced bridge features such as `handleTabs`, `tabs.get`,
 `tabs.close`, `includeUnscriptable`, and guarded numeric `tabId` validation.
 The classifier reports `diff_kind` so final-newline-only or line-ending-only
 drift can be kept local instead of producing noisy sync commits.
+`UPSTREAM.review.json` records an audited remote-main decision separately from
+`UPSTREAM.lock.json`; when the remote commit matches the review ledger, the
+audit keeps `safe_to_direct_sync:false` for known local bridge drift but stops
+reporting that same reviewed commit as a new pending absorption item.
 `npm run check:upstream-audit` covers the deterministic fixture contract for
 these decisions.
 

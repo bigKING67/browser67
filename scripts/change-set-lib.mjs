@@ -220,6 +220,7 @@ const GROUPS = [
       "Reference code must stay isolated from production execution paths unless explicitly promoted behind gates.",
     ],
     patterns: [
+      /^UPSTREAM\.(?:lock|review)\.json$/,
       /^scripts\/upstream-audit\.mjs$/,
       /^contracts\/upstream-audit-contract\.mjs$/,
       /^docs\/upstream\/genericagent(?:\/|$)/,

@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "name": "lsdefine/GenericAgent",
+    "remote": "https://github.com/lsdefine/GenericAgent.git",
+    "reviewed_ref": "main",
+    "reviewed_commit": "c25ea7c15c4b3f217318a1d86a7ee097dfbb5085",
+    "reviewed_at": "2026-06-27",
+    "release_context": "desktop-portable-v0.1.4"
+  },
+  "decision": {
+    "extension_merge_mode": "manual_merge_preserve_local_bridge_features",
+    "direct_sync_allowed": false,
+    "local_extension_action": "keep_local_bridge_and_selectively_cherry_pick_future_useful_hunks",
+    "lock_action": "keep_UPSTREAM.lock.json_at_extension_sync_baseline_until_intentional_extension_sync",
+    "reason": "Latest upstream background.js lacks local managed-tab and guarded tabId bridge features required by tmwd-browser-mcp lifecycle and js-reverse isolation; disable_dialogs.js differs only by final newline."
+  },
+  "extension_review": {
+    "changed_files": [
+      "background.js",
+      "disable_dialogs.js"
+    ],
+    "background_preserve_features": [
+      "handle_tabs_dispatch",
+      "tabs_get",
+      "tabs_close",
+      "include_unscriptable",
+      "unsupported_tabs_method",
+      "batch_uses_handle_tabs",
+      "numeric_tab_id_validation",
+      "cookies_tabid_validation",
+      "cdp_tabid_validation",
+      "ws_exec_tabid_validation"
+    ],
+    "per_file_decision": [
+      {
+        "file": "background.js",
+        "action": "keep_local_bridge_features",
+        "risk": "high_if_blind_synced"
+      },
+      {
+        "file": "disable_dialogs.js",
+        "action": "keep_local_no_behavior_change",
+        "risk": "none_final_newline_only"
+      }
+    ]
+  },
+  "absorbed_reference": {
+    "paths": [
+      "docs/upstream/genericagent/macljqCtrl.py",
+      "docs/upstream/genericagent/ljqCtrl-notes.md",
+      "docs/upstream/genericagent/README.md"
+    ],
+    "notes": "GenericAgent macljqCtrl/AX and ljqCtrl DPI/click-check ideas are retained as audited reference and diagnostics, not default execution providers."
+  }
+}

@@ -522,9 +522,12 @@ cherry-pick useful upstream changes and preserve local bridge features such as
 `handleTabs`, `tabs.get`, `tabs.close`, `includeUnscriptable`, and guarded
 numeric `tabId` validation. The classifier also separates no-behavior
 formatting drift such as final-newline-only changes from real behavior changes.
+`UPSTREAM.review.json` records the latest manually reviewed upstream remote
+commit and the keep-local/selective-merge decision, so repeated audits can
+distinguish already-reviewed drift from a genuinely new upstream commit.
 `npm run check:upstream-audit` exercises deterministic fixture scenarios for
 aligned sources, changed files, final-newline-only drift, missing local bridge
-features, missing source, and latest-temp local clones.
+features, missing source, latest-temp local clones, and reviewed remote drift.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, local and latest-temp upstream provenance,
@@ -581,6 +584,9 @@ latest upstream checkout rather than the default sibling checkout.
 Use `npm run upstream:audit:latest` for a no-write temporary clone of upstream
 `main`; it prints `extension_review.recommended_merge_mode` and per-file
 `recommended_action` entries so future updates can be selectively absorbed.
+When remote `main` has already been reviewed, `UPSTREAM.review.json` suppresses
+the pending-review warning while still keeping `safe_to_direct_sync:false` for
+known keep-local bridge drift.
 For local mirrors or tests, pass a different repo/ref:
 
 ```bash
@@ -600,6 +606,9 @@ install-local `config.js` with a per-install TID into
 `UPSTREAM.lock.json` records the exact GenericAgent commit and extension file
 hashes used by this project. After intentionally updating GenericAgent and
 running `npm run extension:sync`, refresh the lock with `npm run upstream:lock`.
+`UPSTREAM.review.json` is separate: it records the latest audited upstream
+commit and decision even when the extension lock intentionally stays on the
+older sync baseline.
 
 ## User-level launchd service
 

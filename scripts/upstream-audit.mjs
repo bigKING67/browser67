@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const lockPath = resolve(repoRoot, "UPSTREAM.lock.json");
+const defaultReviewPath = resolve(repoRoot, "UPSTREAM.review.json");
 const defaultGenericAgentRoot = resolve(repoRoot, "..", "GenericAgent");
 const defaultSourceDir = resolve(defaultGenericAgentRoot, "assets", "tmwd_cdp_bridge");
 const defaultUpstreamRemote = "https://github.com/lsdefine/GenericAgent.git";
@@ -86,6 +87,7 @@ function parseArgs(argv) {
     latestKeep: false,
     latestRepo: null,
     latestRef: "main",
+    reviewFile: defaultReviewPath,
     sourceExplicit: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -147,6 +149,15 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (token === "--review-file") {
+      const value = String(argv[index + 1] ?? "").trim();
+      if (!value || value.startsWith("--")) {
+        throw new Error("missing --review-file value");
+      }
+      parsed.reviewFile = resolve(value);
+      index += 1;
+      continue;
+    }
     if (token === "--help" || token === "-h") {
       parsed.help = true;
       continue;
@@ -181,6 +192,7 @@ function usage() {
     "Audits GenericAgent upstream drift without modifying files.",
     "--no-remote skips git ls-remote and reports only local checkout state.",
     "--latest-temp clones the latest upstream checkout to a temp dir, audits it, then removes it unless --latest-keep is set.",
+    "--review-file reads an audited remote-review ledger; defaults to UPSTREAM.review.json.",
   ].join("\n");
 }
 
@@ -247,6 +259,33 @@ function safeReadJson(path) {
       error: compactText(error?.message ?? error),
     };
   }
+}
+
+function safeReadJsonOptional(path) {
+  if (!existsSync(path)) {
+    return {
+      exists: false,
+      path,
+      value: null,
+      error: null,
+    };
+  }
+  const value = safeReadJson(path);
+  return {
+    exists: true,
+    path,
+    value: value?.error ? null : value,
+    error: value?.error ?? null,
+  };
+}
+
+function sortedStrings(value) {
+  return Array.isArray(value) ? value.map((item) => String(item)).sort() : [];
+}
+
+function arraysEqual(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => item === right[index]);
 }
 
 function compareExtension(sourceDir) {
@@ -517,7 +556,67 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
   };
 }
 
-function buildRecommendation({ diff, localFeatures, sourceFeatures, lockedCommit, localStatus, remote, extensionReview }) {
+function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, extensionReview, sourceCheckoutMatchesRemoteMain }) {
+  const record = review?.value ?? null;
+  const reviewedCommit = record?.upstream?.reviewed_commit ?? record?.upstream?.commit ?? null;
+  const reviewedRemote = record?.upstream?.remote ?? null;
+  const reviewedAt = record?.upstream?.reviewed_at ?? null;
+  const decision = record?.decision ?? null;
+  const reviewedMergeMode = decision?.extension_merge_mode
+    ?? record?.extension_review?.recommended_merge_mode
+    ?? null;
+  const reviewedChangedFiles = sortedStrings(
+    record?.extension_review?.changed_files
+      ?? record?.extension_review?.changed
+      ?? record?.extension_review?.files,
+  );
+  const currentChangedFiles = sortedStrings((extensionReview?.files ?? []).map((item) => item.file));
+  const remoteMainReviewed = remote.ok === true
+    && Boolean(remote.commit)
+    && Boolean(reviewedCommit)
+    && remote.commit === reviewedCommit;
+  const currentExtensionReviewMatchesDecision = remoteMainReviewed === true
+    && sourceCheckoutMatchesRemoteMain === true
+    && reviewedMergeMode === extensionReview?.recommended_merge_mode
+    && (reviewedChangedFiles.length === 0 || arraysEqual(reviewedChangedFiles, currentChangedFiles));
+
+  return {
+    exists: review?.exists === true,
+    path: reviewFile,
+    ok: review?.exists === true && review?.error === null,
+    error: review?.error ?? null,
+    reviewed_commit: reviewedCommit,
+    reviewed_remote: reviewedRemote,
+    reviewed_at: reviewedAt,
+    decision: decision
+      ? {
+          extension_merge_mode: reviewedMergeMode,
+          direct_sync_allowed: decision.direct_sync_allowed === true,
+          local_extension_action: decision.local_extension_action ?? null,
+        }
+      : null,
+    remote_main_reviewed: remoteMainReviewed,
+    current_extension_review_matches_decision: currentExtensionReviewMatchesDecision,
+    pending_remote_review: remote.ok === true
+      && Boolean(lockedCommit)
+      && remote.commit !== lockedCommit
+      && remoteMainReviewed !== true,
+    reviewed_changed_files: reviewedChangedFiles,
+    current_changed_files: currentChangedFiles,
+  };
+}
+
+function buildRecommendation({
+  diff,
+  localFeatures,
+  sourceFeatures,
+  lockedCommit,
+  localStatus,
+  remote,
+  extensionReview,
+  upstreamReview,
+  latestCheckout,
+}) {
   const actions = [];
   const noBehaviorOnly = diff.ok !== true
     && diff.added?.length === 0
@@ -525,6 +624,7 @@ function buildRecommendation({ diff, localFeatures, sourceFeatures, lockedCommit
     && Array.isArray(extensionReview?.files)
     && extensionReview.files.length > 0
     && extensionReview.files.every((file) => file.recommended_action === "keep_local_no_behavior_change");
+  const reviewedCurrentDrift = upstreamReview?.current_extension_review_matches_decision === true;
   let safeToDirectSync = diff.ok === true || noBehaviorOnly;
   let manualReviewRequired = false;
   if (diff.source_exists !== true) {
@@ -535,6 +635,8 @@ function buildRecommendation({ diff, localFeatures, sourceFeatures, lockedCommit
   if (!diff.ok) {
     if (noBehaviorOnly) {
       actions.push(`Only non-behavioral extension formatting drift detected: changed=${diff.changed.length}; keep local files to avoid noisy sync.`);
+    } else if (reviewedCurrentDrift) {
+      actions.push(`Extension drift for reviewed upstream ${upstreamReview.reviewed_commit} matches UPSTREAM.review.json; keep local bridge and do not blind-sync.`);
     } else {
       manualReviewRequired = true;
       actions.push(`Review extension drift before syncing: changed=${diff.changed.length} added=${diff.added.length} removed=${diff.removed.length}.`);
@@ -542,19 +644,35 @@ function buildRecommendation({ diff, localFeatures, sourceFeatures, lockedCommit
   }
   if (localFeatures.ok && sourceFeatures.exists && !sourceFeatures.ok) {
     safeToDirectSync = false;
-    manualReviewRequired = true;
-    actions.push(`Do not direct-sync: upstream source is missing local enhanced bridge features (${sourceFeatures.missing.join(", ")}).`);
+    if (reviewedCurrentDrift) {
+      actions.push(`Direct sync remains disabled because reviewed upstream lacks local enhanced bridge features (${sourceFeatures.missing.join(", ")}).`);
+    } else {
+      manualReviewRequired = true;
+      actions.push(`Do not direct-sync: upstream source is missing local enhanced bridge features (${sourceFeatures.missing.join(", ")}).`);
+    }
   }
   if (extensionReview?.recommended_merge_mode === "manual_merge_preserve_local_bridge_features") {
-    actions.push("Use extension_review.files to cherry-pick upstream changes while preserving local bridge capabilities.");
+    if (reviewedCurrentDrift) {
+      actions.push("UPSTREAM.review.json records the manual-merge decision; future useful hunks still require selective cherry-pick review.");
+    } else {
+      actions.push("Use extension_review.files to cherry-pick upstream changes while preserving local bridge capabilities.");
+    }
   }
   if (remote.ok && lockedCommit && remote.commit !== lockedCommit) {
-    manualReviewRequired = true;
-    actions.push(`Remote main differs from UPSTREAM.lock.json (${lockedCommit} -> ${remote.commit}); audit selective absorption before updating the lock.`);
+    if (upstreamReview?.remote_main_reviewed === true) {
+      actions.push(`Remote main differs from UPSTREAM.lock.json (${lockedCommit} -> ${remote.commit}) but matches UPSTREAM.review.json; keep the lock at the extension baseline until an intentional extension sync.`);
+    } else {
+      manualReviewRequired = true;
+      actions.push(`Remote main differs from UPSTREAM.lock.json (${lockedCommit} -> ${remote.commit}); audit selective absorption before updating the lock.`);
+    }
   }
   if (localStatus.ok && remote.ok && localStatus.head !== remote.commit) {
-    actions.push("Local GenericAgent checkout is not at remote main; use a fresh checkout or explicit --source for latest-source comparison.");
-    actions.push("Run npm run upstream:audit:latest for a no-write latest upstream comparison before deciding whether to update extension provenance.");
+    if (upstreamReview?.remote_main_reviewed === true && latestCheckout === null) {
+      actions.push("Local GenericAgent checkout is not at remote main; latest remote drift is already reviewed in UPSTREAM.review.json, but rerun npm run upstream:audit:latest after any new remote commit.");
+    } else {
+      actions.push("Local GenericAgent checkout is not at remote main; use a fresh checkout or explicit --source for latest-source comparison.");
+      actions.push("Run npm run upstream:audit:latest for a no-write latest upstream comparison before deciding whether to update extension provenance.");
+    }
   }
   if (actions.length === 0) {
     actions.push("No actionable upstream drift detected for the checked source.");
@@ -611,6 +729,7 @@ function materializeLatestCheckout(args, lock) {
 
 function buildAudit(args) {
   const lock = safeReadJson(lockPath);
+  const review = safeReadJsonOptional(args.reviewFile);
   const latest = materializeLatestCheckout(args, lock);
   const resolvedArgs = latest.args;
   try {
@@ -621,6 +740,17 @@ function buildAudit(args) {
     const localFeatures = featureMatrixFor(resolve(targetDir, "background.js"));
     const sourceFeatures = featureMatrixFor(resolve(resolvedArgs.sourceDir, "background.js"));
     const extensionReview = summarizeExtensionReview(diff, localFeatures, sourceFeatures);
+    const sourceCheckoutMatchesLockedCommit = Boolean(localStatus.head && lockedCommit && localStatus.head === lockedCommit);
+    const sourceCheckoutMatchesRemoteMain = Boolean(localStatus.head && remote.commit && localStatus.head === remote.commit);
+    const lockMatchesRemoteMain = Boolean(lockedCommit && remote.commit && lockedCommit === remote.commit);
+    const upstreamReview = summarizeUpstreamReview({
+      reviewFile: args.reviewFile,
+      review,
+      remote,
+      lockedCommit,
+      extensionReview,
+      sourceCheckoutMatchesRemoteMain,
+    });
     const recommendation = buildRecommendation({
       diff,
       localFeatures,
@@ -629,10 +759,9 @@ function buildAudit(args) {
       localStatus,
       remote,
       extensionReview,
+      upstreamReview,
+      latestCheckout: latest.latest_checkout,
     });
-    const sourceCheckoutMatchesLockedCommit = Boolean(localStatus.head && lockedCommit && localStatus.head === lockedCommit);
-    const sourceCheckoutMatchesRemoteMain = Boolean(localStatus.head && remote.commit && localStatus.head === remote.commit);
-    const lockMatchesRemoteMain = Boolean(lockedCommit && remote.commit && lockedCommit === remote.commit);
     return {
       ok: diff.source_exists === true,
       check: "genericagent-upstream-audit",
@@ -644,6 +773,7 @@ function buildAudit(args) {
       source_dir: resolvedArgs.sourceDir,
       extension_diff: diff,
       extension_review: extensionReview,
+      upstream_review: upstreamReview,
       local_extension_features: localFeatures,
       source_extension_features: sourceFeatures,
       checked_source: {
@@ -659,7 +789,10 @@ function buildAudit(args) {
       local_matches_locked_commit: sourceCheckoutMatchesLockedCommit,
       local_matches_remote_main: sourceCheckoutMatchesRemoteMain,
       lock_matches_remote_main: lockMatchesRemoteMain,
-      latest_review_recommended: remote.ok === true && lockMatchesRemoteMain !== true && latest.latest_checkout === null,
+      latest_review_recommended: remote.ok === true
+        && lockMatchesRemoteMain !== true
+        && latest.latest_checkout === null
+        && upstreamReview.remote_main_reviewed !== true,
       latest_review_command: "npm run upstream:audit:latest",
       safe_to_direct_sync: recommendation.safe_to_direct_sync,
       manual_review_required: recommendation.manual_review_required,
@@ -676,6 +809,9 @@ function outputText(audit) {
   process.stdout.write(`local_genericagent=${audit.local_genericagent.head ?? "unknown"} root=${audit.local_genericagent.root}\n`);
   process.stdout.write(`remote_main=${audit.remote_main.commit ?? "unknown"} remote=${audit.remote_main.remote ?? "unknown"}\n`);
   process.stdout.write(`checked_source matches_locked=${audit.source_checkout_matches_locked_commit} matches_remote_main=${audit.source_checkout_matches_remote_main} latest_temp=${audit.checked_source?.latest_temp === true}\n`);
+  if (audit.upstream_review?.exists === true) {
+    process.stdout.write(`upstream_review remote_main_reviewed=${audit.upstream_review.remote_main_reviewed} pending_remote_review=${audit.upstream_review.pending_remote_review} reviewed_commit=${audit.upstream_review.reviewed_commit ?? "unknown"}\n`);
+  }
   const diff = audit.extension_diff;
   process.stdout.write(`extension_diff ok=${diff.ok} changed=${diff.changed.length} added=${diff.added.length} removed=${diff.removed.length}\n`);
   process.stdout.write(`extension_review merge_mode=${audit.extension_review.recommended_merge_mode}\n`);

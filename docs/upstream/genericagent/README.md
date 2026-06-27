@@ -18,6 +18,10 @@ This directory keeps audited upstream material that is useful for strengthening
   without `npm run upstream:audit` and manual review. The local bridge currently
   owns stronger managed-tab capabilities such as `tabs.get`, `tabs.close`, and
   `includeUnscriptable`.
+- `UPSTREAM.review.json` records the latest manually reviewed upstream commit
+  and the decision to keep local bridge behavior while treating upstream
+  `macljqCtrl` / AX work as reference material. `UPSTREAM.lock.json` remains the
+  extension sync baseline until an intentional extension sync is performed.
 - macOS AX / `macljqCtrl` concepts may be promoted later as a guarded optional
   provider, but the default macOS physical-input provider remains `native-os`
   (`osascript` + `cliclick`).
@@ -55,3 +59,6 @@ newline changes are reported as `keep_local_no_behavior_change`. JSON output
 also includes `checked_source`, `source_checkout_matches_locked_commit`, and
 `source_checkout_matches_remote_main` so callers can tell whether the audit used
 the stale local checkout, an explicit source, or a latest-temp upstream clone.
+When the latest remote commit matches `UPSTREAM.review.json`, audit output also
+sets `upstream_review.remote_main_reviewed=true` and avoids treating the same
+reviewed drift as a new pending absorption item.

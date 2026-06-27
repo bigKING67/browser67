@@ -242,6 +242,49 @@ function assertLatestTempLocalClone() {
   }
 }
 
+function assertReviewedRemoteDrift() {
+  const fixture = createGenericAgentFixture("background-missing-local-features");
+  try {
+    const reviewedCommit = run("git", ["rev-parse", "HEAD"], fixture.root);
+    const reviewFile = path.resolve(fixture.root, "UPSTREAM.review.json");
+    writeFileSync(reviewFile, JSON.stringify({
+      schema_version: 1,
+      upstream: {
+        remote: fixture.root,
+        reviewed_ref: "main",
+        reviewed_commit: reviewedCommit,
+        reviewed_at: "2026-06-27",
+      },
+      decision: {
+        extension_merge_mode: "manual_merge_preserve_local_bridge_features",
+        direct_sync_allowed: false,
+        local_extension_action: "keep_local_bridge",
+      },
+      extension_review: {
+        changed_files: ["background.js"],
+      },
+    }, null, 2));
+
+    const { json } = runAudit([
+      "--latest-temp",
+      "--latest-repo", fixture.root,
+      "--latest-ref", "main",
+      "--review-file", reviewFile,
+      "--json",
+    ]);
+    assert.equal(json.ok, true);
+    assert.equal(json.safe_to_direct_sync, false);
+    assert.equal(json.manual_review_required, false);
+    assert.equal(json.latest_review_recommended, false);
+    assert.equal(json.upstream_review.remote_main_reviewed, true);
+    assert.equal(json.upstream_review.current_extension_review_matches_decision, true);
+    assert.equal(json.upstream_review.pending_remote_review, false);
+    assert.ok(json.recommended_actions.some((action) => action.includes("matches UPSTREAM.review.json")));
+  } finally {
+    fixture.cleanup();
+  }
+}
+
 function main() {
   assertAlignedAudit();
   assertChangedFileClassifier();
@@ -249,6 +292,7 @@ function main() {
   assertMissingBridgeFeatureClassifier();
   assertMissingSourceFailsClosed();
   assertLatestTempLocalClone();
+  assertReviewedRemoteDrift();
   process.stdout.write(JSON.stringify({
     ok: true,
     check: "upstream-audit-contract",
@@ -259,6 +303,7 @@ function main() {
       "missing-bridge-feature-classifier",
       "missing-source",
       "latest-temp-local-clone",
+      "reviewed-remote-drift",
     ],
   }));
   process.stdout.write("\n");
