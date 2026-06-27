@@ -67,19 +67,21 @@ function selectedRequirements(id) {
   return selected;
 }
 
-function summarizeItems(items) {
+function summarizeItems(items, auditSummary = {}) {
   const missing = items.filter((item) => item.satisfied !== true);
+  const rejectedCandidateCount = items.reduce((count, item) => (
+    count + (Array.isArray(item.candidates)
+      ? item.candidates.filter((candidate) => candidate.validation?.ok === false).length
+      : 0)
+  ), 0);
   return {
     required_count: items.length,
     satisfied_count: items.length - missing.length,
     missing_count: missing.length,
     local_missing_count: missing.filter((item) => item.type === "captcha_physical_live").length,
     external_missing_count: missing.filter((item) => item.type !== "captcha_physical_live").length,
-    invalid_file_count: items.reduce((count, item) => (
-      count + (Array.isArray(item.candidates)
-        ? item.candidates.filter((candidate) => candidate.validation?.ok === false).length
-        : 0)
-    ), 0),
+    invalid_file_count: Number(auditSummary.invalid_file_count ?? 0),
+    rejected_candidate_count: rejectedCandidateCount,
   };
 }
 
@@ -309,7 +311,7 @@ async function buildOptionalLiveProofPlan(args = {}) {
     proofDir,
     nativePointer,
   }));
-  const summary = summarizeItems(items);
+  const summary = summarizeItems(items, audit.summary);
   return {
     ok: true,
     action: "optional-live-proof-plan",

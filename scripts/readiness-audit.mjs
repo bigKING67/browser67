@@ -455,11 +455,12 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:ljqctrl",
         "check:optional-live-proofs",
         "upstream:audit",
+        "upstream:audit:latest",
         "check:upstream-audit",
         "plan:optional-live-proofs",
         "proof:optional-live-status",
       ]),
-      "verify.mjs includes change-set, readiness, captcha assist, ljqctrl, optional live proof audit, planning, and status gates",
+      "verify.mjs includes change-set, readiness, latest upstream audit, captcha assist, ljqctrl, optional live proof audit, planning, and status gates",
     ),
     createCheck(
       "change_set_grouped",

@@ -554,6 +554,7 @@ function buildRecommendation({ diff, localFeatures, sourceFeatures, lockedCommit
   }
   if (localStatus.ok && remote.ok && localStatus.head !== remote.commit) {
     actions.push("Local GenericAgent checkout is not at remote main; use a fresh checkout or explicit --source for latest-source comparison.");
+    actions.push("Run npm run upstream:audit:latest for a no-write latest upstream comparison before deciding whether to update extension provenance.");
   }
   if (actions.length === 0) {
     actions.push("No actionable upstream drift detected for the checked source.");
@@ -629,6 +630,9 @@ function buildAudit(args) {
       remote,
       extensionReview,
     });
+    const sourceCheckoutMatchesLockedCommit = Boolean(localStatus.head && lockedCommit && localStatus.head === lockedCommit);
+    const sourceCheckoutMatchesRemoteMain = Boolean(localStatus.head && remote.commit && localStatus.head === remote.commit);
+    const lockMatchesRemoteMain = Boolean(lockedCommit && remote.commit && lockedCommit === remote.commit);
     return {
       ok: diff.source_exists === true,
       check: "genericagent-upstream-audit",
@@ -642,9 +646,21 @@ function buildAudit(args) {
       extension_review: extensionReview,
       local_extension_features: localFeatures,
       source_extension_features: sourceFeatures,
-      local_matches_locked_commit: Boolean(localStatus.head && lockedCommit && localStatus.head === lockedCommit),
-      local_matches_remote_main: Boolean(localStatus.head && remote.commit && localStatus.head === remote.commit),
-      lock_matches_remote_main: Boolean(lockedCommit && remote.commit && lockedCommit === remote.commit),
+      checked_source: {
+        root: resolvedArgs.genericAgentRoot,
+        source_dir: resolvedArgs.sourceDir,
+        explicit_source: resolvedArgs.sourceExplicit === true,
+        latest_temp: latest.latest_checkout !== null,
+        matches_locked_commit: sourceCheckoutMatchesLockedCommit,
+        matches_remote_main: sourceCheckoutMatchesRemoteMain,
+      },
+      source_checkout_matches_locked_commit: sourceCheckoutMatchesLockedCommit,
+      source_checkout_matches_remote_main: sourceCheckoutMatchesRemoteMain,
+      local_matches_locked_commit: sourceCheckoutMatchesLockedCommit,
+      local_matches_remote_main: sourceCheckoutMatchesRemoteMain,
+      lock_matches_remote_main: lockMatchesRemoteMain,
+      latest_review_recommended: remote.ok === true && lockMatchesRemoteMain !== true && latest.latest_checkout === null,
+      latest_review_command: "npm run upstream:audit:latest",
       safe_to_direct_sync: recommendation.safe_to_direct_sync,
       manual_review_required: recommendation.manual_review_required,
       recommended_actions: recommendation.actions,
@@ -659,6 +675,7 @@ function outputText(audit) {
   process.stdout.write(`locked_commit=${audit.locked_commit ?? "unknown"}\n`);
   process.stdout.write(`local_genericagent=${audit.local_genericagent.head ?? "unknown"} root=${audit.local_genericagent.root}\n`);
   process.stdout.write(`remote_main=${audit.remote_main.commit ?? "unknown"} remote=${audit.remote_main.remote ?? "unknown"}\n`);
+  process.stdout.write(`checked_source matches_locked=${audit.source_checkout_matches_locked_commit} matches_remote_main=${audit.source_checkout_matches_remote_main} latest_temp=${audit.checked_source?.latest_temp === true}\n`);
   const diff = audit.extension_diff;
   process.stdout.write(`extension_diff ok=${diff.ok} changed=${diff.changed.length} added=${diff.added.length} removed=${diff.removed.length}\n`);
   process.stdout.write(`extension_review merge_mode=${audit.extension_review.recommended_merge_mode}\n`);

@@ -156,12 +156,15 @@ For external IdP proofs, tenant, account, email, username, phone, domain,
 provider, client, org, and user identifiers must be represented only as redacted,
 anonymous, hashed, synthetic, fixture, or test-tenant/test-provider values.
 
-The audit reports invalid candidate files when a proof targets the right
-requirement but still fails validation, for example when a generated
-`*.template.json` file is present, when a placeholder command remains, when a
-proof is expired, when required click/drag actions are missing, or when evidence
-does not explicitly state the safe boundaries. A passing proof must be explicit
-about these invariants:
+The audit reports JSON parse failures as `invalid_file_count`. The plan/status
+commands separately report rejected proof candidates as `rejected_candidate_count`
+when a JSON proof targets the right requirement but still fails validation, for
+example when a generated `*.template.json` file is present, when a placeholder
+command remains, when a proof is expired, when required click/drag actions are
+missing, or when evidence does not explicitly state the safe boundaries.
+Rejected candidates remain visible for cleanup, but they do not block completion
+when every requirement already has a separate accepted proof. A passing proof
+must be explicit about these invariants:
 
 - Native proofs include both `click` and `drag` actions.
 - Native proofs set `evidence.managed_tab_only:true`.

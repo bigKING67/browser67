@@ -51,4 +51,7 @@ as a hard stop for blind sync: merge only the useful upstream hunks and preserve
 local bridge capabilities such as `handleTabs`, `tabs.get`, `tabs.close`, and
 `includeUnscriptable`, plus guarded numeric `tabId` validation on cookies, CDP,
 batch, and WebSocket exec paths. Formatting-only differences such as final
-newline changes are reported as `keep_local_no_behavior_change`.
+newline changes are reported as `keep_local_no_behavior_change`. JSON output
+also includes `checked_source`, `source_checkout_matches_locked_commit`, and
+`source_checkout_matches_remote_main` so callers can tell whether the audit used
+the stale local checkout, an explicit source, or a latest-temp upstream clone.

@@ -192,7 +192,7 @@ async function buildOptionalLiveProofStatus(args = {}) {
 
 function outputText(status) {
   process.stdout.write(
-    `optional_live_proof_status=${status.status} satisfied=${status.summary.satisfied_count}/${status.summary.required_count} missing=${status.summary.missing_count} proof_dir=${status.proof_dir}${status.filter?.id ? ` filter_id=${status.filter.id}` : ""}\n`,
+    `optional_live_proof_status=${status.status} satisfied=${status.summary.satisfied_count}/${status.summary.required_count} missing=${status.summary.missing_count} invalid_files=${status.summary.invalid_file_count} rejected_candidates=${status.summary.rejected_candidate_count} proof_dir=${status.proof_dir}${status.filter?.id ? ` filter_id=${status.filter.id}` : ""}\n`,
   );
   if (status.accepted.length > 0) {
     process.stdout.write("accepted:\n");

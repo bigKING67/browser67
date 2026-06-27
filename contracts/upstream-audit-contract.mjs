@@ -108,6 +108,11 @@ function assertAlignedAudit() {
     assert.equal(json.ok, true);
     assert.equal(json.extension_diff.ok, true);
     assert.equal(json.safe_to_direct_sync, true);
+    assert.equal(json.checked_source.matches_locked_commit, false);
+    assert.equal(json.checked_source.matches_remote_main, false);
+    assert.equal(json.checked_source.latest_temp, false);
+    assert.equal(json.source_checkout_matches_locked_commit, false);
+    assert.equal(json.source_checkout_matches_remote_main, false);
     assert.equal(json.extension_review.recommended_merge_mode, "no_extension_changes");
     assert.deepEqual(json.extension_review.files, []);
   } finally {
@@ -227,6 +232,8 @@ function assertLatestTempLocalClone() {
     ]);
     assert.equal(json.ok, true);
     assert.equal(json.latest_checkout.mode, "temp_clone");
+    assert.equal(json.checked_source.latest_temp, true);
+    assert.equal(json.source_checkout_matches_locked_commit, false);
     assert.equal(json.latest_checkout.cleanup, "removed_after_audit");
     assert.equal(json.extension_review.recommended_merge_mode, "manual_merge_preserve_local_bridge_features");
     assert.equal(existsSync(json.latest_checkout.root), false);

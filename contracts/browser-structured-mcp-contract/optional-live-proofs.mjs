@@ -277,6 +277,8 @@ async function assertOptionalLiveProofContract() {
 
     const plan = await buildOptionalLiveProofPlan({ proof_dir: tmpDir });
     assert.equal(plan.action, "optional-live-proof-plan");
+    assert.equal(plan.summary.invalid_file_count, 0);
+    assert.equal(plan.summary.rejected_candidate_count, 1);
     assert.equal(plan.safe_defaults.includes("This plan does not move the mouse."), true);
     assert.equal(plan.safe_defaults.includes("This plan does not read browser private state."), true);
     const captchaPlan = plan.items.find((item) => item.id === "captcha-assist-physical-local");
@@ -330,6 +332,8 @@ async function assertOptionalLiveProofContract() {
     const status = await buildOptionalLiveProofStatus({ proof_dir: tmpDir });
     assert.equal(status.action, "optional-live-proof-status");
     assert.equal(status.status, "needs_local_action");
+    assert.equal(status.summary.invalid_file_count, 0);
+    assert.equal(status.summary.rejected_candidate_count, 1);
     assert.equal(status.safe_defaults.includes("This status output does not execute any listed command."), true);
     assert.equal(status.accepted.some((item) => item.id === "native-live-win32"), true);
     assert.equal(status.checklist.some((item) => item.id === "native-live-linux"), true);

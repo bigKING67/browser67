@@ -527,8 +527,8 @@ aligned sources, changed files, final-newline-only drift, missing local bridge
 features, missing source, and latest-temp local clones.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
-GenericAgent extension alignment, upstream provenance, JS reverse docs/skill sync,
-all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
+GenericAgent extension alignment, local and latest-temp upstream provenance,
+JS reverse docs/skill sync, all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
 contracts, performance smoke, task-template validation, regression-matrix
 availability, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
