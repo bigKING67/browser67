@@ -288,6 +288,63 @@ function arraysEqual(left, right) {
   return left.every((item, index) => item === right[index]);
 }
 
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateReviewRecord(record) {
+  const errors = [];
+  if (!isRecord(record)) {
+    return ["review ledger root must be an object"];
+  }
+  if (record.schema_version !== 1) {
+    errors.push("schema_version must be 1");
+  }
+  if (!isRecord(record.upstream)) {
+    errors.push("upstream must be an object");
+  } else {
+    if (!/^[0-9a-f]{40}$/i.test(String(record.upstream.reviewed_commit ?? ""))) {
+      errors.push("upstream.reviewed_commit must be a 40 character hex commit");
+    }
+    if (typeof record.upstream.reviewed_at !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(record.upstream.reviewed_at)) {
+      errors.push("upstream.reviewed_at must use YYYY-MM-DD");
+    }
+  }
+  if (!isRecord(record.decision)) {
+    errors.push("decision must be an object");
+  } else {
+    const allowedMergeModes = new Set([
+      "manual_merge_preserve_local_bridge_features",
+      "no_extension_changes",
+      "no_behavior_changes_keep_local",
+      "selective_cherry_pick",
+    ]);
+    if (!allowedMergeModes.has(record.decision.extension_merge_mode)) {
+      errors.push("decision.extension_merge_mode is unsupported");
+    }
+    if (typeof record.decision.direct_sync_allowed !== "boolean") {
+      errors.push("decision.direct_sync_allowed must be boolean");
+    }
+    if (record.decision.direct_sync_allowed === false && !String(record.decision.reason ?? "").trim()) {
+      errors.push("decision.reason is required when direct_sync_allowed=false");
+    }
+  }
+  if (!isRecord(record.extension_review)) {
+    errors.push("extension_review must be an object");
+  } else {
+    if (!Array.isArray(record.extension_review.changed_files)) {
+      errors.push("extension_review.changed_files must be an array");
+    }
+    if (!Array.isArray(record.extension_review.background_preserve_features)) {
+      errors.push("extension_review.background_preserve_features must be an array");
+    }
+    if (!Array.isArray(record.extension_review.per_file_decision)) {
+      errors.push("extension_review.per_file_decision must be an array");
+    }
+  }
+  return errors;
+}
+
 function compareExtension(sourceDir) {
   if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) {
     return {
@@ -558,6 +615,12 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
 
 function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, extensionReview, sourceCheckoutMatchesRemoteMain }) {
   const record = review?.value ?? null;
+  const validationErrors = review?.exists !== true
+    ? []
+    : review?.error
+      ? [review.error]
+      : validateReviewRecord(record);
+  const reviewOk = review?.exists === true && validationErrors.length === 0;
   const reviewedCommit = record?.upstream?.reviewed_commit ?? record?.upstream?.commit ?? null;
   const reviewedRemote = record?.upstream?.remote ?? null;
   const reviewedAt = record?.upstream?.reviewed_at ?? null;
@@ -571,7 +634,8 @@ function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, ext
       ?? record?.extension_review?.files,
   );
   const currentChangedFiles = sortedStrings((extensionReview?.files ?? []).map((item) => item.file));
-  const remoteMainReviewed = remote.ok === true
+  const remoteMainReviewed = reviewOk === true
+    && remote.ok === true
     && Boolean(remote.commit)
     && Boolean(reviewedCommit)
     && remote.commit === reviewedCommit;
@@ -579,15 +643,48 @@ function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, ext
     && sourceCheckoutMatchesRemoteMain === true
     && reviewedMergeMode === extensionReview?.recommended_merge_mode
     && (reviewedChangedFiles.length === 0 || arraysEqual(reviewedChangedFiles, currentChangedFiles));
+  let status = "unknown_remote";
+  let stale = null;
+  let statusReason = "remote main was not checked";
+  if (review?.exists !== true) {
+    status = "missing";
+    stale = remote.ok === true && Boolean(lockedCommit) && remote.commit !== lockedCommit;
+    statusReason = review?.error ? "review ledger could not be read" : "review ledger is missing";
+  } else if (reviewOk !== true) {
+    status = "invalid";
+    stale = true;
+    statusReason = `review ledger is invalid: ${validationErrors.join("; ")}`;
+  } else if (remote.ok !== true) {
+    status = "unknown_remote";
+    stale = null;
+    statusReason = remote.skipped === true ? "remote check skipped" : (remote.error ?? "remote main unavailable");
+  } else if (remoteMainReviewed === true) {
+    status = "current";
+    stale = false;
+    statusReason = "remote main matches reviewed_commit";
+  } else {
+    status = "stale";
+    stale = true;
+    statusReason = "remote main differs from reviewed_commit";
+  }
+  const pendingRemoteReview = status === "stale"
+    || status === "invalid"
+    || (status === "missing" && stale === true);
 
   return {
     exists: review?.exists === true,
     path: reviewFile,
-    ok: review?.exists === true && review?.error === null,
+    ok: reviewOk,
     error: review?.error ?? null,
+    validation_errors: validationErrors,
+    status,
+    stale,
+    status_reason: statusReason,
+    next_command: "npm run upstream:audit:latest -- --json",
     reviewed_commit: reviewedCommit,
     reviewed_remote: reviewedRemote,
     reviewed_at: reviewedAt,
+    remote_main_commit: remote.commit ?? null,
     decision: decision
       ? {
           extension_merge_mode: reviewedMergeMode,
@@ -597,10 +694,7 @@ function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, ext
       : null,
     remote_main_reviewed: remoteMainReviewed,
     current_extension_review_matches_decision: currentExtensionReviewMatchesDecision,
-    pending_remote_review: remote.ok === true
-      && Boolean(lockedCommit)
-      && remote.commit !== lockedCommit
-      && remoteMainReviewed !== true,
+    pending_remote_review: pendingRemoteReview,
     reviewed_changed_files: reviewedChangedFiles,
     current_changed_files: currentChangedFiles,
   };
@@ -627,6 +721,16 @@ function buildRecommendation({
   const reviewedCurrentDrift = upstreamReview?.current_extension_review_matches_decision === true;
   let safeToDirectSync = diff.ok === true || noBehaviorOnly;
   let manualReviewRequired = false;
+  if (upstreamReview?.status === "stale") {
+    manualReviewRequired = true;
+    actions.push(`UPSTREAM.review.json is stale (${upstreamReview.reviewed_commit ?? "unknown"} -> ${upstreamReview.remote_main_commit ?? "unknown"}); run ${upstreamReview.next_command} and update the review ledger after manual absorption review.`);
+  } else if (upstreamReview?.status === "invalid") {
+    manualReviewRequired = true;
+    actions.push(`UPSTREAM.review.json is invalid (${(upstreamReview.validation_errors ?? []).join("; ")}); fix the ledger before relying on reviewed drift suppression.`);
+  } else if (upstreamReview?.status === "missing" && upstreamReview?.pending_remote_review === true) {
+    manualReviewRequired = true;
+    actions.push(`UPSTREAM.review.json is missing while remote main differs from UPSTREAM.lock.json; run ${upstreamReview.next_command} and record the manual review decision.`);
+  }
   if (diff.source_exists !== true) {
     safeToDirectSync = false;
     manualReviewRequired = true;
@@ -661,6 +765,8 @@ function buildRecommendation({
   if (remote.ok && lockedCommit && remote.commit !== lockedCommit) {
     if (upstreamReview?.remote_main_reviewed === true) {
       actions.push(`Remote main differs from UPSTREAM.lock.json (${lockedCommit} -> ${remote.commit}) but matches UPSTREAM.review.json; keep the lock at the extension baseline until an intentional extension sync.`);
+    } else if (upstreamReview?.status === "stale") {
+      actions.push(`Remote main differs from UPSTREAM.lock.json (${lockedCommit} -> ${remote.commit}); the stale review ledger must be refreshed before changing extension provenance.`);
     } else {
       manualReviewRequired = true;
       actions.push(`Remote main differs from UPSTREAM.lock.json (${lockedCommit} -> ${remote.commit}); audit selective absorption before updating the lock.`);
@@ -810,7 +916,9 @@ function outputText(audit) {
   process.stdout.write(`remote_main=${audit.remote_main.commit ?? "unknown"} remote=${audit.remote_main.remote ?? "unknown"}\n`);
   process.stdout.write(`checked_source matches_locked=${audit.source_checkout_matches_locked_commit} matches_remote_main=${audit.source_checkout_matches_remote_main} latest_temp=${audit.checked_source?.latest_temp === true}\n`);
   if (audit.upstream_review?.exists === true) {
-    process.stdout.write(`upstream_review remote_main_reviewed=${audit.upstream_review.remote_main_reviewed} pending_remote_review=${audit.upstream_review.pending_remote_review} reviewed_commit=${audit.upstream_review.reviewed_commit ?? "unknown"}\n`);
+    process.stdout.write(`upstream_review status=${audit.upstream_review.status} stale=${audit.upstream_review.stale} remote_main_reviewed=${audit.upstream_review.remote_main_reviewed} pending_remote_review=${audit.upstream_review.pending_remote_review} reviewed_commit=${audit.upstream_review.reviewed_commit ?? "unknown"} remote_main=${audit.upstream_review.remote_main_commit ?? "unknown"}\n`);
+  } else {
+    process.stdout.write(`upstream_review status=${audit.upstream_review?.status ?? "missing"} stale=${audit.upstream_review?.stale ?? "unknown"} pending_remote_review=${audit.upstream_review?.pending_remote_review ?? false}\n`);
   }
   const diff = audit.extension_diff;
   process.stdout.write(`extension_diff ok=${diff.ok} changed=${diff.changed.length} added=${diff.added.length} removed=${diff.removed.length}\n`);

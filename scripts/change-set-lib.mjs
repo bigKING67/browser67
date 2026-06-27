@@ -223,6 +223,8 @@ const GROUPS = [
       /^UPSTREAM\.(?:lock|review)\.json$/,
       /^scripts\/upstream-audit\.mjs$/,
       /^contracts\/upstream-audit-contract\.mjs$/,
+      /^contracts\/upstream-review-schema-contract\.mjs$/,
+      /^docs\/schemas\/upstream-review\.schema\.json$/,
       /^docs\/upstream\/genericagent(?:\/|$)/,
     ],
   },

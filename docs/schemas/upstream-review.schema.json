@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmwd-browser-mcp.local/schemas/upstream-review.schema.json",
+  "title": "GenericAgent upstream review ledger",
+  "description": "Machine-readable contract for UPSTREAM.review.json. It records a manually reviewed GenericAgent remote-main drift decision separately from the extension sync lock.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "upstream",
+    "decision",
+    "extension_review",
+    "absorbed_reference"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "upstream": {
+      "type": "object",
+      "required": [
+        "name",
+        "remote",
+        "reviewed_ref",
+        "reviewed_commit",
+        "reviewed_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "reviewed_ref": {
+          "type": "string"
+        },
+        "reviewed_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{40}$"
+        },
+        "reviewed_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "release_context": {
+          "type": "string"
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "extension_merge_mode",
+        "direct_sync_allowed",
+        "local_extension_action",
+        "lock_action",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "extension_merge_mode": {
+          "type": "string",
+          "enum": [
+            "manual_merge_preserve_local_bridge_features",
+            "no_extension_changes",
+            "no_behavior_changes_keep_local",
+            "selective_cherry_pick"
+          ]
+        },
+        "direct_sync_allowed": {
+          "type": "boolean"
+        },
+        "local_extension_action": {
+          "type": "string"
+        },
+        "lock_action": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "extension_review": {
+      "type": "object",
+      "required": [
+        "changed_files",
+        "background_preserve_features",
+        "per_file_decision"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "changed_files": {
+          "$ref": "#/$defs/string_array"
+        },
+        "background_preserve_features": {
+          "$ref": "#/$defs/string_array"
+        },
+        "per_file_decision": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/per_file_decision"
+          }
+        }
+      }
+    },
+    "absorbed_reference": {
+      "type": "object",
+      "required": [
+        "paths",
+        "notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "$ref": "#/$defs/string_array"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "per_file_decision": {
+      "type": "object",
+      "required": [
+        "file",
+        "action",
+        "risk"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "risk": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

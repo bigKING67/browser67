@@ -45,6 +45,7 @@ Run the local audit entrypoint before future upstream absorption work:
 ```bash
 npm run upstream:audit
 npm run check:upstream-audit
+npm run check:upstream-review
 npm run upstream:audit:latest
 npm run upstream:audit -- --source /path/to/GenericAgent/assets/tmwd_cdp_bridge --json
 ```
@@ -61,4 +62,10 @@ also includes `checked_source`, `source_checkout_matches_locked_commit`, and
 the stale local checkout, an explicit source, or a latest-temp upstream clone.
 When the latest remote commit matches `UPSTREAM.review.json`, audit output also
 sets `upstream_review.remote_main_reviewed=true` and avoids treating the same
-reviewed drift as a new pending absorption item.
+reviewed drift as a new pending absorption item. The same output now includes
+`upstream_review.status`, `upstream_review.stale`, and
+`upstream_review.next_command`; `status=stale` means remote `main` no longer
+matches `upstream.reviewed_commit` and the ledger must be updated only after a
+fresh manual review. `npm run check:upstream-review` validates
+`UPSTREAM.review.json` against `docs/schemas/upstream-review.schema.json` and
+asserts the reviewed files plus required local bridge preserve-feature ids.

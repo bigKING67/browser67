@@ -471,6 +471,7 @@ standalone project from the local upstream checkout:
 cd /path/to/browser67
 npm run upstream:audit
 npm run check:upstream-audit
+npm run check:upstream-review
 npm run extension:sync
 npm run extension:check
 npm run upstream:lock
@@ -491,7 +492,12 @@ drift can be kept local instead of producing noisy sync commits.
 `UPSTREAM.review.json` records an audited remote-main decision separately from
 `UPSTREAM.lock.json`; when the remote commit matches the review ledger, the
 audit keeps `safe_to_direct_sync:false` for known local bridge drift but stops
-reporting that same reviewed commit as a new pending absorption item.
+reporting that same reviewed commit as a new pending absorption item. Run
+`npm run check:upstream-review` after ledger edits; it validates the schema and
+required local preserve-feature decisions. Audit output exposes
+`upstream_review.status`, `upstream_review.stale`, and
+`upstream_review.next_command`, so `status=stale` is a hard signal to refresh the
+ledger after a new manual upstream review.
 `npm run check:upstream-audit` covers the deterministic fixture contract for
 these decisions.
 

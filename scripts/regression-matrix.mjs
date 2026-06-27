@@ -42,6 +42,12 @@ const MATRIX = [
     covers: ["genericagent-drift", "extension-merge-classifier", "latest-temp-audit"],
   },
   {
+    id: "upstream-review-ledger",
+    command: "npm run check:upstream-review",
+    tier: "required",
+    covers: ["genericagent-review-ledger", "schema-contract", "stale-review-governance"],
+  },
+  {
     id: "live-doctor",
     command: "npm run check:live:doctor",
     tier: "live",

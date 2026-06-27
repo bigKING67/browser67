@@ -17,6 +17,7 @@ function buildCommands(managedTabBaselineFile) {
     { command: "npm", args: ["run", "upstream:audit"] },
     { command: "npm", args: ["run", "upstream:audit:latest"] },
     { command: "npm", args: ["run", "check:upstream-audit"] },
+    { command: "npm", args: ["run", "check:upstream-review"] },
     { command: "npm", args: ["run", "skills:check"] },
     { command: "npm", args: ["run", "check:syntax"] },
     { command: "npm", args: ["run", "check:performance-smoke"] },

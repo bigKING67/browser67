@@ -366,6 +366,7 @@ npm run check:change-set
 npm run plan:scoped-commits
 npm run check:readiness
 npm run upstream:audit
+npm run check:upstream-review
 npm run check
 npm run check:live:doctor
 npm run check:auth-live
@@ -525,13 +526,22 @@ formatting drift such as final-newline-only changes from real behavior changes.
 `UPSTREAM.review.json` records the latest manually reviewed upstream remote
 commit and the keep-local/selective-merge decision, so repeated audits can
 distinguish already-reviewed drift from a genuinely new upstream commit.
+`npm run check:upstream-review` validates that ledger against
+`docs/schemas/upstream-review.schema.json` and asserts that the local bridge
+features which must survive a manual merge are still recorded. Audit JSON also
+reports `upstream_review.status`, `upstream_review.stale`, and
+`upstream_review.next_command`; `status=stale` means remote `main` has moved
+past the reviewed commit and the ledger must be refreshed after a new manual
+absorption review.
 `npm run check:upstream-audit` exercises deterministic fixture scenarios for
 aligned sources, changed files, final-newline-only drift, missing local bridge
-features, missing source, latest-temp local clones, and reviewed remote drift.
+features, missing source, latest-temp local clones, reviewed remote drift, and
+stale review-ledger detection.
 
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, local and latest-temp upstream provenance,
-JS reverse docs/skill sync, all `.mjs` syntax, change-set grouping, readiness scoring, deterministic
+the upstream review ledger schema, JS reverse docs/skill sync, all `.mjs`
+syntax, change-set grouping, readiness scoring, deterministic
 contracts, performance smoke, task-template validation, regression-matrix
 availability, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
@@ -563,6 +573,7 @@ To check or resync against the local GenericAgent checkout:
 ```bash
 npm run upstream:audit
 npm run check:upstream-audit
+npm run check:upstream-review
 npm run upstream:check
 npm run extension:check
 npm run extension:sync
@@ -583,7 +594,9 @@ latest upstream checkout rather than the default sibling checkout.
 
 Use `npm run upstream:audit:latest` for a no-write temporary clone of upstream
 `main`; it prints `extension_review.recommended_merge_mode` and per-file
-`recommended_action` entries so future updates can be selectively absorbed.
+`recommended_action` entries so future updates can be selectively absorbed, plus
+`upstream_review.status/stale/next_command` so callers can tell whether the
+review ledger is current or stale.
 When remote `main` has already been reviewed, `UPSTREAM.review.json` suppresses
 the pending-review warning while still keeping `safe_to_direct_sync:false` for
 known keep-local bridge drift.
@@ -608,7 +621,9 @@ hashes used by this project. After intentionally updating GenericAgent and
 running `npm run extension:sync`, refresh the lock with `npm run upstream:lock`.
 `UPSTREAM.review.json` is separate: it records the latest audited upstream
 commit and decision even when the extension lock intentionally stays on the
-older sync baseline.
+older sync baseline. `npm run check:upstream-review` validates the ledger shape
+and required preserve-feature decisions before audit tooling treats the review
+as authoritative.
 
 ## User-level launchd service
 

@@ -96,6 +96,55 @@ function runAudit(args, expectedStatus = 0) {
   };
 }
 
+function writeReviewLedger(reviewFile, { reviewedCommit, changedFiles = ["background.js"] }) {
+  writeFileSync(reviewFile, JSON.stringify({
+    schema_version: 1,
+    upstream: {
+      name: "lsdefine/GenericAgent",
+      remote: path.dirname(reviewFile),
+      reviewed_ref: "main",
+      reviewed_commit: reviewedCommit,
+      reviewed_at: "2026-06-27",
+      release_context: "fixture",
+    },
+    decision: {
+      extension_merge_mode: "manual_merge_preserve_local_bridge_features",
+      direct_sync_allowed: false,
+      local_extension_action: "keep_local_bridge",
+      lock_action: "keep_extension_lock_at_fixture_baseline",
+      reason: "Fixture upstream background.js lacks local bridge features.",
+    },
+    extension_review: {
+      changed_files: changedFiles,
+      background_preserve_features: [
+        "handle_tabs_dispatch",
+        "tabs_get",
+        "tabs_close",
+        "include_unscriptable",
+        "unsupported_tabs_method",
+        "batch_uses_handle_tabs",
+        "numeric_tab_id_validation",
+        "cookies_tabid_validation",
+        "cdp_tabid_validation",
+        "ws_exec_tabid_validation",
+      ],
+      per_file_decision: [
+        {
+          file: "background.js",
+          action: "keep_local_bridge_features",
+          risk: "high_if_blind_synced",
+        },
+      ],
+    },
+    absorbed_reference: {
+      paths: [
+        "docs/upstream/genericagent/README.md",
+      ],
+      notes: "Fixture review ledger.",
+    },
+  }, null, 2));
+}
+
 function assertAlignedAudit() {
   const fixture = createGenericAgentFixture("aligned");
   try {
@@ -247,23 +296,7 @@ function assertReviewedRemoteDrift() {
   try {
     const reviewedCommit = run("git", ["rev-parse", "HEAD"], fixture.root);
     const reviewFile = path.resolve(fixture.root, "UPSTREAM.review.json");
-    writeFileSync(reviewFile, JSON.stringify({
-      schema_version: 1,
-      upstream: {
-        remote: fixture.root,
-        reviewed_ref: "main",
-        reviewed_commit: reviewedCommit,
-        reviewed_at: "2026-06-27",
-      },
-      decision: {
-        extension_merge_mode: "manual_merge_preserve_local_bridge_features",
-        direct_sync_allowed: false,
-        local_extension_action: "keep_local_bridge",
-      },
-      extension_review: {
-        changed_files: ["background.js"],
-      },
-    }, null, 2));
+    writeReviewLedger(reviewFile, { reviewedCommit });
 
     const { json } = runAudit([
       "--latest-temp",
@@ -276,10 +309,42 @@ function assertReviewedRemoteDrift() {
     assert.equal(json.safe_to_direct_sync, false);
     assert.equal(json.manual_review_required, false);
     assert.equal(json.latest_review_recommended, false);
+    assert.equal(json.upstream_review.status, "current");
+    assert.equal(json.upstream_review.stale, false);
     assert.equal(json.upstream_review.remote_main_reviewed, true);
     assert.equal(json.upstream_review.current_extension_review_matches_decision, true);
     assert.equal(json.upstream_review.pending_remote_review, false);
     assert.ok(json.recommended_actions.some((action) => action.includes("matches UPSTREAM.review.json")));
+  } finally {
+    fixture.cleanup();
+  }
+}
+
+function assertStaleReviewLedger() {
+  const fixture = createGenericAgentFixture("background-missing-local-features");
+  try {
+    const reviewFile = path.resolve(fixture.root, "UPSTREAM.review.json");
+    writeReviewLedger(reviewFile, {
+      reviewedCommit: "0000000000000000000000000000000000000000",
+    });
+
+    const { json } = runAudit([
+      "--latest-temp",
+      "--latest-repo", fixture.root,
+      "--latest-ref", "main",
+      "--review-file", reviewFile,
+      "--json",
+    ]);
+    assert.equal(json.ok, true);
+    assert.equal(json.safe_to_direct_sync, false);
+    assert.equal(json.manual_review_required, true);
+    assert.equal(json.latest_review_recommended, false);
+    assert.equal(json.upstream_review.status, "stale");
+    assert.equal(json.upstream_review.stale, true);
+    assert.equal(json.upstream_review.pending_remote_review, true);
+    assert.equal(json.upstream_review.remote_main_reviewed, false);
+    assert.match(json.upstream_review.next_command, /upstream:audit:latest/);
+    assert.ok(json.recommended_actions.some((action) => action.includes("UPSTREAM.review.json is stale")));
   } finally {
     fixture.cleanup();
   }
@@ -293,6 +358,7 @@ function main() {
   assertMissingSourceFailsClosed();
   assertLatestTempLocalClone();
   assertReviewedRemoteDrift();
+  assertStaleReviewLedger();
   process.stdout.write(JSON.stringify({
     ok: true,
     check: "upstream-audit-contract",
@@ -304,6 +370,7 @@ function main() {
       "missing-source",
       "latest-temp-local-clone",
       "reviewed-remote-drift",
+      "stale-review-ledger",
     ],
   }));
   process.stdout.write("\n");
