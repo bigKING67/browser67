@@ -60,10 +60,31 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
   const invalidFormatPayload = firstJsonContent(invalidFormatCall.result);
   assert.equal(invalidFormatPayload?.error_code, "INVALID_ARGUMENT");
 
+  const invalidViewportCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_screenshot_ops",
+      arguments: {
+        action: "capture",
+        target: "viewport",
+        viewport: {
+          width: 0,
+          height: 844,
+        },
+        prepare_run: false,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(invalidViewportCall?.result?.isError, true);
+  const invalidViewportPayload = firstJsonContent(invalidViewportCall.result);
+  assert.equal(invalidViewportPayload?.error_code, "INVALID_ARGUMENT");
+
   return {
     missing_clip_error_code: missingClipPayload.error_code,
     missing_selector_error_code: missingSelectorPayload.error_code,
     invalid_format_error_code: invalidFormatPayload.error_code,
+    invalid_viewport_error_code: invalidViewportPayload.error_code,
   };
 }
 

@@ -88,6 +88,9 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(screenshotTool?.inputSchema?.properties?.target?.enum?.includes("full_page"), true);
   assert.deepEqual(screenshotTool?.inputSchema?.properties?.format?.enum, ["png"]);
   assert.equal(screenshotTool?.inputSchema?.properties?.clip?.type, "object");
+  assert.equal(screenshotTool?.inputSchema?.properties?.viewport?.type, "object");
+  assert.equal(screenshotTool?.inputSchema?.properties?.layout_selectors?.type, "object");
+  assert.equal(screenshotTool?.inputSchema?.properties?.include_layout_metrics?.type, "boolean");
   assert.equal(screenshotTool?.inputSchema?.properties?.max_pixels?.maximum, 50_000_000);
   assert.equal(screenshotTool?.inputSchema?.properties?.prepare_run?.default, true);
   assert.equal(screenshotTool?.description?.includes("never screenshot base64"), true);

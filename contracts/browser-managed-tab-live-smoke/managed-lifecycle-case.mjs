@@ -45,6 +45,11 @@ async function runManagedLifecycleCase(context) {
     true,
     "managed finalize_task did not close the managed tab",
   );
+  assert.equal(
+    managedFinalize.close_unkept.closed.some((row) => String(row?.tab_id ?? "") === managedTabId && row.close_verified === true),
+    true,
+    "managed finalize_task did not verify the managed tab closure",
+  );
   context.openedTabIds.delete(managedTabId);
 
   const managedGone = await waitFor(async () => {

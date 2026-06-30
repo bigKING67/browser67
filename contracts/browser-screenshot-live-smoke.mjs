@@ -209,6 +209,34 @@ async function run() {
     await assertScreenshotArtifact(viewport, "viewport");
     assert.equal(viewport.target, "viewport");
 
+    const mobileViewport = await callTool("browser_screenshot_ops", {
+      ...baseArgs,
+      tab_id: tabId,
+      target: "viewport",
+      viewport: {
+        width: 390,
+        height: 844,
+        dpr: 2,
+        is_mobile: true,
+      },
+      layout_selectors: {
+        capture_target: "#capture-target",
+      },
+      workspace_key: workspaceKey,
+      task_id: "screenshot-live-smoke",
+      title: "mobile-viewport",
+      max_pixels: 8_000_000,
+    });
+    await assertScreenshotArtifact(mobileViewport, "mobile_viewport");
+    assert.equal(mobileViewport.target, "viewport");
+    assert.equal(mobileViewport.viewport_override?.requested?.width, 390);
+    assert.equal(mobileViewport.viewport_override?.requested?.height, 844);
+    assert.equal(mobileViewport.viewport_override?.cleanup?.cleared, true);
+    assert.equal(mobileViewport.page?.viewport?.inner_width, 390);
+    assert.equal(mobileViewport.page?.viewport?.inner_height, 844);
+    assert.equal(mobileViewport.layout_metrics?.selectors?.capture_target?.found, true);
+    assert.equal(typeof mobileViewport.layout_metrics?.horizontal_overflow, "boolean");
+
     const selector = await callTool("browser_screenshot_ops", {
       ...baseArgs,
       tab_id: tabId,
@@ -249,6 +277,7 @@ async function run() {
       tab_id: tabId,
       workspace_key: workspaceKey,
       viewport_artifact: viewport.artifact.path,
+      mobile_viewport_artifact: mobileViewport.artifact.path,
       selector_artifact: selector.artifact.path,
       full_page_artifact: fullPage.artifact.path,
       finalized_status: finalized.status,

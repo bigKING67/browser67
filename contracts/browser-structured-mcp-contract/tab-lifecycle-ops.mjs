@@ -260,10 +260,32 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
   assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v4");
   assert.equal(tabListManagedPayload?.capabilities?.supports_finalize_hint, true);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_close_verification, true);
   assert.equal(Array.isArray(tabListManagedPayload?.live_sessions), true);
   assert.equal(Array.isArray(tabListManagedPayload?.sessions), true);
   assert.equal(typeof tabListManagedPayload?.summary?.managed_total_count, "number");
   assert.equal(tabListManagedPayload?.result_limits?.max_items, 50);
+
+  const tabListManagedSummaryCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "list_managed",
+        summary_only: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(tabListManagedSummaryCall?.result?.isError, undefined);
+  const tabListManagedSummaryPayload = firstJsonContent(tabListManagedSummaryCall.result);
+  assert.equal(tabListManagedSummaryPayload?.status, "success");
+  assert.equal(tabListManagedSummaryPayload?.summary?.summary_only, true);
+  assert.equal(Array.isArray(tabListManagedSummaryPayload?.live_sessions), true);
+  assert.equal(tabListManagedSummaryPayload.live_sessions.length, 0);
+  assert.equal(Array.isArray(tabListManagedSummaryPayload?.sessions), true);
+  assert.equal(tabListManagedSummaryPayload.sessions.length, 0);
+  assert.equal(tabListManagedSummaryPayload?.summary?.live_session_returned_count, 0);
 
   await assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs });
 

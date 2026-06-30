@@ -15,7 +15,9 @@ import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
 import {
   executeTmwdCommandWithPreferred,
   liveTabMap,
+  readBrowserTabById,
   resolveManagedRecordLiveness,
+  sleep,
 } from "./shared.mjs";
 import {
   DEFAULT_LIST_MANAGED_MAX_ITEMS,
@@ -27,6 +29,65 @@ import {
   scopedManagedRecords,
   summarizeFinalizeRemainder,
 } from "./tab-lifecycle-scope.mjs";
+
+function normalizeCloseVerifyTimeout(args = {}) {
+  const raw = Number(args.close_verify_timeout_ms ?? args.closeVerifyTimeoutMs ?? 1_500);
+  if (!Number.isFinite(raw)) {
+    return 1_500;
+  }
+  return Math.max(0, Math.min(10_000, Math.floor(raw)));
+}
+
+function normalizeCloseVerifyPoll(args = {}) {
+  const raw = Number(args.close_verify_poll_ms ?? args.closeVerifyPollMs ?? 100);
+  if (!Number.isFinite(raw)) {
+    return 100;
+  }
+  return Math.max(50, Math.min(1_000, Math.floor(raw)));
+}
+
+async function verifyTabClosed(args, preferred, tabId) {
+  const timeoutMs = normalizeCloseVerifyTimeout(args);
+  const pollMs = normalizeCloseVerifyPoll(args);
+  const startedAt = Date.now();
+  let polls = 0;
+  let lastTab = null;
+  do {
+    polls += 1;
+    lastTab = await readBrowserTabById(args, preferred, tabId);
+    if (!lastTab) {
+      return {
+        verified: true,
+        tab_id: tabId,
+        method: preferred.transport === "cdp" ? "cdp_target_lookup" : "tmwd_tabs_get_or_list",
+        timeout_ms: timeoutMs,
+        poll_ms: pollMs,
+        polls,
+        elapsed_ms: Date.now() - startedAt,
+      };
+    }
+    if (timeoutMs === 0 || Date.now() - startedAt >= timeoutMs) {
+      break;
+    }
+    await sleep(Math.min(pollMs, Math.max(0, timeoutMs - (Date.now() - startedAt))));
+  } while (Date.now() - startedAt <= timeoutMs);
+  return {
+    verified: false,
+    tab_id: tabId,
+    method: preferred.transport === "cdp" ? "cdp_target_lookup" : "tmwd_tabs_get_or_list",
+    timeout_ms: timeoutMs,
+    poll_ms: pollMs,
+    polls,
+    elapsed_ms: Date.now() - startedAt,
+    still_visible_tab: lastTab
+      ? {
+          id: lastTab.id,
+          url: lastTab.url,
+          title: lastTab.title,
+        }
+      : null,
+  };
+}
 
 async function closeOneManagedTab(args, record, preferred = null) {
   if (record.dry_run === true || args?.dry_run === true) {
@@ -50,9 +111,22 @@ async function closeOneManagedTab(args, record, preferred = null) {
         "tabs.close did not confirm closed=true; reload the TMWD browser extension if it is still running old bridge code",
       );
     }
+    const closeVerification = await verifyTabClosed(args, resolved, record.tab_id);
+    if (closeVerification.verified !== true) {
+      throw createToolError(
+        "EXECUTION_ERROR",
+        "tabs.close returned closed=true but the tab remained visible after close verification",
+        {
+          retryable: true,
+          details: closeVerification,
+        },
+      );
+    }
     return {
       tab_id: record.tab_id,
       closed: true,
+      close_verified: true,
+      close_verification: closeVerification,
       transport: result.transport,
       transport_attempts: result.transport_attempts,
     };
@@ -60,9 +134,22 @@ async function closeOneManagedTab(args, record, preferred = null) {
   await cdpRunCommand({ ...args, switch_tab_id: record.tab_id }, "Target.closeTarget", {
     targetId: record.tab_id,
   });
+  const closeVerification = await verifyTabClosed(args, resolved, record.tab_id);
+  if (closeVerification.verified !== true) {
+    throw createToolError(
+      "EXECUTION_ERROR",
+      "Target.closeTarget returned but the tab remained visible after close verification",
+      {
+        retryable: true,
+        details: closeVerification,
+      },
+    );
+  }
   return {
     tab_id: record.tab_id,
     closed: true,
+    close_verified: true,
+    close_verification: closeVerification,
     transport: "cdp",
   };
 }

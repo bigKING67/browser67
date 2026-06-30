@@ -40,6 +40,26 @@ const SCREENSHOT_TOOL_SCHEMAS = {
         title: { type: "string" },
         prepare_run: { type: "boolean", default: true },
         include_page_metadata: { type: "boolean", default: true },
+        include_layout_metrics: { type: "boolean", default: false },
+        layout_selectors: {
+          type: "object",
+          description: "Optional map of stable names to CSS selectors. Returned as compact layout metrics for visual QA evidence.",
+          additionalProperties: { type: "string" },
+        },
+        viewport: {
+          type: "object",
+          description: "Optional temporary viewport override for responsive screenshot capture. Cleared after capture by default.",
+          properties: {
+            width: { type: "number", minimum: 1 },
+            height: { type: "number", minimum: 1 },
+            dpr: { type: "number", minimum: 0.1, maximum: 8, default: 1 },
+            device_scale_factor: { type: "number", minimum: 0.1, maximum: 8 },
+            mobile: { type: "boolean", default: false },
+            is_mobile: { type: "boolean", default: false },
+            scale: { type: "number", minimum: 0.1, maximum: 4 },
+            clear_after: { type: "boolean", default: true },
+          },
+        },
         selector: { type: "string" },
         clip: {
           type: "object",

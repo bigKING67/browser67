@@ -27,14 +27,14 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 6. Use `browser_execute_js` for JS, bridge commands, CDP batch, cookies, and controlled navigation. For large DOM/network payloads, set `output_mode:"compact"` and an explicit `max_return_chars` to keep tool output bounded.
 7. Use `browser_wait` instead of ad-hoc sleeps for readiness gates. Supported wait types are `selector`, `text`, `function`, `dom_stable`, and `network_idle`.
 8. Use `browser_job_ops` for long-running browser JS when synchronous tool output would be brittle. Current jobs are in-process only (`durable:false`), and `cancel` is a best-effort intent marker (`abort_supported:false`) rather than a true interruption of page-side JS.
-9. Use `browser_screenshot_ops` for real-browser PNG screenshot artifacts. Run it after `browser_tab_lifecycle.select_or_create` and `browser_wait`; use `target:"viewport"` for baseline visual QA, `target:"selector"` / `target:"clip"` for focused sections, and bounded `target:"full_page"` only with `max_pixels`. It writes artifacts outside the repo and returns path/hash/dimensions metadata, never image base64.
+9. Use `browser_screenshot_ops` for real-browser PNG screenshot artifacts. Run it after `browser_tab_lifecycle.select_or_create` and `browser_wait`; use `target:"viewport"` for baseline visual QA, `target:"selector"` / `target:"clip"` for focused sections, and bounded `target:"full_page"` only with `max_pixels`. For responsive evidence, pass `viewport:{width,height,dpr,is_mobile}`; the wrapper applies `Emulation.setDeviceMetricsOverride` and clears it after capture by default. Pass `layout_selectors` for compact selector rect/computed-style metrics. It writes artifacts outside the repo and returns path/hash/dimensions metadata, never image base64.
 10. Use `npm run runtime:cleanup:dry-run` to audit repo-external run/screenshot artifact growth. Apply retention only with the explicit `npm run runtime:cleanup -- --write` path; it keeps latest/recent active runs and deletes only complete run directories under the configured run root.
 11. Use `browser_tab_ops` for list/switch/current/session selection.
 12. Use `browser_file_ops` for upload inputs and native chooser planning.
 13. Use `browser_download_ops` for per-run download prepare/wait/list flows.
 14. Use `browser_tab_lifecycle` with `action="select_or_create"` for active work tabs. It reuses only TMWD-owned managed tabs; user-opened unmanaged tabs are read-only by default and must not be navigated, mutated, or closed.
    - Use stable `workspace_key` values at the project/surface level, for example `datahub-special-report`, not one-off subsection keys.
-   - End active browser tasks with `action="finalize_task"` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. `finalize_task` prunes stale registry records, closes only `keep:false` managed tabs in scope, preserves `keep:true`, and ignores unmanaged user tabs.
+   - End active browser tasks with `action="finalize_task"` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. `finalize_task` prunes stale registry records, closes only `keep:false` managed tabs in scope, verifies closed tabs disappear from the live browser, preserves `keep:true`, and ignores unmanaged user tabs.
 15. Use `browser_auth_ops.ensure_login` after selecting/creating a managed tab. It first checks whether the page is already authenticated; if the tab is on a login page, it only uses exact-origin local profiles from repo-external secret files, redacts outputs, and blocks unknown origins instead of guessing credentials. For a first-time site, use `suggest_profile` then explicit `upsert_profile` with user-provided credentials and `confirm_write:true`. Saved profiles may have redacted lifecycle sidecars (`<profile>.meta.json`) that record timestamps/status only. CAPTCHA, MFA, SSO-only, and OAuth popup pages are manual-required states and should return `manual_required_*` plus non-secret `manual_context` instead of continued automatic guessing.
 16. Use `browser_clipboard_ops` for write/paste only; it intentionally does not read clipboard.
 17. Use `browser_native_input` only when browser-side automation is blocked.
@@ -66,8 +66,9 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - `create_managed` / `select_or_create` wait for new tabs to become visible by default (`wait_until:"listed"`). Use `wait_until:"none"` only when the caller will do its own readiness wait.
 - `list_managed` is live-only by default and limits large arrays. Use
   `summary_only:true`, `max_items`, or `max_stale_items` for bounded
-  diagnostics; pass `include_disconnected:true` or `history:true` only when you
-  explicitly need disconnected session history.
+  diagnostics; summary mode returns counts without unrelated live-session rows.
+  Pass `include_disconnected:true` or `history:true` only when you explicitly
+  need disconnected session history.
 - Use `prune_stale` to remove registry records for managed tabs that no longer exist; it never closes unmanaged user tabs.
 - `finalize_task` is the preferred task-end cleanup wrapper and requires `workspace_key` or `task_id` unless explicitly using `scope:"all"` / `all:true` / `confirm_all:true`. Use `close_unkept` only when you need the lower-level close action without the finalizer summary.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`; if `finalize_hint.required` is true, run the suggested `finalize_task` call before the final response or handoff.
@@ -107,7 +108,7 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - For real local file upload, prefer same-batch `DOM.getDocument -> DOM.querySelector -> DOM.setFileInputFiles`; DataTransfer is only suitable for in-memory files.
 - `browser_download_ops` only observes the prepared token/directory window; do not read Chrome history DB.
 - `browser_tab_lifecycle.close_unkept` must never close unmanaged existing user tabs; it only closes TMWD-owned managed tabs that are not marked `keep:true`.
-- `browser_tab_lifecycle.finalize_task` is the normal finalizer for Codex tasks that used TMWD managed tabs. Run it before final response/handoff for the current `workspace_key` or `task_id`, and report whether tabs were closed or intentionally kept.
+- `browser_tab_lifecycle.finalize_task` is the normal finalizer for Codex tasks that used TMWD managed tabs. Run it before final response/handoff for the current `workspace_key` or `task_id`, and report whether tabs were closed and close-verified or intentionally kept.
 - `npm run check:managed-tabs-clean` is a registry-only hygiene gate for missed finalizers; run it after lifecycle changes or when diagnosing tab buildup. `npm run verify` snapshots a temporary managed-tab baseline first and fails only on newly leaked unkept records, while the standalone gate remains globally strict.
 - `browser_tab_lifecycle` dry-runs are planning-only: do not depend on dry-run calls to select, persist, touch, or clean managed tabs.
 - `browser_clipboard_ops` has no clipboard-read action by design.

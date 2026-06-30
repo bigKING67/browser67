@@ -9,6 +9,9 @@ const CAPABILITIES = {
   supports_prune_stale: true,
   supports_finalize_task: true,
   supports_finalize_hint: true,
+  supports_close_verification: true,
+  supports_screenshot_viewport_override: true,
+  supports_screenshot_layout_metrics: true,
   managed_registry_default_path: "~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json",
 };
 

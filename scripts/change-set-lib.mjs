@@ -87,6 +87,7 @@ const GROUPS = [
       /^src\/server(?:\.mjs|\/)/,
       /^src\/browser-screenshot\//,
       /^src\/browser-wrappers(?:\.mjs|\/)/,
+      /^src\/capabilities\.mjs$/,
       /^src\/image\//,
       /^src\/tool-schemas(?:\.mjs|\/)/,
       /^src\/(?:evidence-schema|run-lifecycle)\.mjs$/,

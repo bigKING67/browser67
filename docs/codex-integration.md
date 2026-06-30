@@ -139,11 +139,15 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   run root by default and returns only compact metadata (`path`, `sha256`,
   dimensions, clip, page/run info), never screenshot base64. Prefer `viewport`
   first, `selector` / `clip` for focused component evidence, and `full_page`
-  only on bounded pages with an explicit `max_pixels`. Screenshot PNGs follow
-  the runtime run retention policy instead of accumulating in the project.
+  only on bounded pages with an explicit `max_pixels`. For responsive evidence,
+  pass `viewport:{width,height,dpr,is_mobile}`; the wrapper applies temporary
+  CDP device metrics and clears them after capture by default. Pass
+  `layout_selectors` to return compact selector rect/computed-style metrics for
+  L3/L4 visual evidence. Screenshot PNGs follow the runtime run retention
+  policy instead of accumulating in the project.
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
-- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, preserves `keep:true`, and ignores unmanaged user tabs.
+- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, verifies closed tabs disappear from the live browser, preserves `keep:true`, and ignores unmanaged user tabs.
 - `browser_auth_ops`: `list_profiles`, `validate_profile`, `inspect_login_page`, `suggest_profile`, `upsert_profile`, `ensure_login`. Use after `browser_tab_lifecycle.select_or_create` when a TMWD-owned tab lands on a login page. Profiles are exact-origin allowlisted, stored only in repo-external local secret files, and outputs are redacted; unknown origins are reported as blocked and are never auto-filled. Profile lifecycle metadata is kept in a separate redacted sidecar file.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
@@ -382,7 +386,7 @@ sites to use the generic profile directory above.
 - User-opened tabs are `user_unmanaged`: scan/read-only by default. Do not navigate, type, click, close, or adopt them unless the user explicitly asks to operate on the current tab.
 - TMWD work tabs are `tmwd_managed`: create them through `browser_tab_lifecycle`.
 - Managed tab registry is stored outside the repo at `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json` by default. Override with `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for tests or isolated runs.
-- `list_managed` returns live sessions by default and limits large arrays. Use `summary_only:true`, `max_items`, or `max_stale_items` for bounded diagnostics. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
+- `list_managed` returns live sessions by default and limits large arrays. Use `summary_only:true`, `max_items`, or `max_stale_items` for bounded diagnostics; summary mode returns counts and suppresses unrelated live-session rows. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
 - `create_managed` / `select_or_create` wait for the created tab to be visible by default (`wait_until:"listed"`, `wait_timeout_ms:3000`). Use `wait_until:"none"` only for fire-and-forget workflows.
 - Default active-work entry:
 
@@ -399,7 +403,7 @@ sites to use the generic profile directory above.
 - Use `fresh:true` or `reuse:false` only when a new TMWD-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
 - Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
 - Use `prune_stale` or `list_managed` with `prune_stale:true` to remove registry records for managed tabs that no longer exist. This never closes unmanaged user tabs.
-- End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
+- End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. The finalizer verifies closed managed tabs disappear from the live browser before reporting success. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`. Treat `finalize_hint.required:true` as a visible reminder to run the suggested `finalize_task` call before final response or handoff.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
 - Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, which catches missing finalizers even when no live browser action is needed. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing TMWD workspaces do not make repository verification flaky.
