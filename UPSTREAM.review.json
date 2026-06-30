@@ -4,9 +4,9 @@
     "name": "lsdefine/GenericAgent",
     "remote": "https://github.com/lsdefine/GenericAgent.git",
     "reviewed_ref": "main",
-    "reviewed_commit": "c25ea7c15c4b3f217318a1d86a7ee097dfbb5085",
-    "reviewed_at": "2026-06-27",
-    "release_context": "desktop-portable-v0.1.4"
+    "reviewed_commit": "fc4235dadd916abeebe8c33d7a5d5927e93d5dbe",
+    "reviewed_at": "2026-06-30",
+    "release_context": "desktop-portable-v0.1.4 remote-main-review"
   },
   "decision": {
     "extension_merge_mode": "manual_merge_preserve_local_bridge_features",
