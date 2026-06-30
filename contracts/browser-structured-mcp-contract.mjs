@@ -24,6 +24,7 @@ import { assertToolSurface } from "./browser-structured-mcp-contract/tool-surfac
 import { assertReadinessLjqCtrlProbeContract } from "./browser-structured-mcp-contract/readiness-audit.mjs";
 import { assertManagedTabCleanupBaselineContract } from "./browser-structured-mcp-contract/managed-tab-cleanup.mjs";
 import { assertRunWaitHealthOpsContract } from "./browser-structured-mcp-contract/run-wait-health-ops.mjs";
+import { assertScreenshotOpsContract } from "./browser-structured-mcp-contract/screenshot-ops.mjs";
 
 function parseArgs(argv) {
   const parsed = {
@@ -184,6 +185,11 @@ async function run() {
       timeoutMs: cli.timeout_ms,
     });
 
+    const screenshotSummary = await assertScreenshotOpsContract({
+      rpc,
+      timeoutMs: cli.timeout_ms,
+    });
+
     const fallbackSummary = await assertExecuteJsFallbackPolicy({
       rpc,
       timeoutMs: cli.timeout_ms,
@@ -225,6 +231,7 @@ async function run() {
         wrapper_auth_ops_ok: true,
         wrapper_clipboard_ops_ok: ioOpsSummary.clipboardDryRunPayload?.status === "success",
         wrapper_run_ops_ok: Boolean(runWaitHealthSummary.run_id),
+        wrapper_screenshot_ops_ok: screenshotSummary.missing_clip_error_code === "INVALID_ARGUMENT",
         wrapper_transport_health_status: runWaitHealthSummary.transport_health_status,
         ws_endpoint: cli.ws_endpoint,
       })}\n`,

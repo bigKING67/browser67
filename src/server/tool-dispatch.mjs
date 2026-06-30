@@ -15,6 +15,7 @@ import {
   handleBrowserExtract,
   handleBrowserJobOps,
   handleBrowserScan,
+  handleBrowserScreenshotOps,
   handleBrowserTabOps,
   handleBrowserTransportHealth,
   handleBrowserWait,
@@ -45,6 +46,9 @@ async function dispatchToolCall(name, args) {
     }
     if (name === "browser_diff") {
       return makeResult(handleBrowserDiff(args));
+    }
+    if (name === "browser_screenshot_ops") {
+      return makeResult(await handleBrowserScreenshotOps(args));
     }
     if (name === "browser_tab_ops") {
       return makeResult(await handleBrowserTabOps(args));

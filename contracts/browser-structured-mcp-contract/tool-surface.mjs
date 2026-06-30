@@ -15,6 +15,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(names.includes("browser_transport_health"), true);
   assert.equal(names.includes("browser_run_ops"), true);
   assert.equal(names.includes("browser_job_ops"), true);
+  assert.equal(names.includes("browser_screenshot_ops"), true);
   assert.equal(names.includes("browser_tab_ops"), true);
   assert.equal(names.includes("browser_native_input"), true);
   assert.equal(names.includes("browser_file_ops"), true);
@@ -78,6 +79,18 @@ async function assertToolSurface({ rpc, timeoutMs }) {
     executeJsTool?.inputSchema?.properties?.native_fallback_args?.type,
     "object",
   );
+
+  const screenshotTool = tools.find((entry) => entry?.name === "browser_screenshot_ops");
+  assert.equal(screenshotTool?.inputSchema?.properties?.action?.enum?.includes("capture"), true);
+  assert.equal(screenshotTool?.inputSchema?.properties?.target?.enum?.includes("viewport"), true);
+  assert.equal(screenshotTool?.inputSchema?.properties?.target?.enum?.includes("clip"), true);
+  assert.equal(screenshotTool?.inputSchema?.properties?.target?.enum?.includes("selector"), true);
+  assert.equal(screenshotTool?.inputSchema?.properties?.target?.enum?.includes("full_page"), true);
+  assert.deepEqual(screenshotTool?.inputSchema?.properties?.format?.enum, ["png"]);
+  assert.equal(screenshotTool?.inputSchema?.properties?.clip?.type, "object");
+  assert.equal(screenshotTool?.inputSchema?.properties?.max_pixels?.maximum, 50_000_000);
+  assert.equal(screenshotTool?.inputSchema?.properties?.prepare_run?.default, true);
+  assert.equal(screenshotTool?.description?.includes("never screenshot base64"), true);
 
   const tabLifecycleTool = tools.find((entry) => entry?.name === "browser_tab_lifecycle");
   assert.equal(

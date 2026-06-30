@@ -15,6 +15,7 @@ Use `tmwd_browser` when the task needs:
 - transport health checks with `browser_transport_health`
 - first-class readiness waits with `browser_wait`
 - repo-external task run artifacts with `browser_run_ops`
+- repo-external PNG screenshot artifacts with `browser_screenshot_ops`
 - long-running browser JS through `browser_job_ops` when synchronous results would be brittle
 
 Use `js-reverse` when the task needs:
@@ -49,6 +50,10 @@ Default arguments:
 - `tmwd_browser` is for real-browser state, cookies, page-visible runtime evidence, and CDP bridge operations.
 - `js-reverse` is for observe-first reverse workflows on the same TMWD-backed real browser: scripts, performance resources, runtime hooks, evidence, and rebuild bundles.
 - Use `browser_execute_js output_mode:"compact"` with explicit `max_return_chars` when collecting large DOM/network payloads for reverse tasks.
+- Use `browser_screenshot_ops` instead of hand-written `Page.captureScreenshot`
+  calls when visual evidence matters; it supports `viewport`, `selector`,
+  `clip`, and bounded `full_page`, writes PNGs outside the repo, and returns
+  artifact metadata rather than base64.
 - `browser_job_ops` is intentionally in-process (`durable:false`); `cancel` records intent but does not preempt page-side JS.
 - `record_reverse_evidence` is normalized to `evidence.v1`; include source/confidence/request/script/artifact links whenever known.
 - `list_frames` lists same-origin descendants recursively and degrades cross-origin frames to element metadata. Do not infer inner DOM for inaccessible frames.

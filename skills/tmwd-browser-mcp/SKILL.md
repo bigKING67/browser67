@@ -27,16 +27,17 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 6. Use `browser_execute_js` for JS, bridge commands, CDP batch, cookies, and controlled navigation. For large DOM/network payloads, set `output_mode:"compact"` and an explicit `max_return_chars` to keep tool output bounded.
 7. Use `browser_wait` instead of ad-hoc sleeps for readiness gates. Supported wait types are `selector`, `text`, `function`, `dom_stable`, and `network_idle`.
 8. Use `browser_job_ops` for long-running browser JS when synchronous tool output would be brittle. Current jobs are in-process only (`durable:false`), and `cancel` is a best-effort intent marker (`abort_supported:false`) rather than a true interruption of page-side JS.
-9. Use `browser_tab_ops` for list/switch/current/session selection.
-10. Use `browser_file_ops` for upload inputs and native chooser planning.
-11. Use `browser_download_ops` for per-run download prepare/wait/list flows.
-12. Use `browser_tab_lifecycle` with `action="select_or_create"` for active work tabs. It reuses only TMWD-owned managed tabs; user-opened unmanaged tabs are read-only by default and must not be navigated, mutated, or closed.
+9. Use `browser_screenshot_ops` for real-browser PNG screenshot artifacts. Run it after `browser_tab_lifecycle.select_or_create` and `browser_wait`; use `target:"viewport"` for baseline visual QA, `target:"selector"` / `target:"clip"` for focused sections, and bounded `target:"full_page"` only with `max_pixels`. It writes artifacts outside the repo and returns path/hash/dimensions metadata, never image base64.
+10. Use `browser_tab_ops` for list/switch/current/session selection.
+11. Use `browser_file_ops` for upload inputs and native chooser planning.
+12. Use `browser_download_ops` for per-run download prepare/wait/list flows.
+13. Use `browser_tab_lifecycle` with `action="select_or_create"` for active work tabs. It reuses only TMWD-owned managed tabs; user-opened unmanaged tabs are read-only by default and must not be navigated, mutated, or closed.
    - Use stable `workspace_key` values at the project/surface level, for example `datahub-special-report`, not one-off subsection keys.
    - End active browser tasks with `action="finalize_task"` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. `finalize_task` prunes stale registry records, closes only `keep:false` managed tabs in scope, preserves `keep:true`, and ignores unmanaged user tabs.
-13. Use `browser_auth_ops.ensure_login` after selecting/creating a managed tab. It first checks whether the page is already authenticated; if the tab is on a login page, it only uses exact-origin local profiles from repo-external secret files, redacts outputs, and blocks unknown origins instead of guessing credentials. For a first-time site, use `suggest_profile` then explicit `upsert_profile` with user-provided credentials and `confirm_write:true`. Saved profiles may have redacted lifecycle sidecars (`<profile>.meta.json`) that record timestamps/status only. CAPTCHA, MFA, SSO-only, and OAuth popup pages are manual-required states and should return `manual_required_*` plus non-secret `manual_context` instead of continued automatic guessing.
-14. Use `browser_clipboard_ops` for write/paste only; it intentionally does not read clipboard.
-15. Use `browser_native_input` only when browser-side automation is blocked.
-16. Use `js-reverse` MCP for page API discovery and reverse-specific
+14. Use `browser_auth_ops.ensure_login` after selecting/creating a managed tab. It first checks whether the page is already authenticated; if the tab is on a login page, it only uses exact-origin local profiles from repo-external secret files, redacts outputs, and blocks unknown origins instead of guessing credentials. For a first-time site, use `suggest_profile` then explicit `upsert_profile` with user-provided credentials and `confirm_write:true`. Saved profiles may have redacted lifecycle sidecars (`<profile>.meta.json`) that record timestamps/status only. CAPTCHA, MFA, SSO-only, and OAuth popup pages are manual-required states and should return `manual_required_*` plus non-secret `manual_context` instead of continued automatic guessing.
+15. Use `browser_clipboard_ops` for write/paste only; it intentionally does not read clipboard.
+16. Use `browser_native_input` only when browser-side automation is blocked.
+17. Use `js-reverse` MCP for page API discovery and reverse-specific
    observe/capture/rebuild work instead of overloading the generic
    `tmwd_browser` tools.
 

@@ -90,7 +90,7 @@ The compact English version is:
 Use tmwd_browser for real Chrome/Edge browser automation: logged-in pages,
 current tabs, cookies/session-aware page inspection, CDP bridge commands,
 downloads/uploads, file chooser planning, clipboard write/paste wrappers,
-native fallback, and managed tab lifecycle.
+native fallback, managed tab lifecycle, and first-class screenshot artifacts.
 
 Use js-reverse for page API/interface discovery, request initiator tracing,
 signature-chain tracing, script search, network/WS sampling, non-blocking hooks,
@@ -111,6 +111,11 @@ that tab. End active browser tasks with browser_tab_lifecycle
 action=finalize_task for the current workspace_key or task_id unless the user
 asked to keep the page open; it closes only keep=false managed tabs, preserves
 keep=true, prunes stale registry records, and ignores unmanaged user tabs.
+For visual QA, call browser_screenshot_ops after browser_wait settles the page.
+Use target=viewport for the baseline, target=selector or target=clip for
+focused component evidence, and target=full_page only on bounded pages with an
+explicit max_pixels. Screenshot artifacts are written outside the repo under
+the TMWD run root and tool results return metadata only, never image base64.
 If a managed tab redirects to a login page, use browser_auth_ops.ensure_login
 for approved sites, preferably with the managed tab_id. It first accepts
 already-authenticated pages without resubmitting. On a login page it selects a

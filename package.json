@@ -70,6 +70,7 @@
     "check:live": "node contracts/browser-structured-mcp-live-gate.mjs --tmwd-mode tmwd --tmwd-transport auto --disable-event-log",
     "check:live:doctor": "node contracts/browser-structured-mcp-live-gate.mjs --doctor-only --tmwd-mode tmwd --tmwd-transport auto --disable-event-log",
     "check:managed-tab-live": "node contracts/browser-managed-tab-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto --require-tabs-get",
+    "check:screenshot-live": "node contracts/browser-screenshot-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto",
     "check:auth-live": "node contracts/browser-auth-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto",
     "check:captcha-assist-live": "node contracts/browser-captcha-assist-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto",
     "check:captcha-assist-physical-live": "node contracts/browser-captcha-assist-physical-live-gate.mjs --tmwd-mode tmwd --tmwd-transport auto",

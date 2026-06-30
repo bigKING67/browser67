@@ -85,9 +85,12 @@ const GROUPS = [
     ],
     patterns: [
       /^src\/server(?:\.mjs|\/)/,
+      /^src\/browser-screenshot\//,
       /^src\/browser-wrappers(?:\.mjs|\/)/,
+      /^src\/image\//,
       /^src\/tool-schemas(?:\.mjs|\/)/,
       /^src\/(?:evidence-schema|run-lifecycle)\.mjs$/,
+      /^contracts\/browser-screenshot-live-smoke\.mjs$/,
       /^contracts\/browser-structured-mcp-contract(?:\.mjs|\/)/,
     ],
   },

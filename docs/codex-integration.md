@@ -31,6 +31,9 @@ approval_mode = "approve"
 [mcp_servers.tmwd_browser.tools.browser_job_ops]
 approval_mode = "approve"
 
+[mcp_servers.tmwd_browser.tools.browser_screenshot_ops]
+approval_mode = "approve"
+
 [mcp_servers.tmwd_browser.tools.browser_extract]
 approval_mode = "approve"
 
@@ -127,6 +130,14 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   by `browser_execute_js`, then exposes `status`, `result`, `cancel`, and
   `list`. Current jobs are intentionally `durable:false`; cancel is a
   best-effort intent marker and does not preempt already-running page code.
+- `browser_screenshot_ops`: first-class PNG screenshot capture for real browser
+  visual QA. Use after `browser_tab_lifecycle.select_or_create` and
+  `browser_wait`; supported targets are `viewport`, `selector`, `clip`, and
+  bounded `full_page`. It writes artifacts outside the repo under the browser
+  run root by default and returns only compact metadata (`path`, `sha256`,
+  dimensions, clip, page/run info), never screenshot base64. Prefer `viewport`
+  first, `selector` / `clip` for focused component evidence, and `full_page`
+  only on bounded pages with an explicit `max_pixels`.
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
 - `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, preserves `keep:true`, and ignores unmanaged user tabs.
@@ -200,6 +211,19 @@ Known-site operational pattern:
    `manual_required_sso` reason and use `manual_context.kind:"oauth_popup"` for
    the more specific handoff type.
 7. Finish with `browser_tab_lifecycle.finalize_task` for the same `workspace_key`.
+
+Visual QA pattern:
+
+1. Create/reuse a TMWD-owned managed tab.
+2. Gate readiness with `browser_wait` (`selector`, `dom_stable`, or
+   `network_idle` as appropriate).
+3. Capture `browser_screenshot_ops target:"viewport"` for the baseline.
+4. Capture `target:"selector"` or `target:"clip"` for the changed section when
+   layout details matter.
+5. Use `target:"full_page"` only with a bounded page and explicit
+   `max_pixels`.
+6. Finish with `browser_tab_lifecycle.finalize_task` for the same
+   `workspace_key`.
 
 Manual-required results may include:
 
