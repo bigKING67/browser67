@@ -125,7 +125,9 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 - `browser_run_ops`: creates externalized run folders under
   `~/.tmwd-browser-mcp/runtime/runs` by default. Each run owns `run.json`,
   `events.ndjson`, `artifacts/`, and `logs/`; evidence records are normalized
-  to `evidence.v1`.
+  to `evidence.v1`. Runtime artifacts are not stored in the source tree; use
+  `npm run runtime:cleanup:dry-run` to audit retained runs and
+  `npm run runtime:cleanup -- --write` to apply the safe retention policy.
 - `browser_job_ops`: starts in-process background browser execution jobs backed
   by `browser_execute_js`, then exposes `status`, `result`, `cancel`, and
   `list`. Current jobs are intentionally `durable:false`; cancel is a
@@ -137,7 +139,8 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   run root by default and returns only compact metadata (`path`, `sha256`,
   dimensions, clip, page/run info), never screenshot base64. Prefer `viewport`
   first, `selector` / `clip` for focused component evidence, and `full_page`
-  only on bounded pages with an explicit `max_pixels`.
+  only on bounded pages with an explicit `max_pixels`. Screenshot PNGs follow
+  the runtime run retention policy instead of accumulating in the project.
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
 - `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, preserves `keep:true`, and ignores unmanaged user tabs.
@@ -400,6 +403,7 @@ sites to use the generic profile directory above.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`. Treat `finalize_hint.required:true` as a visible reminder to run the suggested `finalize_task` call before final response or handoff.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
 - Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, which catches missing finalizers even when no live browser action is needed. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing TMWD workspaces do not make repository verification flaky.
+- Use `npm run runtime:cleanup:dry-run` as the repo-external run/screenshot artifact retention audit. It is non-destructive by default; use `npm run runtime:cleanup -- --write` only when intentionally deleting planned old run directories.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the TMWD websocket explicitly to avoid successful actions ending with a command timeout.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.

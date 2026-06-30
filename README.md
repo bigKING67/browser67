@@ -553,6 +553,30 @@ captures a temporary baseline before live checks and then fails only on newly
 leaked unkept records; `npm run check:managed-tabs-clean` remains the strict
 global audit for all currently registered TMWD workspaces.
 
+## Runtime artifact retention
+
+TMWD run artifacts and `browser_screenshot_ops` PNG files are repo-external by
+default under `~/.tmwd-browser-mcp/runtime/runs` unless
+`BROWSER_STRUCTURED_RUN_ROOT` points to a different dedicated run root. They are
+not source files and should not be committed into this repository.
+
+Use the retention helper to keep screenshot and run evidence from growing
+without bound:
+
+```bash
+npm run runtime:cleanup:dry-run
+npm run runtime:cleanup -- --write
+```
+
+The dry-run mode is the default and prints the exact run directories that would
+be deleted. `--write` is required before any deletion happens. The default
+policy keeps the latest 50 runs, preserves recently updated `running` runs, and
+plans cleanup for runs older than 30 days or when the run root exceeds 1024 MB.
+Tune it with `--max-age-days`, `--max-total-mb`, and `--keep-latest`, or the
+matching `TMWD_RUNTIME_CLEANUP_*` environment variables. The helper refuses
+dangerous roots such as `/`, `$HOME`, repository paths, and non-`runs`-like
+directories, and it deletes only complete run directories under the run root.
+
 ## Source alignment
 
 Primary upstream references:

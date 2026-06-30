@@ -116,6 +116,9 @@ Use target=viewport for the baseline, target=selector or target=clip for
 focused component evidence, and target=full_page only on bounded pages with an
 explicit max_pixels. Screenshot artifacts are written outside the repo under
 the TMWD run root and tool results return metadata only, never image base64.
+Audit retained screenshot/run evidence with `npm run runtime:cleanup:dry-run`;
+apply retention only with the explicit write path
+`npm run runtime:cleanup -- --write`.
 If a managed tab redirects to a login page, use browser_auth_ops.ensure_login
 for approved sites, preferably with the managed tab_id. It first accepts
 already-authenticated pages without resubmitting. On a login page it selects a
@@ -287,6 +290,9 @@ to dry-run validate a real sanitized proof before adding `--write`.
 
 - Keep runtime artifacts under `~/.tmwd-browser-mcp/` or another
   `TMWD_BROWSER_MCP_HOME` path.
+- Keep screenshot/run artifact retention explicit: start with
+  `npm run runtime:cleanup:dry-run`, then add `-- --write` only when the
+  planned old run directories should be deleted.
 - Keep the browser extension installed from
   `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` or the documented local runtime
   copy.

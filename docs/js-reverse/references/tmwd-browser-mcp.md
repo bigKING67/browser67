@@ -53,7 +53,8 @@ Default arguments:
 - Use `browser_screenshot_ops` instead of hand-written `Page.captureScreenshot`
   calls when visual evidence matters; it supports `viewport`, `selector`,
   `clip`, and bounded `full_page`, writes PNGs outside the repo, and returns
-  artifact metadata rather than base64.
+  artifact metadata rather than base64. Use `npm run runtime:cleanup:dry-run`
+  to audit retained run/screenshot artifacts before applying `--write`.
 - `browser_job_ops` is intentionally in-process (`durable:false`); `cancel` records intent but does not preempt page-side JS.
 - `record_reverse_evidence` is normalized to `evidence.v1`; include source/confidence/request/script/artifact links whenever known.
 - `list_frames` lists same-origin descendants recursively and degrades cross-origin frames to element metadata. Do not infer inner DOM for inaccessible frames.

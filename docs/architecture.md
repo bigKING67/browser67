@@ -45,7 +45,10 @@ native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
   install-local `config.js`.
 - `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` is the Chrome/Edge unpacked
   extension install target.
-- `~/.tmwd-browser-mcp/runtime/` is runtime state and logs.
+- `~/.tmwd-browser-mcp/runtime/` is runtime state and logs. Run directories live
+  under `runtime/runs` and are governed by `npm run runtime:cleanup:dry-run`
+  / `npm run runtime:cleanup -- --write` so screenshot evidence stays outside
+  the repo without growing indefinitely.
 - `runtime/js-reverse/` is ignored local evidence, reports, and rebuild bundles
   produced by `src/js-reverse-server.mjs`.
 - `~/Library/LaunchAgents/com.browser67.tmwd-browser-mcp.plist` is optional

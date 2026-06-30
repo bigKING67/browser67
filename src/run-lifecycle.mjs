@@ -255,6 +255,7 @@ async function handleBrowserRunOps(args = {}) {
 }
 
 export {
+  DEFAULT_RUN_ROOT,
   RUN_SCHEMA_VERSION,
   handleBrowserRunOps,
   prepareRun,
