@@ -34,6 +34,9 @@ approval_mode = "approve"
 [mcp_servers.tmwd_browser.tools.browser_screenshot_ops]
 approval_mode = "approve"
 
+[mcp_servers.tmwd_browser.tools.browser_evidence_bundle_ops]
+approval_mode = "approve"
+
 [mcp_servers.tmwd_browser.tools.browser_extract]
 approval_mode = "approve"
 
@@ -145,6 +148,13 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   `layout_selectors` to return compact selector rect/computed-style metrics for
   L3/L4 visual evidence. Screenshot PNGs follow the runtime run retention
   policy instead of accumulating in the project.
+- `browser_evidence_bundle_ops`: converts completed `browser_screenshot_ops`
+  before/after payloads into `design-craft.l4-screenshots.v1` manifests for
+  design-craft L4 evals. Supply `phase:"before"|"after"` and a shared
+  artifact `key` such as `desktop` or `mobile`; include `transport_health`,
+  `finalize_summary`, and `run` when available. It writes `screenshots.json`
+  only when `write:true`, `confirm_write:true`, and `output_path` ends with
+  `screenshots.json`.
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
 - `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, verifies closed tabs disappear from the live browser, preserves `keep:true`, and ignores unmanaged user tabs.
@@ -229,7 +239,11 @@ Visual QA pattern:
    layout details matter.
 5. Use `target:"full_page"` only with a bounded page and explicit
    `max_pixels`.
-6. Finish with `browser_tab_lifecycle.finalize_task` for the same
+6. For design-craft L4 before/after evals, pass the screenshot payloads to
+   `browser_evidence_bundle_ops action:"build_design_craft_l4_manifest"` and
+   then validate the resulting `screenshots.json` with design-craft's strict
+   case validator before citing it as evidence.
+7. Finish with `browser_tab_lifecycle.finalize_task` for the same
    `workspace_key`.
 
 Manual-required results may include:

@@ -16,6 +16,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(names.includes("browser_run_ops"), true);
   assert.equal(names.includes("browser_job_ops"), true);
   assert.equal(names.includes("browser_screenshot_ops"), true);
+  assert.equal(names.includes("browser_evidence_bundle_ops"), true);
   assert.equal(names.includes("browser_tab_ops"), true);
   assert.equal(names.includes("browser_native_input"), true);
   assert.equal(names.includes("browser_file_ops"), true);
@@ -94,6 +95,18 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(screenshotTool?.inputSchema?.properties?.max_pixels?.maximum, 50_000_000);
   assert.equal(screenshotTool?.inputSchema?.properties?.prepare_run?.default, true);
   assert.equal(screenshotTool?.description?.includes("never screenshot base64"), true);
+
+  const evidenceBundleTool = tools.find((entry) => entry?.name === "browser_evidence_bundle_ops");
+  assert.equal(
+    evidenceBundleTool?.inputSchema?.properties?.action?.enum?.includes("build_design_craft_l4_manifest"),
+    true,
+  );
+  assert.equal(evidenceBundleTool?.inputSchema?.properties?.case_id?.type, "string");
+  assert.equal(evidenceBundleTool?.inputSchema?.properties?.entries?.type, "array");
+  assert.deepEqual(evidenceBundleTool?.inputSchema?.properties?.entries?.items?.properties?.phase?.enum, ["before", "after"]);
+  assert.equal(evidenceBundleTool?.inputSchema?.properties?.write?.default, false);
+  assert.equal(evidenceBundleTool?.inputSchema?.properties?.confirm_write?.default, false);
+  assert.equal(evidenceBundleTool?.description?.includes("design-craft L4"), true);
 
   const tabLifecycleTool = tools.find((entry) => entry?.name === "browser_tab_lifecycle");
   assert.equal(

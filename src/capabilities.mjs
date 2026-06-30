@@ -12,6 +12,7 @@ const CAPABILITIES = {
   supports_close_verification: true,
   supports_screenshot_viewport_override: true,
   supports_screenshot_layout_metrics: true,
+  supports_design_craft_l4_evidence_manifest: true,
   managed_registry_default_path: "~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json",
 };
 

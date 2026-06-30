@@ -11,6 +11,7 @@ import { makeResult } from "../mcp-result.mjs";
 import { handleBrowserRunOps } from "../run-lifecycle.mjs";
 import {
   handleBrowserDiff,
+  handleBrowserEvidenceBundleOps,
   handleBrowserExecuteJs,
   handleBrowserExtract,
   handleBrowserJobOps,
@@ -49,6 +50,9 @@ async function dispatchToolCall(name, args) {
     }
     if (name === "browser_screenshot_ops") {
       return makeResult(await handleBrowserScreenshotOps(args));
+    }
+    if (name === "browser_evidence_bundle_ops") {
+      return makeResult(await handleBrowserEvidenceBundleOps(args));
     }
     if (name === "browser_tab_ops") {
       return makeResult(await handleBrowserTabOps(args));

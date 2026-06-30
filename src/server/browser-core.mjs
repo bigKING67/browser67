@@ -1,5 +1,6 @@
 export { handleBrowserScan } from "./browser-core/scan.mjs";
 export { handleBrowserExecuteJs } from "./browser-core/execute-js.mjs";
+export { handleBrowserEvidenceBundleOps } from "./browser-core/evidence-bundle.mjs";
 export { handleBrowserJobOps } from "./browser-core/job.mjs";
 export { handleBrowserDiff, handleBrowserExtract } from "./browser-core/extract-diff.mjs";
 export { handleBrowserScreenshotOps } from "./browser-core/screenshot.mjs";

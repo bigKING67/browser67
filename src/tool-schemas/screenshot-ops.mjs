@@ -81,6 +81,81 @@ const SCREENSHOT_TOOL_SCHEMAS = {
       },
     },
   },
+  browser_evidence_bundle_ops: {
+    description: "Build design-craft L4 screenshot evidence manifests from browser_screenshot_ops metadata. Optional writes require write=true and confirm_write=true.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["build_design_craft_l4_manifest"],
+          default: "build_design_craft_l4_manifest",
+        },
+        case_id: {
+          type: "string",
+          description: "Stable design-craft before/after case id.",
+        },
+        entries: {
+          type: "array",
+          description: "Screenshot payloads captured by browser_screenshot_ops, annotated with phase and artifact key.",
+          items: {
+            type: "object",
+            properties: {
+              phase: { type: "string", enum: ["before", "after"] },
+              key: { type: "string" },
+              artifact_key: { type: "string" },
+              target: { type: "string", enum: ["viewport", "clip", "selector", "full_page"] },
+              tool: { type: "string" },
+              viewport: { type: "object" },
+              screenshot: { type: "object" },
+              payload: { type: "object" },
+              artifact: { type: "object" },
+            },
+          },
+        },
+        transport_health: {
+          type: "object",
+          description: "Optional browser_transport_health payload to preserve in evidence metadata.",
+        },
+        finalize_summary: {
+          type: "object",
+          description: "Optional browser_tab_lifecycle finalize_task payload to preserve in evidence metadata.",
+        },
+        run: {
+          type: "object",
+          description: "Optional browser_run_ops run summary to preserve in evidence metadata.",
+        },
+        require_shared_keys: {
+          type: "boolean",
+          default: true,
+          description: "Require at least one shared artifact key across before and after phases.",
+        },
+        redact_url_query: {
+          type: "boolean",
+          default: true,
+          description: "Strip query/hash from captured page URLs before writing the manifest.",
+        },
+        verify_artifacts: {
+          type: "boolean",
+          default: false,
+          description: "Read local PNG artifacts and verify SHA-256 plus dimensions.",
+        },
+        write: {
+          type: "boolean",
+          default: false,
+          description: "Write the manifest to output_path. Requires confirm_write=true.",
+        },
+        confirm_write: {
+          type: "boolean",
+          default: false,
+        },
+        output_path: {
+          type: "string",
+          description: "Optional path ending in screenshots.json when write=true.",
+        },
+      },
+    },
+  },
 };
 
 export {
