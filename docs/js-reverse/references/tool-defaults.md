@@ -3,7 +3,12 @@
 - get_hook_data: view=summary, maxRecords=80
 - 首轮 Hook: fetch + xhr
 - list_frames: iframe / 微前端 / cross-origin widget 场景默认先跑；cross-origin 只使用 degraded metadata
+- detect_microfrontends: qiankun/Garfish/single-spa/micro-app/iframe/shadow DOM/sandbox 场景默认先跑
 - record_reverse_evidence: channel=runtime-evidence, schema=evidence.v1
+- get_local_storage/get_session_storage: 必须传 `key`；默认 `max_value_chars=4000`
+- search_storage: storage_area=both, max_records=50, 默认只返回 bounded preview
+- watch_storage_changes: 非阻塞记录 storage-change；用 get_hook_data 查询
+- export_evidence_bundle: 写 repo 外 `summary.json`、`network.ndjson`、`hooks/`、`storage-redacted.json`、`replay/README.md`
 - export_rebuild_bundle: 优先导出 env/entry.js + env/env.js + env/polyfills.js + env/capture.json
 - browser_execute_js 大输出: output_mode=compact, max_return_chars 显式设置
 - browser_job_ops: in-process only, durable=false, cancel 不抢占页面 JS

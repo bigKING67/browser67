@@ -15,6 +15,7 @@ Full tool reference organized by function. All tools are prefixed with `mcp__js-
 | `get_request_initiator` | Call stack trace for a network request |
 | `get_dom_structure` | DOM tree snapshot |
 | `list_frames` | Frame tree with `frame_path`, geometry, same-origin accessibility, child counts, and cross-origin degraded metadata |
+| `detect_microfrontends` | Detect qiankun/Garfish/single-spa/micro-app, iframe, shadow DOM, sandbox boundaries, and hook-scope limits |
 
 ## Runtime Monitoring (Hook System)
 | Tool | Purpose |
@@ -26,7 +27,7 @@ Full tool reference organized by function. All tools are prefixed with `mcp__js-
 | `hook_function` / `unhook_function` | Direct function hooking shortcut |
 | `monitor_events` / `stop_monitor` | DOM event monitoring |
 | `trace_function` | Function call tracing via logpoints |
-| `inject_preload_script` | Inject script before page load — essential for first-paint interception |
+| `inject_preload_script` | Evaluate in the current document and return explicit preload semantics; true document_start requires extension/CDP preload |
 
 ## Debugging (last resort — prefer hooks)
 | Tool | Purpose |
@@ -51,6 +52,7 @@ Full tool reference organized by function. All tools are prefixed with `mcp__js-
 |------|---------|
 | `record_reverse_evidence` | Save normalized `evidence.v1` findings to task artifact (channel: `runtime-evidence`) |
 | `export_session_report` | Export full session report |
+| `export_evidence_bundle` | Export reproducible bundle: `summary.json`, `network.ndjson`, `hooks/`, `storage-redacted.json`, `replay/README.md` |
 | `export_rebuild_bundle` | Export local Node.js rebuild package |
 | `diff_env_requirements` | Compare local vs. browser environment gaps |
 | `collect_code` / `collection_diff` | Code collection and diffing |
@@ -62,6 +64,9 @@ Full tool reference organized by function. All tools are prefixed with `mcp__js-
 | `set_user_agent` | Custom User-Agent |
 | `save_session_state` / `restore_session_state` | Persist and restore login state |
 | `get_storage` | Read cookies, localStorage, sessionStorage |
+| `get_local_storage` / `get_session_storage` | Read one storage key with bounded value output |
+| `search_storage` | Search storage keys and bounded value previews |
+| `watch_storage_changes` | Install non-blocking storage-change recorder; inspect with `get_hook_data` |
 
 ## Default Parameters
 | Parameter | Default |

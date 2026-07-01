@@ -25,4 +25,6 @@
 - 回看页面观察证据
 - 对齐本地补环境状态
 - 复核 `evidence.v1` 的 source/confidence/request/script/artifact 关联
+- 需要交接或复现时运行 `export_evidence_bundle`；默认结构包含 `summary.json`、`network.ndjson`、`hooks/`、`storage-redacted.json`、`replay/README.md`
+- storage 只保留 redacted metadata；需要具体值时回到 live 页面使用 scoped helper 获取
 - 进入后续 AST 去混淆或 VMP 深挖

@@ -2,8 +2,9 @@
 
 browser67 is meant to be used by agents as a paired real-browser runtime:
 
-- `tmwd_browser`: real Chrome/Edge profile automation through TMWD.
-- `js-reverse`: TMWD-backed JavaScript reverse engineering, API discovery,
+- `tmwd_browser`: browser67 real Chrome/Edge profile automation tool key over
+  the TMWD transport/protocol.
+- `js-reverse`: browser67-backed JavaScript reverse engineering, API discovery,
   request initiator tracing, hooks, evidence export, and local rebuild bundles.
 
 Use both together. `tmwd_browser` owns general browser automation; `js-reverse`
@@ -18,7 +19,7 @@ owns observe/capture/rebuild workflows.
 | Copy-ready global prompt rules | `docs/global-prompt-snippet.md` |
 | Project-level prompt for this repo | `AGENTS.md` |
 | browser67 skill | `skills/browser67/` |
-| Legacy TMWD browser skill | `skills/tmwd-browser-mcp/` |
+| Legacy browser67 alias skill | `skills/tmwd-browser-mcp/` |
 | JS reverse skill | `skills/js-reverse/` |
 | JS reverse SOP entrypoint | `docs/js-reverse-SOP.md` |
 | Generic agent descriptor | `agents/openai.yaml` |
@@ -87,10 +88,13 @@ skills/js-reverse
 Do not copy these skills into `~/.pi/agent/skills` when `~/.pi/agent` is an
 in-place `pi-67` checkout; keep browser67 as the source of truth.
 
-For Codex-style skill directories, copy both skills into the user's skill root:
+For Codex-style skill directories, copy the canonical browser67 and js-reverse
+skills into the user's skill root. Copy `tmwd-browser-mcp` only when an older
+agent still routes by that legacy alias:
 
 ```bash
 mkdir -p ~/.codex/skills
+cp -R /path/to/browser67/skills/browser67 ~/.codex/skills/
 cp -R /path/to/browser67/skills/tmwd-browser-mcp ~/.codex/skills/
 cp -R /path/to/browser67/skills/js-reverse ~/.codex/skills/
 ```
@@ -111,15 +115,17 @@ For a copy-ready Chinese prompt block, use `docs/global-prompt-snippet.md`.
 The compact English version is:
 
 ```text
-Use tmwd_browser for real Chrome/Edge browser automation: logged-in pages,
-current tabs, cookies/session-aware page inspection, CDP bridge commands,
-downloads/uploads, file chooser planning, clipboard write/paste wrappers,
-native fallback, managed tab lifecycle, and first-class screenshot artifacts.
+Use browser67 real-browser MCP for real Chrome/Edge browser automation:
+logged-in pages, current tabs, cookies/session-aware page inspection, CDP
+bridge commands, downloads/uploads, file chooser planning, clipboard
+write/paste wrappers, native fallback, managed tab lifecycle, and first-class
+screenshot artifacts. The current MCP tool key remains `tmwd_browser`; `tmwd`
+is only a transport/protocol term.
 
 Use js-reverse for page API/interface discovery, request initiator tracing,
 signature-chain tracing, script search, network/WS sampling, non-blocking hooks,
 evidence export, and local rebuild bundles. Pages opened through js-reverse
-new_page are TMWD-managed too; finish reverse tasks with js-reverse
+new_page are browser67-managed too; finish reverse tasks with js-reverse
 finalize_task for the same workspace_key or task_id unless the page must stay
 open for evidence review.
 
@@ -139,7 +145,7 @@ For visual QA, call browser_screenshot_ops after browser_wait settles the page.
 Use target=viewport for the baseline, target=selector or target=clip for
 focused component evidence, and target=full_page only on bounded pages with an
 explicit max_pixels. Screenshot artifacts are written outside the repo under
-the TMWD run root and tool results return metadata only, never image base64.
+the browser67 run root and tool results return metadata only, never image base64.
 Audit retained screenshot/run evidence with `npm run runtime:cleanup:dry-run`;
 apply retention only with the explicit write path
 `npm run runtime:cleanup -- --write`.
@@ -165,7 +171,7 @@ page content. After the user completes the manual step, call ensure_login again
 on the same managed tab/workspace to validate the resumed authenticated state.
 CAPTCHA handoff may include captcha_kind, captcha_assist, and captcha_router
 metadata. Treat the default visible-UI path as a physical/manual flow: bring the
-TMWD-owned tab to the foreground if needed, capture only the browser
+browser67-owned tab to the foreground if needed, capture only the browser
 window/region for vision assistance, never take fullscreen screenshots, never
 use JS/CDP to click CAPTCHA widgets, never extract browser CAPTCHA
 tokens/cookies, wait before retrying, and hand off to the user if the challenge
@@ -203,7 +209,7 @@ Cross-origin captcha-like iframes are degraded/manual-only: keep the iframe rect
 and clipped screenshot plan, but do not infer inner controls or send physical
 input into the frame.
 For normal
-TMWD-owned tabs it uses TMWD tabs.switch to foreground the target before
+browser67-owned tabs it uses the TMWD transport `tabs.switch` to foreground the target before
 physical provider input, waits for pre_input_settle_ms, and refreshes
 planner/vision coordinates against the active window before the native click or
 drag. This avoids stale Chrome toolbar/content inset estimates. Explicit

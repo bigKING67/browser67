@@ -1,8 +1,9 @@
 # browser67
 
 browser67 is a real-browser agent runtime for Chrome/Edge automation,
-TMWD-backed JavaScript reverse workflows, evidence-first browser operations,
-and long-term agent tooling.
+browser67-backed JavaScript reverse workflows, evidence-first browser
+operations, and long-term agent tooling. The current real-browser
+transport/protocol is TMWD.
 
 The old `tmwd-browser-mcp` name is now a compatibility alias for the
 `tmwd_browser` MCP surface and legacy package/bin/runtime paths. New docs,
@@ -35,7 +36,7 @@ runtime, contracts, skills, docs, and agent integration surface.
   - `list_network_requests` / `get_request_initiator`
   - `create_hook` / `inject_hook` / `get_hook_data`
   - `record_reverse_evidence` / `export_rebuild_bundle`
-- Local TMWD hub:
+- Local browser67 hub for the TMWD transport:
   - WebSocket endpoint: `ws://127.0.0.1:18765`
   - HTTP link endpoint: `http://127.0.0.1:18766/link`
 - Unpacked Chrome/Edge extension source in `extension/`
@@ -64,12 +65,12 @@ runtime, contracts, skills, docs, and agent integration surface.
   is the canonical executable MCP entrypoint; `src/js-reverse-server.mjs`
   remains a compatibility shim.
 
-## Why TMWD first
+## Why browser67 uses the TMWD transport first
 
-TMWD controls the user's real browser through an extension and local hub. It keeps
-existing tabs, cookies, and login state. This is different from remote-debugging
-CDP (`http://127.0.0.1:9222`), which can point to a separate debug browser with
-no user session.
+browser67 controls the user's real browser through the TMWD extension transport
+and local hub. It keeps existing tabs, cookies, and login state. This is
+different from remote-debugging CDP (`http://127.0.0.1:9222`), which can point
+to a separate debug browser with no user session.
 
 For Codex and real-profile tasks, default to:
 
@@ -200,7 +201,7 @@ Codex config should point directly at:
 /path/to/browser67/src/mcp/browser/server.mjs
 ```
 
-Run the TMWD-backed JS reverse MCP server with:
+Run the browser67-backed JS reverse MCP server with:
 
 ```bash
 npm run js-reverse:server
@@ -225,7 +226,7 @@ material needed by other agents:
 - `AGENTS.md`: project-level operating rules for agents working inside this
   repository.
 - `skills/browser67/`: canonical skill/playbook for browser67 runtime tasks.
-- `skills/tmwd-browser-mcp/`: legacy skill alias for real-browser TMWD tasks.
+- `skills/tmwd-browser-mcp/`: legacy skill alias for browser67 real-browser tasks.
 - `skills/js-reverse/`: skill/playbook for JavaScript reverse-engineering tasks.
 - `agents/openai.yaml` and `skills/js-reverse/agents/openai.yaml`: portable
   agent metadata/prompts for agent systems that consume YAML descriptors.
@@ -240,7 +241,7 @@ instructions.
 
 `browser_auth_ops` handles opt-in, exact-origin login profiles for managed tabs:
 
-- `ensure_login` first inspects the selected TMWD tab. If it is already logged
+- `ensure_login` first inspects the selected browser67 managed tab. If it is already logged
   in, it returns `already_authenticated:true` and does not resubmit a form.
 - If the tab is on a login page, credentials are used only when the current
   origin exactly matches a repo-external local profile.
@@ -278,7 +279,7 @@ slider, rotate, and image-click style challenges, and an optional repo-external
 provider protocol route can be planned only for explicitly allowlisted origins.
 Even in protocol mode, the default remains disabled until the caller sets
 `captcha_solver_mode:"protocol_allowed"` and `confirm_protocol_solver:true`.
-TMWD still avoids JS/CDP clicks on CAPTCHA widgets, browser token/cookie
+browser67 still avoids JS/CDP clicks on CAPTCHA widgets, browser token/cookie
 extraction, fullscreen screenshots, and rapid retries.
 
 For CAPTCHA diagnostics, `browser_auth_ops.plan_captcha_assist` is a dry-run
@@ -306,12 +307,12 @@ estimates are explicitly not safe for unattended execution:
 browser chrome, OS scaling, iframe nesting, DPR, and multi-monitor placement can
 shift final physical pixels.
 `browser_auth_ops.assist_captcha` is the guarded execution entry: it requires a
-TMWD-owned managed `tab_id`, `confirm_physical_input:true`, and either
+browser67-owned managed `tab_id`, `confirm_physical_input:true`, and either
 caller-supplied screen coordinates, `auto_screen_coordinates:true` plus
 `confirm_auto_coordinates:true`, or `use_vision_corrected_coordinates:true` plus
 `confirm_corrected_coordinates:true`, or `use_provider_coordinates:true` plus
 `confirm_provider_coordinates:true` after `run_vision_correction:true` has
-created a bounded region artifact for an allowlisted provider route. It uses TMWD `tabs.switch` to foreground the
+created a bounded region artifact for an allowlisted provider route. It uses the TMWD transport `tabs.switch` to foreground the
 managed tab/window before physical provider input; `window_title`, `window_pid`,
 and `window_active_confirmed:true` are fallbacks for unusual window-manager
 cases. `physical_input_provider:"auto"` prefers `ljq-ctrl` once it becomes
@@ -444,7 +445,7 @@ Before opening the GUI fixture or creating a managed tab, the wrapper now runs
 the same native pointer preflight as
 `npm run check:native-pointer`; if click/drag requirements are missing, it
 returns a structured skipped/blocked result without foregrounding Chrome or
-attempting physical input. The physical branch foregrounds its own TMWD-managed
+attempting physical input. The physical branch foregrounds its own browser67-managed
 fixture tab before dragging/clicking only after that preflight passes. Native pointer
 actions must be genuinely available: run `npm run check:native-pointer` first to
 verify whether the current OS provider can actually click/drag without moving

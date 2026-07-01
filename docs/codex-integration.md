@@ -2,8 +2,8 @@
 
 browser67 exposes two paired MCP surfaces for Codex:
 
-- `tmwd_browser`: real Chrome/Edge profile automation through TMWD.
-- `js-reverse`: TMWD-backed reverse workflows on the same browser runtime.
+- `tmwd_browser`: browser67 real Chrome/Edge profile automation tool key.
+- `js-reverse`: browser67-backed reverse workflows on the same browser runtime.
 
 Use `browser67` as the project/package/CLI name. `tmwd-browser-mcp` is only a
 legacy compatibility alias.
@@ -112,8 +112,8 @@ approval_mode = "approve"
 
 ## Tool routing
 
-- `tmwd_browser`: primary path for real browser tasks, logged-in pages, existing tabs, cookies, CDP bridge, background tabs, batch actions, downloads/uploads, file chooser planning, clipboard write/paste wrappers, and managed tab lifecycle.
-- `js-reverse`: primary path for page API/interface discovery, frame listing, request initiator tracing, signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is TMWD-backed by default, so it keeps the user's real logged-in browser context. JS reverse pages created with `new_page` are also TMWD-managed; end reverse tasks with `finalize_task` for the current `workspace_key` / `task_id` unless evidence collection requires keeping the page open.
+- browser67 (`tmwd_browser` tool key): primary path for real browser tasks, logged-in pages, existing tabs, cookies, CDP bridge, background tabs, batch actions, downloads/uploads, file chooser planning, clipboard write/paste wrappers, and managed tab lifecycle.
+- `js-reverse`: primary path for page API/interface discovery, frame listing, request initiator tracing, signature-chain tracing, script search, network/WS sampling, non-blocking hooks, evidence export, and local rebuild bundles. It is browser67-backed by default, so it keeps the user's real logged-in browser context. JS reverse pages created with `new_page` are also browser67-managed; end reverse tasks with `finalize_task` for the current `workspace_key` / `task_id` unless evidence collection requires keeping the page open.
 - in-app Browser: localhost/file previews without Chrome profile state.
 - Computer Use: desktop UI and pure visual pointer/keyboard actions.
 - `remote_cdp`: explicit debug Chrome/CI/JS reverse protocol work, not ordinary login-state tasks.
@@ -125,12 +125,12 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 ## Wrapper tools
 
-- `browser_execute_js`: direct TMWD/CDP JavaScript execution. Use
+- `browser_execute_js`: direct browser67/CDP JavaScript execution. Use
   `output_mode:"compact"` plus `max_return_chars` for large DOM/network payloads
   so tool results stay bounded and context-safe.
 - `browser_wait`: first-class selector/text/function/DOM-stable/network-idle
   wait helper. Prefer it over ad-hoc sleeps when a page needs readiness gating.
-- `browser_transport_health`: probes TMWD `ws` and/or `link` transports and
+- `browser_transport_health`: probes browser67 `ws` and/or `link` transports and
   returns `healthy`, `degraded`, or `broken` diagnostics with a preferred
   transport and actionable suggestion.
 - `browser_run_ops`: creates externalized run folders under the active
@@ -165,8 +165,8 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   `screenshots.json`.
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
-- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only TMWD-owned managed tabs (`ownership_policy="tmwd_only"`) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, verifies closed tabs disappear from the live browser, preserves `keep:true`, and ignores unmanaged user tabs.
-- `browser_auth_ops`: `list_profiles`, `validate_profile`, `inspect_login_page`, `suggest_profile`, `upsert_profile`, `ensure_login`. Use after `browser_tab_lifecycle.select_or_create` when a TMWD-owned tab lands on a login page. Profiles are exact-origin allowlisted, stored only in repo-external local secret files, and outputs are redacted; unknown origins are reported as blocked and are never auto-filled. Profile lifecycle metadata is kept in a separate redacted sidecar file.
+- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only browser67-owned managed tabs (`ownership_policy="tmwd_only"` remains the compatibility enum) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, verifies closed tabs disappear from the live browser, preserves `keep:true`, and ignores unmanaged user tabs.
+- `browser_auth_ops`: `list_profiles`, `validate_profile`, `inspect_login_page`, `suggest_profile`, `upsert_profile`, `ensure_login`. Use after `browser_tab_lifecycle.select_or_create` when a browser67-owned tab lands on a login page. Profiles are exact-origin allowlisted, stored only in repo-external local secret files, and outputs are redacted; unknown origins are reported as blocked and are never auto-filled. Profile lifecycle metadata is kept in a separate redacted sidecar file.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
 ## Login profiles
@@ -174,7 +174,7 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 `browser_auth_ops` is a profile-driven helper layer, not a global password
 autofill. It never reads Chrome password stores, cookie databases, browser
 history, or unrelated tabs. It only inspects/fills the currently selected
-TMWD tab when the current `location.origin` exactly matches a configured
+browser67 tab when the current `location.origin` exactly matches a configured
 profile. Saving credentials is explicit: only `upsert_profile` writes a
 repo-external secret file, and it requires `confirm_write:true`; creating or
 selecting a managed tab never saves credentials as a hidden side effect.
@@ -239,7 +239,7 @@ Known-site operational pattern:
 
 Visual QA pattern:
 
-1. Create/reuse a TMWD-owned managed tab.
+1. Create/reuse a browser67-owned managed tab.
 2. Gate readiness with `browser_wait` (`selector`, `dom_stable`, or
    `network_idle` as appropriate).
 3. Capture `browser_screenshot_ops target:"viewport"` for the baseline.
@@ -282,7 +282,7 @@ captured DOM content. After the user completes the manual step, call
 expected successful path is already-authenticated validation, not replaying
 stored credentials across an external identity provider.
 
-For CAPTCHA handoff, TMWD now uses a hybrid router. The default visible-UI path
+For CAPTCHA handoff, browser67 uses a hybrid router. The default visible-UI path
 still follows the Sophub physical-input pattern: CDP is acceptable for bringing
 the managed tab to the foreground or window-scoped screenshots, but CAPTCHA
 widgets must not be clicked with JS/CDP. If visual assistance is required,
@@ -336,7 +336,7 @@ iframe offsets, DPR, and multi-monitor layout can shift the final physical
 pixels, so unattended execution remains disabled.
 
 `action:"assist_captcha"` is intentionally stricter: it only runs on a
-TMWD-owned managed tab, requires `confirm_physical_input:true`, requires a
+browser67-owned managed tab, requires `confirm_physical_input:true`, requires a
 foreground window, and requires either caller-supplied screen coordinates or
 `auto_screen_coordinates:true` plus `confirm_auto_coordinates:true`, or
 `use_vision_corrected_coordinates:true` plus
@@ -345,7 +345,7 @@ route with `use_provider_coordinates:true` plus
 `confirm_provider_coordinates:true`. Provider coordinates are converted through
 the region artifact clip and refreshed viewport metrics before native input.
 For normal
-TMWD-owned tabs, it foregrounds the target with TMWD `tabs.switch` before
+browser67-owned tabs, it foregrounds the target with browser67 `tabs.switch` before
 physical provider input, waits for `pre_input_settle_ms`, then refreshes the
 planner/vision coordinates against the now-active window before sending native
 input. This post-activation refresh avoids stale Chrome toolbar/content inset
@@ -406,7 +406,7 @@ sites to use the generic profile directory above.
 ## Tab ownership policy
 
 - User-opened tabs are `user_unmanaged`: scan/read-only by default. Do not navigate, type, click, close, or adopt them unless the user explicitly asks to operate on the current tab.
-- TMWD work tabs are `tmwd_managed`: create them through `browser_tab_lifecycle`.
+- browser67 work tabs are `tmwd_managed` in the compatibility registry: create them through `browser_tab_lifecycle`.
 - Managed tab registry is stored outside the repo under the active browser67 home, canonically `~/.browser67/tab-workspace/managed-tabs.json`. Override with `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for tests or isolated runs.
 - `list_managed` returns live sessions by default and limits large arrays. Use `summary_only:true`, `max_items`, or `max_stale_items` for bounded diagnostics; summary mode returns counts and suppresses unrelated live-session rows. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
 - `create_managed` / `select_or_create` wait for the created tab to be visible by default (`wait_until:"listed"`, `wait_timeout_ms:3000`). Use `wait_until:"none"` only for fire-and-forget workflows.
@@ -422,16 +422,16 @@ sites to use the generic profile directory above.
 }
 ```
 
-- Use `fresh:true` or `reuse:false` only when a new TMWD-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
+- Use `fresh:true` or `reuse:false` only when a new browser67-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
 - Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
 - Use `prune_stale` or `list_managed` with `prune_stale:true` to remove registry records for managed tabs that no longer exist. This never closes unmanaged user tabs.
 - End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. The finalizer verifies closed managed tabs disappear from the live browser before reporting success. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`. Treat `finalize_hint.required:true` as a visible reminder to run the suggested `finalize_task` call before final response or handoff.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
-- Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, which catches missing finalizers even when no live browser action is needed. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing TMWD workspaces do not make repository verification flaky.
+- Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, which catches missing finalizers even when no live browser action is needed. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing browser67 workspaces do not make repository verification flaky.
 - Use `npm run runtime:cleanup:dry-run` as the repo-external run/screenshot artifact retention audit. It is non-destructive by default; use `npm run runtime:cleanup -- --write` only when intentionally deleting planned old run directories.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
-- One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the TMWD websocket explicitly to avoid successful actions ending with a command timeout.
+- One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the browser67 websocket explicitly to avoid successful actions ending with a command timeout.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
 - Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, CAPTCHA assist dry-run planning, manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.
 - Run `npm run check:captcha-assist-live` after CAPTCHA assist changes. It opens isolated local slider/checkbox fixtures, validates dry-run coordinate transforms, region-only screenshot artifact creation, scroll-adjusted CDP clips, same-origin iframe coordinate conversion, cross-origin iframe degraded/manual handoff, first-pass slider/checkbox vision correction, synthetic slider visual movement, and finalizes the managed tabs. It is planning-only.
@@ -513,7 +513,7 @@ The bundled `js-reverse` MCP focuses on observe-first, hook-preferred workflows:
 
 ## Failure policy
 
-For login-state tasks, fail closed if TMWD is unavailable. Do not silently use
+For login-state tasks, fail closed if browser67 is unavailable. Do not silently use
 remote-debugging CDP because it may be a separate profile.
 
 ## Maintenance checks

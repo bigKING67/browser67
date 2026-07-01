@@ -197,7 +197,7 @@ without reading or storing any browser private state.
   "expires_at": "2026-09-17T00:00:00.000Z",
   "command": "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
   "managed_tab_only": true,
-  "fixture": "local TMWD-owned managed tab",
+  "fixture": "local browser67-owned managed tab",
   "slider_completed": true,
   "checkbox_completed": true,
   "fullscreen_screenshot": false,
@@ -232,7 +232,7 @@ cross-host local CAPTCHA proofs do not satisfy the local physical gate.
   "expires_at": "2026-09-17T00:00:00.000Z",
   "command": "npm run check:captcha-assist-physical-live",
   "evidence": {
-    "fixture": "local TMWD-owned managed tab",
+    "fixture": "local browser67-owned managed tab",
     "managed_tab_only": true,
     "fullscreen_screenshot": false,
     "secrets_redacted": true

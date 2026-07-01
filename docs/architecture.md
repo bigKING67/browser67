@@ -28,15 +28,17 @@ native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
 
 ## Key design decisions
 
-1. Keep TMWD user browser as the default for profile-sensitive work.
+1. Keep browser67's real user-browser path as the default for profile-sensitive
+   work; the current transport/protocol is TMWD.
 2. Keep remote CDP explicit and visible.
 3. Keep extension source vendored and reproducible.
 4. Keep runtime artifacts under the active browser67 home, canonically
    `~/.browser67` with legacy `~/.tmwd-browser-mcp` compatibility.
 5. Keep deterministic contracts separate from live browser gates.
 6. Keep GenericAgent provenance explicit in `UPSTREAM.lock.json`.
-7. Keep JS reverse MCP capabilities TMWD-backed and hook-first; debugger/callframe
-   workflows must stay explicit instead of silently pretending support.
+7. Keep JS reverse MCP capabilities browser67-backed and hook-first;
+   debugger/callframe workflows must stay explicit instead of silently
+   pretending support.
 8. Keep JS reverse docs and mounted skill content synchronized by script.
 9. Keep the hub optionally managed by user-level launchd, not a hidden global service.
 

@@ -25,7 +25,7 @@ command = "node"
 args = ["/path/to/browser67/src/mcp/js-reverse/server.mjs"]
 ```
 
-For TMWD-backed browser state, set the same hub environment on both servers:
+For browser67-backed browser state, set the same hub environment on both servers:
 
 ```toml
 BROWSER_STRUCTURED_TMWD_MODE = "tmwd"

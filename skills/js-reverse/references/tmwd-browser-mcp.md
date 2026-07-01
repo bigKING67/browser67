@@ -1,4 +1,4 @@
-# TMWD Browser MCP for JS reverse
+# browser67 real-browser MCP for JS reverse
 
 This project provides the real-browser side of JS reverse workflows.
 
@@ -48,7 +48,7 @@ Default arguments:
 ## Boundary with js-reverse MCP and remote CDP
 
 - `tmwd_browser` is for real-browser state, cookies, page-visible runtime evidence, and CDP bridge operations.
-- `js-reverse` is for observe-first reverse workflows on the same TMWD-backed real browser: scripts, performance resources, runtime hooks, evidence, and rebuild bundles.
+- `js-reverse` is for observe-first reverse workflows on the same browser67-backed real browser: scripts, performance resources, runtime hooks, evidence, and rebuild bundles.
 - Use `browser_execute_js output_mode:"compact"` with explicit `max_return_chars` when collecting large DOM/network payloads for reverse tasks.
 - Use `browser_screenshot_ops` instead of hand-written `Page.captureScreenshot`
   calls when visual evidence matters; it supports `viewport`, `selector`,
