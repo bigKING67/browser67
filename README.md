@@ -548,6 +548,16 @@ directory, and the missing proof ids, so callers can render the next collection
 command without recomputing the audit. It is read-only; use `--strict` when a
 local release gate should fail on optional gaps too.
 
+`npm run check:release-readiness` validates release metadata and release
+governance without requiring a clean worktree. It checks package/package-lock
+version consistency, current `CHANGELOG.md` coverage, release docs, canonical
+and legacy bin entries, `verify` coverage, change-set grouping, and optional
+proof status. Use `npm run release:ready` after committing and pushing; it runs
+`npm run verify`, then requires the worktree to be clean and synced with
+`origin/main`. Use `npm run release:ready:strict` only when cross-OS native and
+approved external IdP optional live proofs are part of the release acceptance
+criteria. See `docs/release-governance.md`.
+
 `npm run upstream:audit` is the safe entrypoint for GenericAgent absorption
 work. It compares `UPSTREAM.lock.json`, the local GenericAgent checkout, remote
 `main`, the extension bridge feature matrix, and a per-file merge classifier.

@@ -1,6 +1,6 @@
 {
   "name": "browser67",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "browser67 real-browser agent runtime for Chrome/Edge automation, TMWD-backed JS reverse workflows, evidence capture, native fallback, and long-term agent tooling.",
   "type": "module",
   "keywords": [
@@ -67,7 +67,7 @@
     "migrate:home": "node scripts/migrate-home.mjs",
     "plan:scoped-commits": "node scripts/plan-scoped-commits.mjs",
     "check:readiness": "node scripts/readiness-audit.mjs",
-    "check": "npm run check:mcp && npm run check:hub-control && npm run check:hub-relay && npm run check:doctor-schema && npm run check:js-reverse-mcp && npm run check:browser67-naming && npm run check:runtime-home && npm run check:setup-extension && npm run check:performance-smoke && npm run check:runtime-cleanup && npm run check:task-templates && npm run check:regression-matrix && npm run check:upstream-audit && npm run check:upstream-review && npm run check:codex-host-finalizer && npm run check:tmwd-runtime-dispose && npm run check:extension",
+    "check": "npm run check:mcp && npm run check:hub-control && npm run check:hub-relay && npm run check:doctor-schema && npm run check:js-reverse-mcp && npm run check:browser67-naming && npm run check:runtime-home && npm run check:setup-extension && npm run check:performance-smoke && npm run check:runtime-cleanup && npm run check:task-templates && npm run check:regression-matrix && npm run check:upstream-audit && npm run check:upstream-review && npm run check:codex-host-finalizer && npm run check:tmwd-runtime-dispose && npm run check:extension && npm run check:release-readiness",
     "check:mcp": "node contracts/browser67-browser-mcp-contract.mjs",
     "check:hub-control": "node contracts/browser67-hub-control-contract.mjs",
     "check:hub-relay": "node contracts/browser67-hub-relay-contract.mjs",
@@ -102,12 +102,15 @@
     "check:native-pointer": "node src/native-deps-setup/pointer-readiness.mjs",
     "check:ljqctrl": "node contracts/ljqctrl-doctor.mjs",
     "check:optional-live-proofs": "node scripts/optional-live-proof-audit.mjs",
+    "check:release-readiness": "node scripts/release-readiness.mjs",
     "plan:optional-live-proofs": "node scripts/optional-live-proof-plan.mjs",
     "proof:optional-live-status": "node scripts/optional-live-proof-status.mjs",
     "proof:optional-live-template": "node scripts/optional-live-proof-template.mjs",
     "proof:optional-live-record": "node scripts/optional-live-proof-record.mjs",
     "launchd:install": "node scripts/install-launchd.mjs",
     "launchd:uninstall": "node scripts/uninstall-launchd.mjs",
+    "release:ready": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced",
+    "release:ready:strict": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced --strict-optional-proofs",
     "verify": "node scripts/verify.mjs",
     "list:files": "find . -path ./node_modules -prune -o -type f -print | sort"
   },

@@ -28,6 +28,7 @@ function buildCommands(managedTabBaselineFile) {
     { command: "npm", args: ["run", "check:captcha-provider-jfbym-setup"] },
     { command: "npm", args: ["run", "check:captcha-provider-jfbym-coordinate"] },
     { command: "npm", args: ["run", "check:change-set"] },
+    { command: "npm", args: ["run", "check:release-readiness"] },
     { command: "npm", args: ["run", "check:readiness"] },
     { command: "npm", args: ["run", "check"] },
     { command: "npm", args: ["run", "check:live:doctor"] },

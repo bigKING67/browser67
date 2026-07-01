@@ -57,6 +57,7 @@ npm run check:js-reverse-mcp
 npm run check:doctor-schema
 npm run check:browser67-naming
 npm run check:runtime-home
+npm run check:release-readiness
 npm run skills:check
 git diff --check
 ```
@@ -66,6 +67,7 @@ Broad local gate:
 ```bash
 npm run check
 npm run verify
+npm run release:ready
 ```
 
 Live gates when browser/runtime behavior changes:
