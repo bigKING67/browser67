@@ -102,5 +102,5 @@ ljqCtrl.Click(ox + (bbox[0]+bbox[2])//2, oy + (bbox[1]+bbox[3])//2)
   可避免坐标点击，适合桌面 app 普通按钮/菜单；AX element 会随窗口重建失效，操作前应
   重新枚举。当前本项目只把它作为 reference/diagnostic，不默认执行。
 - **CAPTCHA 边界不变**：即使未来启用 AX/视觉 provider，也不能默认用 AX 或 JS/CDP
-  点击验证码控件。验证码仍必须走 TMWD-owned tab、bounded region、显式确认和物理输入。
+  点击验证码控件。验证码仍必须走 browser67-owned tab、bounded region、显式确认和物理输入。
 - **文本输入**：ljqCtrl 无 TypeText/SendKeys。向输入框键入文本：先点击/三击选中字段，再 `pyperclip.copy('文本'); ljqCtrl.Press('ctrl+v')`。

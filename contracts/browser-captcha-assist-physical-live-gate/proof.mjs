@@ -26,7 +26,7 @@ function buildPhysicalProof(parsed, options = {}) {
     expires_at: options.expires_at ?? expiresAtFrom(checkedAt),
     command: physicalGateCommand(),
     managed_tab_only: true,
-    fixture: "local TMWD-owned managed tab",
+    fixture: "local browser67-owned managed tab",
     slider_completed: parsed.physical_completion?.slider_completed === true,
     checkbox_completed: parsed.checkbox_physical_completion?.checkbox_completed === true,
     fullscreen_screenshot: false,
