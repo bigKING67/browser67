@@ -93,6 +93,7 @@ function assertReviewLedgerSemantics(review) {
 }
 
 function assertSchemaShape(schema) {
+  assert.equal(schema.$id, "https://browser67.local/schemas/upstream-review.schema.json");
   assert.equal(schema.title, "GenericAgent upstream review ledger");
   assert.equal(schema.properties?.schema_version?.enum?.includes(1), true);
   assert.equal(schema.properties?.upstream?.properties?.reviewed_commit?.pattern, "^[0-9a-fA-F]{40}$");

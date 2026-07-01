@@ -107,7 +107,7 @@ pi install git:github.com/bigKING67/browser67@<tag-or-commit>
 During active local development, install the checkout path:
 
 ```bash
-pi install /Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp
+pi install /path/to/browser67
 ```
 
 The package manifest exposes:

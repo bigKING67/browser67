@@ -1,7 +1,7 @@
 # GenericAgent upstream reference
 
 This directory keeps audited upstream material that is useful for strengthening
-`tmwd-browser-mcp` without replacing the local architecture.
+browser67 without replacing the local architecture.
 
 ## Source
 

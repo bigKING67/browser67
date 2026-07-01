@@ -207,8 +207,8 @@ get_script_source → deobfuscate_code → understand_code → summarize_code
 
 以下工具在 GA 环境下可用，显著扩展逆向能力。
 
-### tmwd-browser-mcp / TMWebDriver — 保留登录态的浏览器控制
-JSReverser-MCP 用自管 Puppeteer Chrome 或 remote-debugging CDP；`tmwd-browser-mcp` 通过 `tmwd_browser` MCP 操控用户真实浏览器，保留登录态、标签页和 Cookie。
+### browser67 / TMWebDriver — 保留登录态的浏览器控制
+JSReverser-MCP 用自管 Puppeteer Chrome 或 remote-debugging CDP；browser67 通过 `tmwd_browser` MCP 操控用户真实浏览器，保留登录态、标签页和 Cookie。
 
 适用场景：
 - 需要用户已登录态（不想重新认证）
@@ -225,7 +225,7 @@ JSReverser-MCP 用自管 Puppeteer Chrome 或 remote-debugging CDP；`tmwd-brows
 }
 ```
 
-详细边界见 `references/tmwd-browser-mcp.md`。
+详细边界见兼容参考文件 `references/tmwd-browser-mcp.md`。
 
 ### screen_ocr — 验证码识别
 目标流程需过验证码时：

@@ -73,7 +73,7 @@ pi install git:github.com/bigKING67/browser67@<tag-or-commit>
 During active local development:
 
 ```bash
-pi install /Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp
+pi install /path/to/browser67
 ```
 
 This loads package skills from:
@@ -304,7 +304,7 @@ TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0 to disable that persistence.
 For near-100 external coverage, run `npm run check:optional-live-proofs` after
 collecting sanitized local CAPTCHA physical, Linux/Windows native-input, or
 approved OAuth/SSO/MFA proof JSON under
-`~/.tmwd-browser-mcp/optional-live-proofs`; use `--strict` only when those
+`~/.browser67/optional-live-proofs`; use `--strict` only when those
 optional proofs are required for a local release gate. Use
 `npm run proof:optional-live-template` for safe `ok:false` starter templates,
 then `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>`
@@ -312,14 +312,15 @@ to dry-run validate a real sanitized proof before adding `--write`.
 
 ## Operating boundary
 
-- Keep runtime artifacts under `~/.tmwd-browser-mcp/` or another
-  `TMWD_BROWSER_MCP_HOME` path.
+- Keep runtime artifacts under the active browser67 home, canonically
+  `~/.browser67/`, or another `BROWSER67_HOME` path. Legacy
+  `TMWD_BROWSER_MCP_HOME` paths remain compatibility inputs.
 - Keep screenshot/run artifact retention explicit: start with
   `npm run runtime:cleanup:dry-run`, then add `-- --write` only when the
   planned old run directories should be deleted.
-- Keep the browser extension installed from
-  `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` or the documented local runtime
-  copy.
+- Keep the browser extension installed from the active browser67 home,
+  canonically `~/.browser67/browser/tmwd_cdp_bridge/`, or the documented local
+  runtime copy.
 - Reload the unpacked extension after extension source changes.
 - Refresh old target tabs after extension reload so content scripts reinject.
 - Treat all browser profile data and JS reverse evidence as sensitive local

@@ -16,7 +16,7 @@ import ljqCtrl
 
 ## 1.1 TMWD 诊断入口
 
-在 `tmwd-browser-mcp` 仓库内优先用项目内 doctor 验证本机 Python bridge：
+在 browser67 仓库内优先用项目内 doctor 验证本机 Python bridge：
 
 ```bash
 npm run check:ljqctrl

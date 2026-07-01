@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tmwd-browser-mcp.local/schemas/upstream-review.schema.json",
+  "$id": "https://browser67.local/schemas/upstream-review.schema.json",
   "title": "GenericAgent upstream review ledger",
   "description": "Machine-readable contract for UPSTREAM.review.json. It records a manually reviewed GenericAgent remote-main drift decision separately from the extension sync lock.",
   "type": "object",
