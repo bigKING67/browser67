@@ -56,7 +56,7 @@ async function main() {
     await mkdir(path.dirname(registryPath), { recursive: true });
     await writeFile(registryPath, [
       "",
-      "# Standalone TMWD browser MCP server.",
+      "# Standalone browser67 real-browser MCP server.",
       "[[servers]]",
       'name = "tmwd-browser-mcp"',
       'command = "node"',
@@ -66,7 +66,7 @@ async function main() {
       "[servers.env]",
       'BROWSER_STRUCTURED_TMWD_MODE = "tmwd"',
       "",
-      "# TMWD-backed JavaScript reverse-engineering MCP server.",
+      "# browser67-backed JavaScript reverse-engineering MCP server.",
       "[[servers]]",
       'name = "js-reverse"',
       'command = "node"',

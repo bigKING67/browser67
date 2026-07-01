@@ -6,9 +6,10 @@ concerns separated.
 
 ## Current canonical surfaces
 
-- `tmwd_browser`: real Chrome/Edge profile automation through TMWD.
-- `js-reverse`: TMWD-backed reverse workflow surface.
-- TMWD runtime/hub/extension bridge.
+- `tmwd_browser`: browser67 real Chrome/Edge profile automation over the TMWD
+  transport/protocol.
+- `js-reverse`: browser67-backed reverse workflow surface.
+- TMWD transport runtime, hub, and extension bridge.
 - Repo-external runtime artifacts and evidence.
 - Governance contracts, doctors, readiness checks, and upstream audits.
 

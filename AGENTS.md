@@ -5,7 +5,7 @@
 ## 设计边界
 
 - `browser67` 是 canonical project/package/CLI/runtime umbrella；`tmwd-browser-mcp` 只作为 legacy compatibility alias，不再作为新文档或新配置的项目主称呼。
-- 默认路径是 TMWD 用户真实浏览器：Chrome/Edge 扩展 + 本地 hub + MCP server。
+- 默认路径是 browser67 用户真实浏览器：Chrome/Edge 扩展 + 本地 hub + MCP server；底层 transport/protocol 仍称 `tmwd`。
 - `tmwd_mode=tmwd` 是登录态任务默认值；不要静默 fallback 到 remote-debugging CDP。
 - `tmwd_mode=remote_cdp` 仅用于 CI、受控 debug Chrome、JS 逆向需要 Network/Debugger/Script source 的场景。
 - 扩展源码放在 `extension/`，安装目标默认是 `~/.browser67/browser/tmwd_cdp_bridge/`；legacy `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` 仅作迁移兼容。
@@ -14,8 +14,8 @@
 
 ## 页面和浏览器操作
 
-1. 真实 Chrome/Edge 登录态、当前 tab、cookie/session 感知读取、TMWD CDP bridge batch、后台 tab、下载/上传、file chooser 规划、clipboard 写入/粘贴 wrapper、managed tab lifecycle 优先使用 `tmwd_browser` MCP；登录态任务默认 `tmwd_mode=tmwd`，禁止静默 fallback 到 remote-debugging CDP。
-2. TMWD 主动操作网页时默认使用 `browser_tab_lifecycle action=select_or_create` 创建或复用 TMWD-owned managed tab；用户自己打开的 unmanaged tab 默认只读观察，不导航、不点击、不输入、不关闭、不接管。
+1. 真实 Chrome/Edge 登录态、当前 tab、cookie/session 感知读取、CDP bridge batch、后台 tab、下载/上传、file chooser 规划、clipboard 写入/粘贴 wrapper、managed tab lifecycle 优先使用 browser67 real-browser MCP（当前工具 key 是 `tmwd_browser`）；登录态任务默认 `tmwd_mode=tmwd`，禁止静默 fallback 到 remote-debugging CDP。
+2. browser67 主动操作网页时默认使用 `browser_tab_lifecycle action=select_or_create` 创建或复用 browser67-owned managed tab；用户自己打开的 unmanaged tab 默认只读观察，不导航、不点击、不输入、不关闭、不接管。
 3. 页面 API/接口发现、请求 initiator 追踪、签名链路定位、脚本搜索、网络/WS 采样、Hook、证据导出、本地补环境包优先使用 `js-reverse` MCP，并遵循 `docs/codex-integration.md` 与 `js-reverse` skill。
 4. Chrome profile 是用户私有运行态：不查看 cookies、密码、session stores、无关历史、无关标签页、无关账号数据；外部可见动作按危险操作确认。
 5. CDP 只用于 Runtime、Network、Performance、DOM 精确状态、下载/file chooser、自动化断言；普通点击/观察不用 CDP。
@@ -34,7 +34,7 @@
 - 修改扩展后运行：
   - `npm run extension:check`
   - `npm run setup`
-  - 浏览器扩展页 reload `TMWD CDP Bridge`
+  - 浏览器扩展页 reload browser67 extension（显示名可能仍为 `TMWD CDP Bridge`）
   - 刷新目标 tab，让 content script 重新注入
 - 同步 GenericAgent 上游扩展后运行：
   - `npm run extension:sync`
@@ -46,11 +46,11 @@
 
 ## 目录职责
 
-- `src/`：MCP server、TMWD runtime、hub、native fallback。
-- `extension/`：TMWD CDP Bridge unpacked extension source。
+- `src/`：MCP server、browser67 runtime、hub、native fallback。
+- `extension/`：browser67 unpacked extension source（upstream/protocol provenance 仍可保留 `TMWD CDP Bridge` 名称）。
 - `contracts/`：可执行契约测试和 live gate。
 - `scripts/`：安装、同步、配置辅助脚本。
-- `docs/`：TMWD、JS reverse、Codex 集成文档。
+- `docs/`：browser67、JS reverse、Codex 集成文档。
 - `skills/`：可挂载到 Codex/agents 的 skill 内容。
 - `UPSTREAM.lock.json`：GenericAgent 上游 commit 和扩展文件 hash 的可审计锁定。
 

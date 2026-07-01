@@ -125,12 +125,116 @@ function assertRetiredStructuredMcpName() {
   for (const file of [
     "package.json",
     "README.md",
+    ...collectTextFiles("bin"),
     ...collectTextFiles("contracts"),
     ...collectTextFiles("docs"),
     ...collectTextFiles("scripts"),
     ...collectTextFiles("src"),
   ]) {
     assert.equal(readText(file).includes(retiredPrefix), false, `retired browser MCP name still present in ${file}`);
+  }
+}
+
+function assertCliUsesCanonicalLiveGate() {
+  const text = readText("bin/browser67.mjs");
+  const retiredLiveGate = `contracts/${"browser-structured-" + "mcp"}-live-gate.mjs`;
+  assert.match(text, /contracts\/browser67-live-gate\.mjs/);
+  assert.equal(
+    text.includes(retiredLiveGate),
+    false,
+    "browser67 CLI still references retired live-gate path",
+  );
+}
+
+function assertAgentFacingPromptBranding() {
+  const files = [
+    "README.md",
+    "AGENTS.md",
+    "docs/agent-setup.md",
+    "docs/architecture.md",
+    "docs/codex-integration.md",
+    "docs/global-prompt-snippet.md",
+    "docs/project-structure.md",
+    "skills/browser67/SKILL.md",
+    "skills/js-reverse/SKILL.md",
+    "skills/tmwd-browser-mcp/SKILL.md",
+  ];
+  const forbiddenPrimaryBrandPatterns = [
+    /\bUse TMWD\b/,
+    /\bTMWD-backed\b/,
+    /\bTMWD-owned\b/,
+    /\bTMWD-managed\b/,
+    /\bTMWD run root\b/,
+    /\bTMWD login-state\b/,
+    /\bTMWD native fallback\b/,
+    /\bTMWD controls\b/,
+    /\bselected TMWD tab\b/,
+    /\bTMWD still avoids\b/,
+    /\bLocal TMWD hub\b/,
+    /Why TMWD first/,
+  ];
+  for (const file of files) {
+    const text = readText(file);
+    for (const pattern of forbiddenPrimaryBrandPatterns) {
+      assert.doesNotMatch(
+        text,
+        pattern,
+        `agent-facing prompt/doc uses TMWD as primary browser67 brand: ${file} (${pattern})`,
+      );
+    }
+  }
+  assert.match(readText("docs/agent-setup.md"), /skills\/browser67/);
+  assert.match(readText("skills/tmwd-browser-mcp/SKILL.md"), /Legacy alias for browser67/);
+  for (const file of ["docs/js-reverse/SKILL.md", "skills/js-reverse/SKILL.md"]) {
+    assert.doesNotMatch(
+      readText(file),
+      /Playwright MCP.*互补使用/,
+      `js-reverse skill must keep browser67 as the default automation path: ${file}`,
+    );
+  }
+}
+
+function assertProjectSurfaceBranding() {
+  const files = [
+    "package.json",
+    "src/tool-schemas/tab-lifecycle.mjs",
+    "src/js-reverse-server/tool-schemas.mjs",
+    "src/js-reverse-server/hooks.mjs",
+    "scripts/change-set-lib.mjs",
+    "scripts/optional-live-proof-template.mjs",
+    "scripts/optional-live-proof-plan.mjs",
+    "scripts/optional-live-proof-audit.mjs",
+    "scripts/readiness-audit.mjs",
+    "contracts/setup-extension-contract.mjs",
+    "scripts/setup-extension.mjs",
+    "scripts/upstream-audit.mjs",
+    "docs/js-reverse-SOP.md",
+    "docs/ljqCtrl-SOP.md",
+    "docs/optional-live-proofs.md",
+    "docs/js-reverse/references/tmwd-browser-mcp.md",
+    "skills/js-reverse/references/tmwd-browser-mcp.md",
+    "contracts/browser67-browser-mcp-contract/optional-live-proofs.mjs",
+    "contracts/browser67-browser-mcp-contract/readiness-audit.mjs",
+    "contracts/browser-captcha-assist-physical-live-gate/proof.mjs",
+  ];
+  const forbiddenPrimaryBrandPatterns = [
+    /\bTMWD-backed\b/,
+    /\bTMWD-owned\b/,
+    /\bTMWD-managed\b/,
+    /\bTMWD skill\b/,
+    /\bTMWD docs\b/,
+    /\bTMWD Browser MCP\b/,
+    /\bStandalone TMWD browser MCP\b/,
+  ];
+  for (const file of files) {
+    const text = readText(file);
+    for (const pattern of forbiddenPrimaryBrandPatterns) {
+      assert.doesNotMatch(
+        text,
+        pattern,
+        `project surface uses TMWD as primary browser67 brand: ${file} (${pattern})`,
+      );
+    }
   }
 }
 
@@ -141,6 +245,9 @@ function run() {
   assertServerIdentity();
   assertTopLevelStructure();
   assertRetiredStructuredMcpName();
+  assertCliUsesCanonicalLiveGate();
+  assertAgentFacingPromptBranding();
+  assertProjectSurfaceBranding();
   process.stdout.write(`${JSON.stringify({ ok: true, contract: "browser67-naming" })}\n`);
 }
 

@@ -129,7 +129,7 @@ function ensureMcpRegistry(registryPath) {
   if (!/^\s*name\s*=\s*["']js-reverse["']/m.test(current)) {
     blocks.push([
       "",
-      "# TMWD-backed JavaScript reverse-engineering MCP server.",
+      "# browser67-backed JavaScript reverse-engineering MCP server.",
       "[[servers]]",
       "name = \"js-reverse\"",
       "command = \"node\"",

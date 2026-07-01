@@ -11,8 +11,8 @@ const COMMANDS = new Map([
   ["server", ["src/mcp/browser/server.mjs"]],
   ["setup", ["scripts/setup-extension.mjs"]],
   ["migrate-home", ["scripts/migrate-home.mjs"]],
-  ["doctor", ["contracts/browser-structured-mcp-live-gate.mjs", "--doctor-only", "--tmwd-mode", "tmwd"]],
-  ["live-gate", ["contracts/browser-structured-mcp-live-gate.mjs", "--tmwd-mode", "tmwd"]],
+  ["doctor", ["contracts/browser67-live-gate.mjs", "--doctor-only", "--tmwd-mode", "tmwd"]],
+  ["live-gate", ["contracts/browser67-live-gate.mjs", "--tmwd-mode", "tmwd"]],
   ["native-doctor", ["src/native-deps-setup.mjs"]],
   ["native-setup", ["src/native-deps-setup.mjs", "--install", "--yes"]],
 ]);

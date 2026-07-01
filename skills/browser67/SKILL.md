@@ -12,8 +12,8 @@ description: >-
 Use this skill for browser67, the canonical real-browser agent runtime. It owns
 two paired MCP surfaces:
 
-- `tmwd_browser`: real Chrome/Edge profile automation through TMWD.
-- `js-reverse`: TMWD-backed API discovery, hooks, network/WS sampling, evidence
+- `tmwd_browser`: browser67 real Chrome/Edge profile automation tool key.
+- `js-reverse`: browser67-backed API discovery, hooks, network/WS sampling, evidence
   export, and local rebuild workflows.
 
 ## Naming
@@ -31,7 +31,7 @@ two paired MCP surfaces:
 2. For setup, use `browser67 setup`; it writes under the active browser67 home.
 3. For legacy runtime migration, run `browser67 migrate-home --dry-run` before
    `browser67 migrate-home --write`.
-4. For real browser work, select/create TMWD-owned managed tabs and finalize
+4. For real browser work, select/create browser67-owned managed tabs and finalize
    the current `workspace_key`/`task_id` before handoff.
 5. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
    `js-reverse new_page`.
@@ -42,7 +42,7 @@ two paired MCP surfaces:
   reason.
 - Keep large outputs bounded; write screenshots, run records, and rebuild
   bundles as repo-external artifacts with path/hash/count metadata.
-- Do not silently fallback from TMWD login-state tasks to remote CDP.
+- Do not silently fallback from browser67 login-state tasks to remote CDP.
 - Keep docs, skills, schemas, and contracts synchronized for externally visible
   behavior changes.
 - Run `npm run check:mcp`, `npm run check:js-reverse-mcp`,
