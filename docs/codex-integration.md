@@ -154,8 +154,13 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   pass `viewport:{width,height,dpr,is_mobile}`; the wrapper applies temporary
   CDP device metrics and clears them after capture by default. Pass
   `layout_selectors` to return compact selector rect/computed-style metrics for
-  L3/L4 visual evidence. Screenshot PNGs follow the runtime run retention
-  policy instead of accumulating in the project.
+  L3/L4 visual evidence. For `target:"selector"`, browser67 also pre-samples the
+  target selector's layout metrics before the final selector probe. If the final
+  probe reports `selector_not_found` or a detached node while that same-run
+  metric has a valid rectangle, the tool captures the measured clip instead of
+  failing and returns `selector_fallback:{used:true,source:"layout_metrics"}`.
+  Screenshot PNGs follow the runtime run retention policy instead of
+  accumulating in the project.
 - `browser_evidence_bundle_ops`: converts completed `browser_screenshot_ops`
   before/after payloads into `design-craft.l4-screenshots.v1` manifests for
   design-craft L4 evals. Supply `phase:"before"|"after"` and a shared

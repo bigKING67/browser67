@@ -34,8 +34,24 @@ async function startScreenshotFixture() {
     .hero { min-height: 420px; padding: 48px; background: linear-gradient(135deg, #111827, #3b82f6); color: white; }
     .hero h1 { margin: 0 0 16px; font-size: 48px; line-height: 1.05; }
     .capture-target { width: 360px; height: 180px; margin-top: 32px; border-radius: 24px; background: #f97316; display: grid; place-items: center; font-weight: 800; }
+    .flaky-target { width: 320px; height: 120px; margin-top: 24px; border-radius: 20px; background: #22c55e; display: grid; place-items: center; color: #052e16; font-weight: 800; }
     .content { height: 860px; padding: 48px; }
   </style>
+  <script>
+    (() => {
+      const originalQuerySelector = Document.prototype.querySelector;
+      window.__browser67FlakySelectorCalls = 0;
+      Document.prototype.querySelector = function browser67ScreenshotSmokeQuerySelector(selector) {
+        if (selector === "#flaky-target") {
+          window.__browser67FlakySelectorCalls += 1;
+          if (window.__browser67FlakySelectorCalls > 1) {
+            return null;
+          }
+        }
+        return originalQuerySelector.call(this, selector);
+      };
+    })();
+  </script>
 </head>
 <body>
   <main>
@@ -43,6 +59,7 @@ async function startScreenshotFixture() {
       <h1>TMWD screenshot smoke</h1>
       <p>Viewport, selector, and bounded full-page capture fixture.</p>
       <div id="capture-target" class="capture-target">selector target</div>
+      <div id="flaky-target" class="flaky-target">layout fallback target</div>
     </section>
     <section class="content">
       <h2>Lower content</h2>
@@ -252,6 +269,29 @@ async function run() {
     assert.equal(selector.selector, "#capture-target");
     assert.ok(selector.capture.clip.width > 0, "selector clip width");
 
+    const selectorFallback = await callTool("browser_screenshot_ops", {
+      ...baseArgs,
+      tab_id: tabId,
+      target: "selector",
+      selector: "#flaky-target",
+      workspace_key: workspaceKey,
+      task_id: "screenshot-live-smoke",
+      title: "selector-fallback",
+      max_pixels: 8_000_000,
+    });
+    await assertScreenshotArtifact(selectorFallback, "selector_fallback");
+    assert.equal(selectorFallback.target, "selector");
+    assert.equal(selectorFallback.selector, "#flaky-target");
+    assert.equal(selectorFallback.selector_fallback?.used, true);
+    assert.equal(selectorFallback.selector_fallback?.source, "layout_metrics");
+    assert.equal(selectorFallback.selector_fallback?.original_reason, "selector_not_found");
+    assert.equal(
+      selectorFallback.layout_metrics?.selectors?.__browser67_target_selector?.found,
+      true,
+      "selector fallback must preserve the metric that made the capture possible",
+    );
+    assert.ok(selectorFallback.capture.clip.width > 0, "selector fallback clip width");
+
     const fullPage = await callTool("browser_screenshot_ops", {
       ...baseArgs,
       tab_id: tabId,
@@ -279,6 +319,7 @@ async function run() {
       viewport_artifact: viewport.artifact.path,
       mobile_viewport_artifact: mobileViewport.artifact.path,
       selector_artifact: selector.artifact.path,
+      selector_fallback_artifact: selectorFallback.artifact.path,
       full_page_artifact: fullPage.artifact.path,
       finalized_status: finalized.status,
       run_root: runRoot,

@@ -20,6 +20,8 @@ import {
 } from "./clip.mjs";
 import { writeScreenshotArtifact } from "./artifact.mjs";
 
+const INTERNAL_SELECTOR_METRIC_KEY = "__browser67_target_selector";
+
 const PAGE_METADATA_SCRIPT = `return (() => {
   const doc = document.documentElement || {};
   const body = document.body || {};
@@ -73,13 +75,65 @@ const PAGE_METADATA_SCRIPT = `return (() => {
 function selectorClipScript(selector) {
   return `return await (async () => {
   const selector = ${JSON.stringify(selector)};
-  const node = document.querySelector(selector);
-  if (!node) {
-    return { ok: false, reason: "selector_not_found", selector };
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  const rectSnapshot = (rect) => ({
+    x: rect.x,
+    y: rect.y,
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height
+  });
+  const rectDelta = (first, second) => Math.max(
+    Math.abs(Number(first.left || 0) - Number(second.left || 0)),
+    Math.abs(Number(first.top || 0) - Number(second.top || 0)),
+    Math.abs(Number(first.width || 0) - Number(second.width || 0)),
+    Math.abs(Number(first.height || 0) - Number(second.height || 0))
+  );
+  let lastReason = "selector_not_found";
+  let attempts = 0;
+  let node = null;
+  let rect = null;
+  let computed = null;
+  let stable = true;
+  for (attempts = 1; attempts <= 6; attempts += 1) {
+    node = document.querySelector(selector);
+    if (!node) {
+      lastReason = "selector_not_found";
+      await wait(80);
+      continue;
+    }
+    try {
+      node.scrollIntoView({ block: "center", inline: "center" });
+    } catch {
+      // Some nodes cannot scroll; keep going and report the measured box.
+    }
+    await nextFrame();
+    await nextFrame();
+    if (!node.isConnected) {
+      lastReason = "selector_detached_after_scroll";
+      await wait(80);
+      continue;
+    }
+    const firstRect = rectSnapshot(node.getBoundingClientRect());
+    await nextFrame();
+    if (!node.isConnected) {
+      lastReason = "selector_detached_after_measure";
+      await wait(80);
+      continue;
+    }
+    const secondRect = rectSnapshot(node.getBoundingClientRect());
+    rect = secondRect;
+    stable = rectDelta(firstRect, secondRect) <= 0.5;
+    computed = window.getComputedStyle(node);
+    break;
   }
-  node.scrollIntoView({ block: "center", inline: "center" });
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  const rect = node.getBoundingClientRect();
+  if (!node || !rect) {
+    return { ok: false, reason: lastReason, selector, attempts };
+  }
   const page = (() => {
     const doc = document.documentElement || {};
     const body = document.body || {};
@@ -118,19 +172,38 @@ function selectorClipScript(selector) {
   return {
     ok: true,
     selector,
-    rect: {
-      x: rect.x,
-      y: rect.y,
-      left: rect.left,
-      top: rect.top,
-      right: rect.right,
-      bottom: rect.bottom,
-      width: rect.width,
-      height: rect.height
-    },
+    attempts,
+    stable,
+    rect,
+    computed: computed ? {
+      display: computed.display,
+      visibility: computed.visibility,
+      opacity: computed.opacity,
+      position: computed.position,
+      overflow_x: computed.overflowX,
+      overflow_y: computed.overflowY
+    } : null,
     page
   };
 })();`;
+}
+
+function metricSelectorResult(metric, layoutMetrics, selector) {
+  if (!metric?.found) {
+    return null;
+  }
+  return {
+    ok: true,
+    selector,
+    rect: metric.rect,
+    computed: metric.computed ?? null,
+    page: {
+      url: String(layoutMetrics?.url || ""),
+      title: String(layoutMetrics?.title || ""),
+      viewport: layoutMetrics?.viewport ?? {},
+      document: layoutMetrics?.document ?? {},
+    },
+  };
 }
 
 function layoutMetricsScript(selectors) {
@@ -427,8 +500,82 @@ function buildSelectorClip(selectorResult, maxPixels) {
   };
 }
 
+function selectorFailureStatus(reason) {
+  if (reason === "selector_empty_rect") {
+    return "empty_rect";
+  }
+  if (String(reason || "").startsWith("selector_detached")) {
+    return "detached";
+  }
+  return "not_found";
+}
+
+function resolveSelectorFallback({
+  layoutMetrics,
+  maxPixels,
+  primaryReason,
+  selector,
+}) {
+  const selectors = layoutMetrics?.selectors;
+  if (!selectors || typeof selectors !== "object") {
+    return null;
+  }
+  const entries = Object.entries(selectors);
+  const match = entries.find(([name, metric]) => (
+    name === INTERNAL_SELECTOR_METRIC_KEY
+    || String(metric?.selector ?? "").trim() === selector
+  ));
+  if (!match) {
+    return null;
+  }
+  const [metricName, metric] = match;
+  const selectorResult = metricSelectorResult(metric, layoutMetrics, selector);
+  if (!selectorResult) {
+    return null;
+  }
+  const selectorClip = buildSelectorClip(selectorResult, maxPixels);
+  if (!selectorClip.ok) {
+    return null;
+  }
+  return {
+    ...selectorClip,
+    source: "layout_metrics",
+    metric_name: metricName,
+    original_reason: primaryReason,
+    metric: {
+      found: true,
+      selector: metric.selector,
+      rect: metric.rect,
+      computed: metric.computed,
+    },
+  };
+}
+
+function responseLayoutMetrics(layoutMetrics, {
+  includeInternalSelectorMetric = false,
+} = {}) {
+  if (!layoutMetrics || typeof layoutMetrics !== "object") {
+    return undefined;
+  }
+  if (includeInternalSelectorMetric) {
+    return layoutMetrics;
+  }
+  const selectors = layoutMetrics.selectors;
+  if (!selectors || typeof selectors !== "object") {
+    return layoutMetrics;
+  }
+  const filteredSelectors = Object.fromEntries(
+    Object.entries(selectors).filter(([name]) => name !== INTERNAL_SELECTOR_METRIC_KEY),
+  );
+  return {
+    ...layoutMetrics,
+    selectors: filteredSelectors,
+  };
+}
+
 async function captureBrowserScreenshot(args = {}) {
   const target = String(args.target ?? "viewport").trim() || "viewport";
+  const requestedSelector = String(args.selector ?? "").trim();
   const format = String(args.format ?? "png").trim() || "png";
   if (format !== "png") {
     throw createToolError("INVALID_ARGUMENT", "browser_screenshot_ops only supports format=png in v1", {
@@ -448,7 +595,7 @@ async function captureBrowserScreenshot(args = {}) {
       details: { required_fields: ["clip.x", "clip.y", "clip.width", "clip.height"] },
     });
   }
-  if (target === "selector" && !String(args.selector ?? "").trim()) {
+  if (target === "selector" && !requestedSelector) {
     throw createToolError("INVALID_ARGUMENT", "target=selector requires selector", {
       retryable: false,
       details: { required_fields: ["selector"] },
@@ -458,7 +605,13 @@ async function captureBrowserScreenshot(args = {}) {
   const maxPixels = normalizeMaxPixels(args.max_pixels);
   const viewportOverride = normalizeViewportOverride(args.viewport);
   const layoutSelectors = normalizeLayoutSelectors(args.layout_selectors);
-  const includeLayoutMetrics = args.include_layout_metrics === true || Object.keys(layoutSelectors).length > 0;
+  const selectorTargetRequiresMetrics = target === "selector" && requestedSelector.length > 0;
+  const effectiveLayoutSelectors = {
+    ...layoutSelectors,
+    ...(selectorTargetRequiresMetrics ? { [INTERNAL_SELECTOR_METRIC_KEY]: requestedSelector } : {}),
+  };
+  const callerRequestedLayoutMetrics = args.include_layout_metrics === true || Object.keys(layoutSelectors).length > 0;
+  const includeLayoutMetrics = callerRequestedLayoutMetrics || selectorTargetRequiresMetrics;
   let preferred = await resolvePreferredBrowserContext(args ?? {});
   let transportAttempts = Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [];
   let page = null;
@@ -467,6 +620,7 @@ async function captureBrowserScreenshot(args = {}) {
   let cdpClip = null;
   let selector = null;
   let selectorRect = null;
+  let selectorFallback = null;
   let captureBeyondViewport = false;
   let viewportOverrideResult = null;
   let viewportCleanupResult = null;
@@ -494,7 +648,7 @@ async function captureBrowserScreenshot(args = {}) {
     page = pageEval.value;
 
     if (includeLayoutMetrics) {
-      const metricsEval = await evaluatePageScript(args, preferred, layoutMetricsScript(layoutSelectors));
+      const metricsEval = await evaluatePageScript(args, preferred, layoutMetricsScript(effectiveLayoutSelectors));
       preferred = metricsEval.preferred;
       transportAttempts = mergeTransportAttempts(transportAttempts, metricsEval.transport_attempts);
       layoutMetrics = metricsEval.value;
@@ -505,34 +659,60 @@ async function captureBrowserScreenshot(args = {}) {
       clip = normalized.clip;
       cdpClip = normalized.clip;
     } else if (target === "selector") {
-      const selectorEval = await evaluatePageScript(args, preferred, selectorClipScript(String(args.selector ?? "").trim()));
+      const selectorEval = await evaluatePageScript(args, preferred, selectorClipScript(requestedSelector));
       preferred = selectorEval.preferred;
       transportAttempts = mergeTransportAttempts(transportAttempts, selectorEval.transport_attempts);
       const selectorResult = selectorEval.value;
       const selectorClip = buildSelectorClip(selectorResult, maxPixels);
       if (!selectorClip.ok) {
-        return {
-          ok: false,
-          status: "not_found",
-          tool: "browser_screenshot_ops",
-          action: "capture",
-          target,
-          selector: selectorClip.selector ?? String(args.selector ?? ""),
-          reason: selectorClip.reason,
-          page,
-          layout_metrics: layoutMetrics ?? undefined,
-          viewport_override: viewportOverrideResult ?? undefined,
-          transport: preferred.transport,
-          tab_id: preferred.context?.target?.id,
-          session_id: preferred.context?.target?.id,
-          transport_attempts: transportAttempts,
-        };
+        const fallback = resolveSelectorFallback({
+          layoutMetrics,
+          maxPixels,
+          primaryReason: selectorClip.reason,
+          selector: requestedSelector,
+        });
+        if (fallback) {
+          selectorFallback = {
+            used: true,
+            source: fallback.source,
+            metric_name: fallback.metric_name,
+            original_reason: fallback.original_reason,
+            metric: fallback.metric,
+          };
+          selector = requestedSelector;
+          selectorRect = fallback.rect;
+          page = fallback.page;
+          clip = fallback.clip;
+          cdpClip = fallback.clip;
+        } else {
+          return {
+            ok: false,
+            status: selectorFailureStatus(selectorClip.reason),
+            tool: "browser_screenshot_ops",
+            action: "capture",
+            target,
+            selector: selectorClip.selector ?? requestedSelector,
+            reason: selectorClip.reason,
+            page,
+            layout_metrics: callerRequestedLayoutMetrics ? responseLayoutMetrics(layoutMetrics) : undefined,
+            viewport_override: viewportOverrideResult ?? undefined,
+            selector_fallback: {
+              used: false,
+              reason: "layout_metrics_unavailable_or_invalid",
+            },
+            transport: preferred.transport,
+            tab_id: preferred.context?.target?.id,
+            session_id: preferred.context?.target?.id,
+            transport_attempts: transportAttempts,
+          };
+        }
+      } else {
+        selector = selectorResult.selector;
+        selectorRect = selectorClip.rect;
+        page = selectorClip.page;
+        clip = selectorClip.clip;
+        cdpClip = selectorClip.clip;
       }
-      selector = selectorResult.selector;
-      selectorRect = selectorClip.rect;
-      page = selectorClip.page;
-      clip = selectorClip.clip;
-      cdpClip = selectorClip.clip;
     } else if (target === "full_page") {
       cdpClip = buildFullPageClip(page, maxPixels);
       clip = cdpClip;
@@ -575,10 +755,13 @@ async function captureBrowserScreenshot(args = {}) {
       selection: preferred.context?.selection,
       selection_source: preferred.context?.selection?.selected_by ?? null,
       page: args.include_page_metadata === false ? undefined : page,
-      layout_metrics: layoutMetrics ?? undefined,
+      layout_metrics: (callerRequestedLayoutMetrics || selectorFallback?.used)
+        ? responseLayoutMetrics(layoutMetrics, { includeInternalSelectorMetric: selectorFallback?.used })
+        : undefined,
       viewport_override: viewportOverrideResult ?? undefined,
       selector: selector ?? undefined,
       selector_rect: selectorRect ?? undefined,
+      selector_fallback: selectorFallback ?? undefined,
       capture: {
         method: "Page.captureScreenshot",
         format: "png",
