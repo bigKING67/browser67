@@ -43,5 +43,5 @@ project's TMWD/native-input layer.
 - This repo currently treats macOS AX as reference/diagnostic only. The default
   macOS input path remains `native-os`.
 - Do not use AX or image matching to bypass TMWD CAPTCHA policy. Visible CAPTCHA
-  assist remains TMWD-owned tab, bounded region, explicit confirmation, and
+  assist remains browser67-owned tab, bounded region, explicit confirmation, and
   physical input only.

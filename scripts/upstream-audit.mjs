@@ -37,7 +37,7 @@ const ENHANCED_BRIDGE_FEATURES = [
   },
   {
     id: "tabs_close",
-    description: "tabs.close removes only explicitly selected TMWD-owned tabs",
+    description: "tabs.close removes only explicitly selected browser67-owned tabs",
     fragments: ["method === 'close'", "chrome.tabs.remove"],
   },
   {
