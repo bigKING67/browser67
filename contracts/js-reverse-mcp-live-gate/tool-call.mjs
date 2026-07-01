@@ -1,4 +1,4 @@
-import { firstJsonContent } from "../browser-structured-mcp-contract/rpc-content.mjs";
+import { firstJsonContent } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 
 function summarizeToolError(name, response) {
   const payload = firstJsonContent(response?.result);

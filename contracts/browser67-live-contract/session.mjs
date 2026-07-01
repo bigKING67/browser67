@@ -17,7 +17,7 @@ async function initializeAndAssertTools(rpc, cli) {
       protocolVersion: "2024-11-05",
       capabilities: {},
       clientInfo: {
-        name: "browser-structured-mcp-live-contract",
+        name: "browser67-live-contract",
         version: "1.0.0",
       },
     },

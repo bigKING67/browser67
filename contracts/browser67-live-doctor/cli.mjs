@@ -1,4 +1,4 @@
-import { normalizeTmwdMode } from "../browser-structured-mcp-live-gate/modes.mjs";
+import { normalizeTmwdMode } from "../browser67-live-gate/modes.mjs";
 
 function parsePositiveInteger(value, flag) {
   const parsed = Number(value ?? "");

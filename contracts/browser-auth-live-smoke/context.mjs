@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createRpcClient } from "../browser-structured-mcp-contract/rpc-client.mjs";
+import { createRpcClient } from "../browser67-browser-mcp-contract/rpc-client.mjs";
 import { startAuthFixture } from "./fixture.mjs";
 import { commonArgs, createToolCaller } from "./helpers.mjs";
 

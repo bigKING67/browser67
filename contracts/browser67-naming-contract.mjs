@@ -6,6 +6,15 @@ import { fileURLToPath } from "node:url";
 import { SERVER_NAME } from "../src/server/protocol.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const textFileExtensions = new Set([
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".toml",
+  ".yaml",
+  ".yml",
+]);
 
 function readText(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -58,11 +67,62 @@ function assertTopLevelStructure() {
   assertFile("src/runtime/paths/home.mjs");
 }
 
+function collectTextFiles(relativeDir) {
+  const root = path.join(repoRoot, relativeDir);
+  const files = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === ".DS_Store" || entry.name === "node_modules") continue;
+    const relativePath = path.join(relativeDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectTextFiles(relativePath));
+      continue;
+    }
+    if (textFileExtensions.has(path.extname(entry.name))) {
+      files.push(relativePath);
+    }
+  }
+  return files;
+}
+
+function assertRetiredStructuredMcpName() {
+  const retiredPrefix = "browser-structured-" + "mcp";
+  for (const oldPath of [
+    `${retiredPrefix}-contract.mjs`,
+    `${retiredPrefix}-contract`,
+    `${retiredPrefix}-hub-control-contract.mjs`,
+    `${retiredPrefix}-hub-control-contract`,
+    `${retiredPrefix}-hub-relay-contract.mjs`,
+    `${retiredPrefix}-hub-relay-contract`,
+    `${retiredPrefix}-live-contract.mjs`,
+    `${retiredPrefix}-live-contract`,
+    `${retiredPrefix}-live-doctor.mjs`,
+    `${retiredPrefix}-live-doctor`,
+    `${retiredPrefix}-live-gate.mjs`,
+    `${retiredPrefix}-live-gate`,
+    `${retiredPrefix}-remote-cdp-contract.mjs`,
+    `${retiredPrefix}-remote-cdp-contract`,
+  ]) {
+    assert.equal(existsSync(path.join(repoRoot, "contracts", oldPath)), false, `retired contract path still exists: ${oldPath}`);
+  }
+
+  for (const file of [
+    "package.json",
+    "README.md",
+    ...collectTextFiles("contracts"),
+    ...collectTextFiles("docs"),
+    ...collectTextFiles("scripts"),
+    ...collectTextFiles("src"),
+  ]) {
+    assert.equal(readText(file).includes(retiredPrefix), false, `retired browser MCP name still present in ${file}`);
+  }
+}
+
 function run() {
   assertPackage();
   assertDocsAndSkills();
   assertServerIdentity();
   assertTopLevelStructure();
+  assertRetiredStructuredMcpName();
   process.stdout.write(`${JSON.stringify({ ok: true, contract: "browser67-naming" })}\n`);
 }
 

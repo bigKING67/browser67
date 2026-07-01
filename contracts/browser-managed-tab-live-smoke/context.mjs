@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 
-import { createRpcClient } from "../browser-structured-mcp-contract/rpc-client.mjs";
-import { firstJsonContent } from "../browser-structured-mcp-contract/rpc-content.mjs";
+import { createRpcClient } from "../browser67-browser-mcp-contract/rpc-client.mjs";
+import { firstJsonContent } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 import { commonArgs } from "./cli.mjs";
 import { startHttpFixture } from "./fixture.mjs";
 import { normalizeTabs } from "./helpers.mjs";

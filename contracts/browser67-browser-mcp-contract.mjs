@@ -3,29 +3,29 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createRpcClient } from "./browser-structured-mcp-contract/rpc-client.mjs";
+import { createRpcClient } from "./browser67-browser-mcp-contract/rpc-client.mjs";
 import {
   assertTextJsonContent,
   firstJsonContent,
-} from "./browser-structured-mcp-contract/rpc-content.mjs";
+} from "./browser67-browser-mcp-contract/rpc-content.mjs";
 import {
   startExecuteErrorTmwdLinkServer,
   startHangingTmwdLinkServer,
-} from "./browser-structured-mcp-contract/tmwd-link-fixtures.mjs";
-import { assertExecuteJsFallbackPolicy } from "./browser-structured-mcp-contract/fallback-policy.mjs";
-import { assertNativeCapabilitySurface } from "./browser-structured-mcp-contract/native-surface.mjs";
-import { assertNativeInputOpsContract } from "./browser-structured-mcp-contract/native-input-ops.mjs";
-import { assertOptionalLiveProofContract } from "./browser-structured-mcp-contract/optional-live-proofs.mjs";
-import { assertPhysicalLiveGateContract } from "./browser-structured-mcp-contract/physical-live-gate.mjs";
-import { assertFileDownloadClipboardOpsContract } from "./browser-structured-mcp-contract/file-download-clipboard-ops.mjs";
-import { assertTabLifecycleOpsContract } from "./browser-structured-mcp-contract/tab-lifecycle-ops.mjs";
-import { assertAuthOpsContract } from "./browser-structured-mcp-contract/auth-ops.mjs";
-import { assertToolSurface } from "./browser-structured-mcp-contract/tool-surface.mjs";
-import { assertReadinessLjqCtrlProbeContract } from "./browser-structured-mcp-contract/readiness-audit.mjs";
-import { assertManagedTabCleanupBaselineContract } from "./browser-structured-mcp-contract/managed-tab-cleanup.mjs";
-import { assertRunWaitHealthOpsContract } from "./browser-structured-mcp-contract/run-wait-health-ops.mjs";
-import { assertScreenshotOpsContract } from "./browser-structured-mcp-contract/screenshot-ops.mjs";
-import { assertEvidenceBundleOpsContract } from "./browser-structured-mcp-contract/evidence-bundle-ops.mjs";
+} from "./browser67-browser-mcp-contract/tmwd-link-fixtures.mjs";
+import { assertExecuteJsFallbackPolicy } from "./browser67-browser-mcp-contract/fallback-policy.mjs";
+import { assertNativeCapabilitySurface } from "./browser67-browser-mcp-contract/native-surface.mjs";
+import { assertNativeInputOpsContract } from "./browser67-browser-mcp-contract/native-input-ops.mjs";
+import { assertOptionalLiveProofContract } from "./browser67-browser-mcp-contract/optional-live-proofs.mjs";
+import { assertPhysicalLiveGateContract } from "./browser67-browser-mcp-contract/physical-live-gate.mjs";
+import { assertFileDownloadClipboardOpsContract } from "./browser67-browser-mcp-contract/file-download-clipboard-ops.mjs";
+import { assertTabLifecycleOpsContract } from "./browser67-browser-mcp-contract/tab-lifecycle-ops.mjs";
+import { assertAuthOpsContract } from "./browser67-browser-mcp-contract/auth-ops.mjs";
+import { assertToolSurface } from "./browser67-browser-mcp-contract/tool-surface.mjs";
+import { assertReadinessLjqCtrlProbeContract } from "./browser67-browser-mcp-contract/readiness-audit.mjs";
+import { assertManagedTabCleanupBaselineContract } from "./browser67-browser-mcp-contract/managed-tab-cleanup.mjs";
+import { assertRunWaitHealthOpsContract } from "./browser67-browser-mcp-contract/run-wait-health-ops.mjs";
+import { assertScreenshotOpsContract } from "./browser67-browser-mcp-contract/screenshot-ops.mjs";
+import { assertEvidenceBundleOpsContract } from "./browser67-browser-mcp-contract/evidence-bundle-ops.mjs";
 
 function parseArgs(argv) {
   const parsed = {
@@ -129,7 +129,7 @@ async function run() {
         protocolVersion: "2024-11-05",
         capabilities: {},
         clientInfo: {
-          name: "browser-structured-mcp-contract",
+          name: "browser67-browser-mcp-contract",
           version: "1.0.0",
         },
       },
@@ -273,6 +273,6 @@ try {
   await run();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`browser-structured-mcp-contract failed: ${message}\n`);
+  process.stderr.write(`browser67-browser-mcp-contract failed: ${message}\n`);
   process.exitCode = 1;
 }

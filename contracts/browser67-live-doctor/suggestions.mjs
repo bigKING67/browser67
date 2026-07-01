@@ -2,7 +2,7 @@ import {
   isCdpReadyPath,
   isRemoteCdpMode,
   isTmwdReadyPath,
-} from "../browser-structured-mcp-live-gate/modes.mjs";
+} from "../browser67-live-gate/modes.mjs";
 
 function buildSuggestions(cli, readiness) {
   const suggestions = [

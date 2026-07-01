@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { firstJsonContent } from "../browser-structured-mcp-contract/rpc-content.mjs";
+import { firstJsonContent } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 import { buildLivePrereqHint, toToolErrorSummary } from "./errors.mjs";
 
 async function runScanCase({ rpc, cli, commonArgs }) {

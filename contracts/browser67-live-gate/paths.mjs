@@ -8,11 +8,11 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..", "..");
 const liveDoctorPath = resolve(
   repoRoot,
-  "contracts/browser-structured-mcp-live-doctor.mjs",
+  "contracts/browser67-live-doctor.mjs",
 );
 const liveContractPath = resolve(
   repoRoot,
-  "contracts/browser-structured-mcp-live-contract.mjs",
+  "contracts/browser67-live-contract.mjs",
 );
 const tmwdHubControlPath = resolve(
   repoRoot,

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { buildLiveArgs } from "./browser-structured-mcp-live-gate/args.mjs";
+import { buildLiveArgs } from "./browser67-live-gate/args.mjs";
 import {
   parseLastJsonLine,
   runNodeScript,
-} from "./browser-structured-mcp-live-gate/child-process.mjs";
-import { parseArgs } from "./browser-structured-mcp-live-gate/cli.mjs";
+} from "./browser67-live-gate/child-process.mjs";
+import { parseArgs } from "./browser67-live-gate/cli.mjs";
 import {
   doctorHints,
   ensureTmwdHub,
@@ -12,9 +12,9 @@ import {
   shouldAttemptEnsureTmwdHub,
   shouldWaitForSessionReady,
   waitForSessionReady,
-} from "./browser-structured-mcp-live-gate/doctor-flow.mjs";
-import { emitAndReturn } from "./browser-structured-mcp-live-gate/event-log.mjs";
-import { liveContractPath } from "./browser-structured-mcp-live-gate/paths.mjs";
+} from "./browser67-live-gate/doctor-flow.mjs";
+import { emitAndReturn } from "./browser67-live-gate/event-log.mjs";
+import { liveContractPath } from "./browser67-live-gate/paths.mjs";
 
 async function run() {
   const config = parseArgs(process.argv.slice(2));
@@ -105,6 +105,6 @@ try {
   await run();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`browser-structured-mcp-live-gate failed: ${message}\n`);
+  process.stderr.write(`browser67-live-gate failed: ${message}\n`);
   process.exitCode = 1;
 }

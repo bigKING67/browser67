@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   assertTextJsonContent,
   firstJsonContent,
-} from "../browser-structured-mcp-contract/rpc-content.mjs";
+} from "../browser67-browser-mcp-contract/rpc-content.mjs";
 
 async function runToolCases(rpc, cli) {
   const understandCall = await rpc.call(

@@ -71,19 +71,19 @@ function createRpcClient() {
   }
 
   child.on("error", (error) => {
-    rejectAll(`browser-structured-mcp process error: ${String(error)}`);
+    rejectAll(`browser67-browser-mcp process error: ${String(error)}`);
   });
 
   child.on("close", (code, signal) => {
     closed = true;
     rejectAll(
-      `browser-structured-mcp exited code=${String(code)} signal=${String(signal)} stderr=${stderrBuffer}`,
+      `browser67-browser-mcp exited code=${String(code)} signal=${String(signal)} stderr=${stderrBuffer}`,
     );
   });
 
   const call = (method, params = {}, timeoutMs = 8_000) => {
     if (closed || !child.stdin) {
-      return Promise.reject(new Error("browser-structured-mcp process is not available"));
+      return Promise.reject(new Error("browser67-browser-mcp process is not available"));
     }
     const id = `contract_${String(nextId++)}`;
     const request = {
@@ -120,7 +120,7 @@ function createRpcClient() {
       return;
     }
     closed = true;
-    rejectAll("browser-structured-mcp closing");
+    rejectAll("browser67-browser-mcp closing");
     child.kill("SIGTERM");
     await new Promise((resolveClose) => {
       const timer = setTimeout(() => {

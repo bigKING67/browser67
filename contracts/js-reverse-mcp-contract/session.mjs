@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { assertOpenAiToolSchemaCompatibility } from "../browser-structured-mcp-contract/schema-compat.mjs";
+import { assertOpenAiToolSchemaCompatibility } from "../browser67-browser-mcp-contract/schema-compat.mjs";
 
 async function initializeJsReverseContractSession(rpc, timeoutMs) {
   const init = await rpc.call(

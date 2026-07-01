@@ -1,4 +1,4 @@
-import { isRemoteCdpMode } from "../browser-structured-mcp-live-gate/modes.mjs";
+import { isRemoteCdpMode } from "../browser67-live-gate/modes.mjs";
 
 function evaluateModeReadiness(cli, checks) {
   const allowEmpty = cli.allow_empty_tabs === true;

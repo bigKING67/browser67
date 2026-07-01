@@ -92,7 +92,7 @@ const GROUPS = [
       /^src\/tool-schemas(?:\.mjs|\/)/,
       /^src\/(?:evidence-schema|run-lifecycle)\.mjs$/,
       /^contracts\/browser-screenshot-live-smoke\.mjs$/,
-      /^contracts\/browser-structured-mcp-contract(?:\.mjs|\/)/,
+      /^contracts\/browser67-browser-mcp-contract(?:\.mjs|\/)/,
     ],
   },
   {
@@ -114,7 +114,7 @@ const GROUPS = [
       /^src\/tmwd-runtime(?:\.mjs|\/)/,
       /^src\/tmwd-hub(?:\.mjs|\/)/,
       /^src\/tmwd-hub-control(?:\.mjs|\/)/,
-      /^contracts\/browser-structured-mcp-(?:hub-control-contract|hub-relay-contract|live-contract|live-doctor|live-gate)(?:\.mjs|\/)/,
+      /^contracts\/browser67-(?:hub-control-contract|hub-relay-contract|live-contract|live-doctor|live-gate)(?:\.mjs|\/)/,
       /^contracts\/tmwd-runtime-dispose-contract\.mjs$/,
     ],
   },
@@ -168,7 +168,7 @@ const GROUPS = [
       "Remote CDP must remain explicit and must not silently replace TMWD for login-state tasks.",
     ],
     patterns: [
-      /^contracts\/browser-structured-mcp-remote-cdp-contract(?:\.mjs|\/)/,
+      /^contracts\/browser67-remote-cdp-contract(?:\.mjs|\/)/,
     ],
   },
   {

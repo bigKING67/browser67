@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { CAPABILITIES } from "../src/capabilities.mjs";
-import { collectDoctorChecks } from "./browser-structured-mcp-live-doctor/checks.mjs";
-import { parseArgs } from "./browser-structured-mcp-live-doctor/cli.mjs";
-import { evaluateModeReadiness } from "./browser-structured-mcp-live-doctor/readiness.mjs";
-import { buildSuggestions } from "./browser-structured-mcp-live-doctor/suggestions.mjs";
+import { collectDoctorChecks } from "./browser67-live-doctor/checks.mjs";
+import { parseArgs } from "./browser67-live-doctor/cli.mjs";
+import { evaluateModeReadiness } from "./browser67-live-doctor/readiness.mjs";
+import { buildSuggestions } from "./browser67-live-doctor/suggestions.mjs";
 
 async function runDoctor(argv = process.argv.slice(2)) {
   const cli = parseArgs(argv);
@@ -29,7 +29,7 @@ try {
   }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`browser-structured-mcp-live-doctor failed: ${message}\n`);
+  process.stderr.write(`browser67-live-doctor failed: ${message}\n`);
   process.exitCode = 1;
 }
 

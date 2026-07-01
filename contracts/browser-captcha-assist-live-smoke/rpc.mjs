@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import { createRpcClient } from "../browser-structured-mcp-contract/rpc-client.mjs";
-import { firstJsonContent } from "../browser-structured-mcp-contract/rpc-content.mjs";
+import { createRpcClient } from "../browser67-browser-mcp-contract/rpc-client.mjs";
+import { firstJsonContent } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 
 function createCaptchaSmokeRpc(cli) {
   const rpc = createRpcClient();
