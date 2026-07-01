@@ -37,7 +37,7 @@ async function writeLocalCaptchaPhysicalProof(dir) {
       expires_at: expiresAt,
       command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
       managed_tab_only: true,
-      fixture: "local TMWD-owned managed tab",
+      fixture: "local browser67-owned managed tab",
       slider_completed: true,
       checkbox_completed: true,
       fullscreen_screenshot: false,

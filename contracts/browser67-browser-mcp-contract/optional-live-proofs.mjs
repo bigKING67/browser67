@@ -35,7 +35,7 @@ function validNativeProof(platform) {
     expires_at: "2099-06-17T00:00:00.000Z",
     command: "npm run check:captcha-assist-physical-live",
     evidence: {
-      fixture: "local TMWD-owned managed tab",
+      fixture: "local browser67-owned managed tab",
       managed_tab_only: true,
       fullscreen_screenshot: false,
       secrets_redacted: true,
@@ -82,7 +82,7 @@ async function assertOptionalLiveProofContract() {
   const nativeUnsafeEvidence = validateProof({
     ...validNativeProof("linux"),
     evidence: {
-      fixture: "local TMWD-owned managed tab",
+      fixture: "local browser67-owned managed tab",
       managed_tab_only: false,
       fullscreen_screenshot: true,
       secrets_redacted: false,
@@ -152,7 +152,7 @@ async function assertOptionalLiveProofContract() {
     expires_at: "2099-06-17T00:00:00.000Z",
     command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
     managed_tab_only: true,
-    fixture: "local TMWD-owned managed tab",
+    fixture: "local browser67-owned managed tab",
     slider_completed: true,
     checkbox_completed: true,
     fullscreen_screenshot: false,
@@ -179,7 +179,7 @@ async function assertOptionalLiveProofContract() {
     expires_at: "2099-06-17T00:00:00.000Z",
     command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
     managed_tab_only: true,
-    fixture: "local TMWD-owned managed tab",
+    fixture: "local browser67-owned managed tab",
     slider_completed: true,
     checkbox_completed: true,
     fullscreen_screenshot: false,

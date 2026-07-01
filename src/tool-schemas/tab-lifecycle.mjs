@@ -1,6 +1,6 @@
 const TAB_LIFECYCLE_TOOL_SCHEMAS = {
   browser_tab_lifecycle: {
-    description: "Managed browser tab lifecycle wrapper. Use select_or_create for TMWD-owned tab reuse and finalize_task for task-end cleanup; unmanaged user tabs are ignored and never closed.",
+    description: "Managed browser tab lifecycle wrapper. Use select_or_create for browser67-owned tab reuse and finalize_task for task-end cleanup; unmanaged user tabs are ignored and never closed.",
     inputSchema: {
       type: "object",
       properties: {
