@@ -16,6 +16,8 @@ const defaultTargetDir = resolve(defaultHome, "browser/tmwd_cdp_bridge");
 const defaultMcpRegistryPath = resolve(defaultHome, "mcp/servers.toml");
 const browserServerPath = resolve(repoRoot, "src/mcp/browser/server.mjs");
 const jsReverseServerPath = resolve(repoRoot, "src/mcp/js-reverse/server.mjs");
+const legacyBrowserServerPath = resolve(repoRoot, "src/server.mjs");
+const legacyJsReverseServerPath = resolve(repoRoot, "src/js-reverse-server.mjs");
 
 function parseArgs(argv) {
   const parsed = {
@@ -82,9 +84,29 @@ function tomlString(value) {
   return JSON.stringify(String(value));
 }
 
+function normalizeMcpRegistry(current) {
+  let next = current;
+  next = next.replace(/^(\s*name\s*=\s*)["']tmwd-browser-mcp["']/gm, '$1"tmwd_browser"');
+  for (const [legacyPath, canonicalPath] of [
+    [legacyBrowserServerPath, browserServerPath],
+    [legacyJsReverseServerPath, jsReverseServerPath],
+  ]) {
+    next = next.split(tomlString(legacyPath)).join(tomlString(canonicalPath));
+    next = next.split(`'${legacyPath}'`).join(`'${canonicalPath}'`);
+  }
+  return next;
+}
+
 function ensureMcpRegistry(registryPath) {
   mkdirSync(dirname(registryPath), { recursive: true });
-  const current = existsSync(registryPath) ? readFileSync(registryPath, "utf8") : "";
+  let current = existsSync(registryPath) ? readFileSync(registryPath, "utf8") : "";
+  let changed = false;
+  const normalized = normalizeMcpRegistry(current);
+  if (normalized !== current) {
+    writeFileSync(registryPath, normalized, "utf8");
+    current = normalized;
+    changed = true;
+  }
   const blocks = [];
   if (!/^\s*name\s*=\s*["'](?:tmwd_browser|tmwd-browser-mcp)["']/m.test(current)) {
     blocks.push([
@@ -123,7 +145,7 @@ function ensureMcpRegistry(registryPath) {
     ].join("\n"));
   }
   if (blocks.length === 0) {
-    return { path: registryPath, changed: false };
+    return { path: registryPath, changed };
   }
   appendFileSync(registryPath, blocks.join(""), "utf8");
   return { path: registryPath, changed: true };

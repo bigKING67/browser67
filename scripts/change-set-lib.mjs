@@ -210,7 +210,7 @@ const GROUPS = [
       /^agents\/openai\.yaml$/,
       /^package-lock\.json$/,
       /^bin\/(?:browser67|tmwd-browser|tmwd-browser-mcp)\.mjs$/,
-      /^contracts\/(?:browser67-naming-contract|runtime-home-contract|pi-package-contract)\.mjs$/,
+      /^contracts\/(?:browser67-naming-contract|runtime-home-contract|setup-extension-contract|pi-package-contract)\.mjs$/,
       /^docs\/(?:maintenance-quality-model|migration-browser67|naming-and-compatibility|project-structure)\.md$/,
       /^docs\/schemas\/browser-doctor\.schema\.json$/,
       /^extension\/config\.example\.js$/,
