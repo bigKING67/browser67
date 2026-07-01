@@ -11,6 +11,10 @@ function frameListingScript() {
         height: Math.round(rect.height)
       };
     };
+    const originOf = (url) => {
+      try { return new URL(url || location.href, location.href).origin; } catch (_) { return ''; }
+    };
+    const labelFor = (path) => path.length === 0 ? 'top' : 'top > ' + path.map((index) => 'frame[' + index + ']').join(' > ');
     const walk = (win, path = [], depth = 0) => {
       if (depth > 6) return [];
       const doc = win.document;
@@ -34,18 +38,25 @@ function frameListingScript() {
         } catch (err) {
           error = String(err?.message || err);
         }
+        const sameOrigin = accessible;
         const row = {
           frame_id: "frame:" + framePath.join("/"),
           frame_path: framePath.join("/"),
+          frame_path_label: labelFor(framePath),
+          parent_frame_path: path.length ? path.join("/") : "top",
           depth,
           index,
           tag: node.tagName,
           src: node.src || "",
           url,
+          origin: originOf(url || node.src || ""),
           title,
           name: node.getAttribute("name") || "",
           sandbox: node.getAttribute("sandbox") || "",
           accessible,
+          same_origin: sameOrigin,
+          degraded_mode: !sameOrigin,
+          access_level: sameOrigin ? "same_origin_dom" : "cross_origin_element_metadata",
           child_count: childCount,
           rect: rectPayload(node),
           error
@@ -63,9 +74,20 @@ function frameListingScript() {
     };
     return {
       url: location.href,
+      origin: location.origin,
       title: document.title,
+      selected_frame: {
+        frame_id: "top",
+        frame_path: "top",
+        frame_path_label: "top",
+        url: location.href,
+        origin: location.origin,
+        same_origin: true,
+        degraded_mode: false,
+        access_level: "same_origin_dom"
+      },
       frames: walk(window),
-      note: "Cross-origin frames are listed by element metadata only; inner DOM requires a CDP/frame-aware path."
+      note: "Cross-origin frames are listed by element metadata only; inner DOM requires a frame-capable CDP or extension path."
     };
   `;
 }

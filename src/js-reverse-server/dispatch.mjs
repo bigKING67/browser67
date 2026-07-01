@@ -5,6 +5,7 @@ import {
   handleCollectionDiff,
   handleDeobfuscateCode,
   handleDetectCrypto,
+  handleDetectMicrofrontends,
   handleDiffEnvRequirements,
   handleInjectStealth,
   handleRiskPanel,
@@ -13,12 +14,17 @@ import {
   handleUnderstandCode,
 } from "./analysis.mjs";
 import {
+  handleExportEvidenceBundle,
   handleExportRebuildBundle,
   handleExportSessionReport,
+  handleGetLocalStorage,
+  handleGetSessionStorage,
   handleGetStorage,
   handleRecordReverseEvidence,
   handleRestoreSessionState,
   handleSaveSessionState,
+  handleSearchStorage,
+  handleWatchStorageChanges,
 } from "./artifacts.mjs";
 import {
   handleBreakOnXhr,
@@ -76,6 +82,7 @@ async function dispatchToolCall(name, args = {}) {
   if (name === "get_websocket_messages") return makeResult(await handleGetWebSocketMessages(args));
   if (name === "get_dom_structure") return makeResult(await handleGetDomStructure(args));
   if (name === "list_frames") return makeResult(await handleListFrames(args));
+  if (name === "detect_microfrontends") return makeResult(await handleDetectMicrofrontends(args));
   if (name === "create_hook") return makeResult(await handleCreateHook(args));
   if (name === "inject_hook") return makeResult(await handleInjectHook(args));
   if (name === "get_hook_data") return makeResult(await handleGetHookData(args));
@@ -97,6 +104,7 @@ async function dispatchToolCall(name, args = {}) {
   if (name === "risk_panel") return makeResult(handleRiskPanel(args));
   if (name === "record_reverse_evidence") return makeResult(await handleRecordReverseEvidence(args));
   if (name === "export_session_report") return makeResult(await handleExportSessionReport(args));
+  if (name === "export_evidence_bundle") return makeResult(await handleExportEvidenceBundle(args));
   if (name === "export_rebuild_bundle") return makeResult(await handleExportRebuildBundle(args));
   if (name === "diff_env_requirements") return makeResult(handleDiffEnvRequirements(args));
   if (name === "collect_code") return makeResult(await handleCollectCode(args));
@@ -106,6 +114,10 @@ async function dispatchToolCall(name, args = {}) {
   if (name === "save_session_state") return makeResult(await handleSaveSessionState(args));
   if (name === "restore_session_state") return makeResult(await handleRestoreSessionState(args));
   if (name === "get_storage") return makeResult(await handleGetStorage(args));
+  if (name === "get_local_storage") return makeResult(await handleGetLocalStorage(args));
+  if (name === "get_session_storage") return makeResult(await handleGetSessionStorage(args));
+  if (name === "search_storage") return makeResult(await handleSearchStorage(args));
+  if (name === "watch_storage_changes") return makeResult(await handleWatchStorageChanges(args));
   return {
     isError: true,
     content: [{ type: "text", text: `unknown tool: ${String(name)}` }],

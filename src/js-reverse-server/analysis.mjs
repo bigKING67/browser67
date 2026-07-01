@@ -16,11 +16,12 @@ import {
 } from "./utils.mjs";
 
 async function handleAnalyzeTarget(args) {
-  const [scripts, network, dom, search] = await Promise.all([
+  const [scripts, network, dom, search, microfrontends] = await Promise.all([
     handleListScripts(args),
     handleListNetworkRequests(args),
     handleGetDomStructure(args),
     handleSearchInScripts({ ...args, keywords: args?.keywords ?? COMMON_KEYWORDS, max_records: 80 }),
+    handleDetectMicrofrontends(args),
   ]);
   const priorityTargets = network.requests
     .filter((item) => /sign|token|nonce|h5st|x-bogus|msToken|signature/i.test(JSON.stringify(item)))
@@ -38,8 +39,17 @@ async function handleAnalyzeTarget(args) {
       keyword_matches: search.matches,
     },
     dom: dom.dom,
+    microfrontends: {
+      possible_microfrontend: Boolean(microfrontends.possible_microfrontend),
+      runtimes: microfrontends.runtimes,
+      containers_count: Array.isArray(microfrontends.containers) ? microfrontends.containers.length : 0,
+      iframes_count: Array.isArray(microfrontends.iframes) ? microfrontends.iframes.length : 0,
+      shadow_roots_count: Array.isArray(microfrontends.shadow_roots) ? microfrontends.shadow_roots.length : 0,
+      hook_scope: microfrontends.hook_scope,
+    },
     signatureChain: search.matches.slice(0, 20),
     actionPlan: [
+      "Use list_frames and detect_microfrontends before selecting a hook scope on iframe or microfrontend shells.",
       "Install fetch/xhr hooks with create_hook + inject_hook.",
       "Reproduce the target action.",
       "Read get_hook_data(view=summary), then raw records with initiator stacks.",
@@ -126,6 +136,86 @@ function handleRiskPanel(args) {
   };
 }
 
+async function handleDetectMicrofrontends(args) {
+  const result = await pageEval(args, `
+    const hasOwn = (name) => Object.prototype.hasOwnProperty.call(window, name);
+    const globalSignals = [
+      { name: 'qiankun', detected: Boolean(window.__POWERED_BY_QIANKUN__ || window.qiankunStarted || window.__INJECTED_PUBLIC_PATH_BY_QIANKUN__), globals: ['__POWERED_BY_QIANKUN__', 'qiankunStarted', '__INJECTED_PUBLIC_PATH_BY_QIANKUN__'].filter(hasOwn) },
+      { name: 'garfish', detected: Boolean(window.Garfish || window.__GARFISH__ || window.__GARFISH_EXPORTS__), globals: ['Garfish', '__GARFISH__', '__GARFISH_EXPORTS__'].filter(hasOwn) },
+      { name: 'single-spa', detected: Boolean(window.singleSpaNavigate || window.__SINGLE_SPA_DEVTOOLS__), globals: ['singleSpaNavigate', '__SINGLE_SPA_DEVTOOLS__'].filter(hasOwn) },
+      { name: 'micro-app', detected: Boolean(window.__MICRO_APP_ENVIRONMENT__ || window.microApp), globals: ['__MICRO_APP_ENVIRONMENT__', 'microApp'].filter(hasOwn) }
+    ];
+    const selector = [
+      '[data-qiankun]',
+      '[data-garfish]',
+      '[data-micro-app]',
+      '[micro-app]',
+      '[id*="qiankun" i]',
+      '[class*="qiankun" i]',
+      '[id*="garfish" i]',
+      '[class*="garfish" i]',
+      '[id*="micro" i]',
+      '[class*="micro" i]'
+    ].join(',');
+    const containers = Array.from(document.querySelectorAll(selector)).slice(0, 80).map((node, index) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        index,
+        tag: node.tagName,
+        id: node.id || '',
+        className: String(node.className || '').slice(0, 200),
+        attrs: Array.from(node.attributes).slice(0, 20).map((attr) => [attr.name, String(attr.value).slice(0, 200)]),
+        rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
+      };
+    });
+    const iframes = Array.from(document.querySelectorAll('iframe,frame')).slice(0, 80).map((node, index) => {
+      let accessible = false;
+      let url = node.src || '';
+      try {
+        accessible = Boolean(node.contentWindow?.document);
+        if (accessible) url = node.contentWindow.location.href || url;
+      } catch (_) {}
+      return {
+        index,
+        tag: node.tagName,
+        src: node.src || '',
+        url,
+        name: node.getAttribute('name') || '',
+        sandbox: node.getAttribute('sandbox') || '',
+        same_origin: accessible,
+        degraded_mode: !accessible
+      };
+    });
+    const shadowRoots = Array.from(document.querySelectorAll('*'))
+      .filter((node) => node.shadowRoot)
+      .slice(0, 80)
+      .map((node, index) => ({ index, tag: node.tagName, id: node.id || '', mode: node.shadowRoot.mode, child_count: node.shadowRoot.childElementCount }));
+    const detected = globalSignals.filter((item) => item.detected).map((item) => item.name);
+    const possible = detected.length > 0 || containers.length > 0 || iframes.length > 0 || shadowRoots.length > 0;
+    return {
+      url: location.href,
+      origin: location.origin,
+      possible_microfrontend: possible,
+      runtimes: globalSignals,
+      containers,
+      iframes,
+      shadow_roots: shadowRoots,
+      hook_scope: {
+        default_scope: 'selected frame current document',
+        same_origin: 'hooks can inspect DOM/runtime when injected in the selected same-origin frame',
+        cross_origin: 'degraded metadata only unless a frame-capable CDP or extension path is selected',
+        shadow_dom: 'open shadow roots can be inspected from the host document; closed shadow roots cannot'
+      },
+      limitations: [
+        'Runtime globals are heuristic signals, not proof that every subapp is active.',
+        'Cross-origin frames report element metadata only from this path.',
+        'Closed shadow DOM and sandboxed subapps may require a dedicated frame or extension-level hook.'
+      ]
+    };
+  `);
+  return { ok: true, transport: result.transport, page: result.page, ...result.value };
+}
+
 function handleDiffEnvRequirements(args) {
   const text = JSON.stringify(args?.data ?? args ?? {});
   const candidates = ["window", "document", "navigator", "location", "localStorage", "sessionStorage", "crypto", "TextEncoder", "atob", "btoa", "fetch", "XMLHttpRequest"];
@@ -185,6 +275,7 @@ export {
   handleCollectionDiff,
   handleDeobfuscateCode,
   handleDetectCrypto,
+  handleDetectMicrofrontends,
   handleDiffEnvRequirements,
   handleFindInScript,
   handleInjectStealth,

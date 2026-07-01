@@ -103,6 +103,26 @@ async function runToolCases(rpc, cli) {
   assert.equal(foundEvidence?.schema_version, "evidence.v1");
   assert.equal(foundEvidence?.source, "hook");
   assert.equal(foundEvidence?.confidence, "exact");
+
+  const bundleCall = await rpc.call(
+    "tools/call",
+    {
+      name: "export_evidence_bundle",
+      arguments: {
+        task_id: "contract",
+        url: "https://example.invalid/contract",
+        frame_path: "top",
+        script_hashes: ["sha256:contract"],
+        storage_keys: ["redacted-key"],
+      },
+    },
+    cli.timeout_ms,
+  );
+  const bundlePayload = firstJsonContent(bundleCall.result);
+  assert.equal(bundlePayload?.ok, true);
+  assert.equal(bundlePayload?.summary?.schema_version, "js-reverse-evidence-bundle.v1");
+  assert.equal(bundlePayload?.summary?.selected_frame, "top");
+  assert.equal(Array.isArray(bundlePayload?.files), true);
 }
 
 export {

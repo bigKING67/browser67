@@ -150,7 +150,20 @@ async function handleInjectPreloadScript(args) {
     root.preloadScripts.push({ ts: new Date().toISOString(), code: input.code.slice(0, 20000) });
     let evalResult = null;
     try { evalResult = eval(input.code); } catch (error) { evalResult = { ok: false, error: error.message || String(error) }; }
-    return { ok: true, executed_now: true, evalResult, warning: 'This TMWD-backed server injected the script into the current document. For true document_start preload, reload with an extension-level content script or remote CDP preload path.' };
+    return {
+      ok: true,
+      executed_now: true,
+      evalResult,
+      preload_semantics: {
+        current_document_eval: true,
+        next_navigation_preload: 'recorded_only',
+        true_document_start: false,
+        extension_level_content_script: false,
+        remote_cdp_new_document_script: false,
+        note: 'The script was evaluated in the current document and recorded for operator replay; it is not a true document_start preload.'
+      },
+      warning: 'browser67 injected the script into the current document. For true document_start semantics, use an extension-level content script or remote CDP Page.addScriptToEvaluateOnNewDocument path.'
+    };
   `, { code });
   return { ok: true, transport: result.transport, page: result.page, result: result.value };
 }
@@ -160,7 +173,7 @@ function unsupportedDebugger(tool) {
     ok: false,
     status: "not_supported",
     tool,
-    reason: "This TMWD-backed js-reverse MCP favors non-blocking hooks. Persistent Debugger pause/callframe state needs a dedicated remote CDP debug browser or a future persistent debugger bridge.",
+    reason: "This browser67-backed js-reverse MCP favors non-blocking hooks. Persistent Debugger pause/callframe state needs a dedicated remote CDP debug browser or a future persistent debugger bridge.",
     fallback: "Use create_hook/inject_hook/get_hook_data, break_on_xhr, or inject_preload_script.",
   };
 }

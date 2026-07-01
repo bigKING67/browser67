@@ -1,10 +1,10 @@
 const VERSION = "0.1.0-tmwd-js-reverse";
 
 const TOOL_DEFINITIONS = {
-  check_browser_health: "Verify TMWD-backed browser connectivity for JS reverse tasks.",
+  check_browser_health: "Verify browser67-backed browser connectivity for JS reverse tasks.",
   navigate_page: "Navigate the selected page.",
   new_page: "Create a new browser page.",
-  finalize_task: "Finalize js-reverse TMWD-managed pages for a workspace or task.",
+  finalize_task: "Finalize js-reverse browser67-managed pages for a workspace or task.",
   list_pages: "List TMWD-visible browser pages.",
   select_page: "Select a browser page by id.",
   list_scripts: "List script tags from the selected page.",
@@ -18,6 +18,7 @@ const TOOL_DEFINITIONS = {
   get_request_initiator: "Return captured call stack for a request when hook data has it.",
   get_dom_structure: "Return a compact DOM tree snapshot.",
   list_frames: "List iframes/frames with frame paths, geometry, same-origin accessibility, and child counts.",
+  detect_microfrontends: "Detect possible microfrontend runtimes, iframe/shadow/sandbox boundaries, and hook-scope limits.",
   create_hook: "Create a hook definition.",
   inject_hook: "Inject a hook definition into the selected page.",
   get_hook_data: "Read hook-captured runtime records.",
@@ -29,7 +30,7 @@ const TOOL_DEFINITIONS = {
   stop_monitor: "Stop DOM event monitoring.",
   trace_function: "Trace calls to a function path with hook records.",
   inject_preload_script: "Inject a runtime script now and record that early preload needs a reload-capable path.",
-  set_breakpoint: "Breakpoint placeholder; hooks are preferred on this TMWD-backed server.",
+  set_breakpoint: "Breakpoint placeholder; hooks are preferred on this browser67-backed server.",
   set_breakpoint_on_text: "Breakpoint placeholder by text search.",
   resume: "Debugger-control placeholder.",
   pause: "Debugger-control placeholder.",
@@ -46,6 +47,7 @@ const TOOL_DEFINITIONS = {
   risk_panel: "Score reverse-engineering risk and next-step confidence.",
   record_reverse_evidence: "Write reverse evidence to runtime artifacts.",
   export_session_report: "Export the current js-reverse session report.",
+  export_evidence_bundle: "Export a reproducible js-reverse evidence bundle with summary, network rows, hooks, redacted storage, and replay notes.",
   export_rebuild_bundle: "Export a minimal Node rebuild bundle from captured evidence.",
   diff_env_requirements: "Heuristically diff browser/local environment requirements.",
   collect_code: "Collect script code snippets matching keywords.",
@@ -55,6 +57,10 @@ const TOOL_DEFINITIONS = {
   save_session_state: "Save localStorage/sessionStorage/document cookie snapshot.",
   restore_session_state: "Restore localStorage/sessionStorage snapshot.",
   get_storage: "Read document cookie, localStorage, and sessionStorage.",
+  get_local_storage: "Read one localStorage key with bounded value output.",
+  get_session_storage: "Read one sessionStorage key with bounded value output.",
+  search_storage: "Search localStorage/sessionStorage keys and bounded value previews.",
+  watch_storage_changes: "Install a non-blocking storage change watcher that records storage-change hook data.",
 };
 
 const TOOL_SCHEMAS = Object.fromEntries(
@@ -71,6 +77,7 @@ const TOOL_SCHEMAS = Object.fromEntries(
           url: { type: "string" },
           script_id: { type: "string" },
           source_url: { type: "string" },
+          key: { type: "string" },
           keywords: {
             type: "string",
             description: "Pipe-separated keywords, for example: sign|token|crypto.",
@@ -84,6 +91,10 @@ const TOOL_SCHEMAS = Object.fromEntries(
           events: { type: "array", items: { type: "string" } },
           view: { type: "string", enum: ["summary", "raw"] },
           max_records: { type: "number", minimum: 1, maximum: 1000 },
+          max_value_chars: { type: "number", minimum: 0, maximum: 20000 },
+          include_values: { type: "boolean", default: false },
+          storage_area: { type: "string", enum: ["both", "localStorage", "sessionStorage"], default: "both" },
+          watch_id: { type: "string" },
           channel: { type: "string" },
           task_id: { type: "string" },
           data: { type: "object" },
@@ -91,6 +102,8 @@ const TOOL_SCHEMAS = Object.fromEntries(
           before: { type: "object" },
           after: { type: "object" },
           frame_path: { type: "string" },
+          script_hashes: { type: "array", items: { type: "string" } },
+          storage_keys: { type: "array", items: { type: "string" } },
           user_agent: { type: "string" },
           active: { type: "boolean", default: true },
           keep: { type: "boolean", default: false },

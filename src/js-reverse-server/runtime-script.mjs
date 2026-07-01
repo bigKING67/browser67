@@ -6,6 +6,7 @@ function runtimeScript() {
       monitors: {},
       originals: {},
       preloadScripts: [],
+      storageWatchers: {},
       maxRecords: 2000
     };
     const safe = (value, depth = 0) => {
