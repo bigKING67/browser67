@@ -2,6 +2,7 @@ import { TOOL_SCHEMAS } from "../tool-schemas.mjs";
 import { dispatchToolCall } from "./tool-dispatch.mjs";
 
 const VERSION = "0.2.0-ga-cdp";
+const SERVER_NAME = "browser67-tmwd-browser";
 
 function sendResponse(id, result, output = process.stdout) {
   output.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
@@ -32,7 +33,7 @@ function createRequestHandler(options = {}) {
       sendResponse(id, {
         protocolVersion: "2024-11-05",
         serverInfo: {
-          name: "browser-structured-mcp",
+          name: SERVER_NAME,
           version: VERSION,
         },
         capabilities: {
@@ -70,6 +71,7 @@ function createRequestHandler(options = {}) {
 
 export {
   VERSION,
+  SERVER_NAME,
   createRequestHandler,
   listToolsPayload,
   sendError,

@@ -4,9 +4,9 @@ npm-debug.log*
 .env
 .env.*
 
-# Runtime state belongs under ~/.tmwd-browser-mcp and should not be committed.
+# Runtime state belongs under ~/.tmwd-browser-mcp / ~/.browser67 and should not be committed.
 .tmwd-browser-mcp/
-runtime/
+/runtime/
 tmp/
 temp/
 

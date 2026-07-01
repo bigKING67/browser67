@@ -99,7 +99,7 @@ const AUTH_TOOL_SCHEMAS = {
         },
         captcha_provider_config_dir: {
           type: "string",
-          description: "Optional repo-external CAPTCHA provider config directory. Defaults to ~/.tmwd-browser-mcp/captcha-providers and must not live in the repository.",
+          description: "Optional repo-external CAPTCHA provider config directory. Defaults to the active browser67 home under captcha-providers and must not live in the repository.",
         },
         confirm_protocol_solver: {
           type: "boolean",

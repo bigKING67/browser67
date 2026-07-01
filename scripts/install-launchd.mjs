@@ -5,13 +5,18 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveBrowser67Home } from "../src/runtime/paths/home.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const home = process.env.HOME || process.cwd();
-const runtimeHome = resolve(process.env.TMWD_BROWSER_MCP_HOME || `${home}/.tmwd-browser-mcp`);
+const homeResolution = resolveBrowser67Home();
+const runtimeHome = homeResolution.path;
 const launchAgentsDir = resolve(home, "Library/LaunchAgents");
-const label = "com.browser67.tmwd-browser-mcp";
+const label = "com.browser67.tmwd-hub";
+const legacyLabel = "com.browser67.tmwd-browser-mcp";
 const plistPath = resolve(launchAgentsDir, `${label}.plist`);
+const legacyPlistPath = resolve(launchAgentsDir, `${legacyLabel}.plist`);
 const userTarget = `gui/${process.getuid?.() ?? ""}`;
 
 function xmlEscape(value) {
@@ -51,6 +56,8 @@ function plist() {
   <string>${xmlEscape(repoRoot)}</string>
   <key>EnvironmentVariables</key>
   <dict>
+    <key>BROWSER67_HOME</key>
+    <string>${xmlEscape(runtimeHome)}</string>
     <key>TMWD_BROWSER_MCP_HOME</key>
     <string>${xmlEscape(runtimeHome)}</string>
   </dict>
@@ -81,14 +88,19 @@ function run() {
   if (existsSync(plistPath)) {
     runCommand("launchctl", ["bootout", userTarget, plistPath], { allowFailure: true });
   }
+  if (existsSync(legacyPlistPath)) {
+    runCommand("launchctl", ["bootout", userTarget, legacyPlistPath], { allowFailure: true });
+  }
   runCommand("launchctl", ["bootstrap", userTarget, plistPath]);
   runCommand("launchctl", ["kickstart", "-k", `${userTarget}/${label}`], { allowFailure: true });
 
   process.stdout.write(`${JSON.stringify({
     ok: true,
     label,
+    legacy_label: legacyLabel,
     plist_path: plistPath,
     runtime_home: runtimeHome,
+    runtime_home_source: homeResolution.source,
     node: process.execPath,
   })}\n`);
   return 0;

@@ -5,18 +5,17 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileS
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveBrowser67Home } from "../src/runtime/paths/home.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const sourceDir = resolve(repoRoot, "extension");
-const defaultHome = resolve(
-  process.env.TMWD_BROWSER_MCP_HOME
-    || process.env.TMWD_HOME
-    || `${process.env.HOME || process.cwd()}/.tmwd-browser-mcp`,
-);
+const homeResolution = resolveBrowser67Home();
+const defaultHome = homeResolution.path;
 const defaultTargetDir = resolve(defaultHome, "browser/tmwd_cdp_bridge");
 const defaultMcpRegistryPath = resolve(defaultHome, "mcp/servers.toml");
-const browserServerPath = resolve(repoRoot, "src/server.mjs");
-const jsReverseServerPath = resolve(repoRoot, "src/js-reverse-server.mjs");
+const browserServerPath = resolve(repoRoot, "src/mcp/browser/server.mjs");
+const jsReverseServerPath = resolve(repoRoot, "src/mcp/js-reverse/server.mjs");
 
 function parseArgs(argv) {
   const parsed = {
@@ -71,12 +70,12 @@ function usage() {
   return [
     "Usage: node scripts/setup-extension.mjs [--target <dir>] [--registry <path>] [--force-config] [--skip-registry] [--json]",
     "",
-    "Copies extension/ into a stable unpacked-extension directory and writes config.js.",
+    "Copies extension/ into the active browser67 unpacked-extension directory and writes config.js.",
   ].join("\n");
 }
 
 function makeTid() {
-  return `__tmwd_browser_mcp_${randomBytes(6).toString("hex")}`;
+  return `__browser67_${randomBytes(6).toString("hex")}`;
 }
 
 function tomlString(value) {
@@ -87,12 +86,12 @@ function ensureMcpRegistry(registryPath) {
   mkdirSync(dirname(registryPath), { recursive: true });
   const current = existsSync(registryPath) ? readFileSync(registryPath, "utf8") : "";
   const blocks = [];
-  if (!/^\s*name\s*=\s*["']tmwd-browser-mcp["']/m.test(current)) {
+  if (!/^\s*name\s*=\s*["'](?:tmwd_browser|tmwd-browser-mcp)["']/m.test(current)) {
     blocks.push([
       "",
-      "# Standalone TMWD browser MCP server.",
+      "# browser67 real-browser automation MCP server.",
       "[[servers]]",
-      "name = \"tmwd-browser-mcp\"",
+      "name = \"tmwd_browser\"",
       "command = \"node\"",
       `args = [${tomlString(browserServerPath)}]`,
       "enabled = true",
@@ -155,6 +154,11 @@ function run() {
     : ensureMcpRegistry(args.registryPath);
   const payload = {
     ok: true,
+    product: "browser67",
+    active_home: defaultHome,
+    active_home_source: homeResolution.source,
+    canonical_home: homeResolution.canonical_default,
+    legacy_home: homeResolution.legacy_default,
     extension_dir: args.targetDir,
     config_path: configPath,
     config_created: !configExists || args.forceConfig,
@@ -175,6 +179,7 @@ function run() {
     return 0;
   }
   process.stdout.write(`Extension prepared: ${payload.extension_dir}\n`);
+  process.stdout.write(`Active home: ${payload.active_home} (${payload.active_home_source})\n`);
   process.stdout.write(`Config: ${payload.config_path}${payload.config_created ? " (created)" : " (kept)"}\n`);
   process.stdout.write(`MCP registry: ${payload.mcp_registry_path}${payload.mcp_registry_changed ? " (updated)" : " (unchanged)"}\n`);
   process.stdout.write("Next:\n");

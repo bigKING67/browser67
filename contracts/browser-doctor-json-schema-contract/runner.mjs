@@ -5,7 +5,7 @@ import { schemaPath } from "./paths.mjs";
 import { loadSchema, validateSchemaValue } from "./schema-validator.mjs";
 
 function assertSchemaShape(schema) {
-  assert.equal(schema.title, "tmwd-browser-mcp doctor JSON output");
+  assert.equal(schema.title, "browser67 doctor JSON output");
   assert.equal(schema.properties?.doctor?.properties?.mode?.enum?.includes("remote_cdp"), true);
   assert.equal(schema.properties?.doctor?.properties?.readiness?.properties?.path?.enum?.includes("cdp"), true);
   assert.equal(schema.properties?.doctor?.properties?.checks?.required?.includes("tmwd_ws_api"), true);

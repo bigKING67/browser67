@@ -13,6 +13,10 @@ description: >-
 
 # TMWD Browser MCP
 
+This is the legacy skill name for browser67's `tmwd_browser` MCP surface. New
+project-level references should use `browser67`; keep this skill for existing
+agent configs that still route by `tmwd-browser-mcp`.
+
 Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 
 ## Core workflow
@@ -22,7 +26,7 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
    - call `browser_tab_ops` / `browser_scan` with `tmwd_mode="tmwd"`.
 2. For login-state tasks, keep `tmwd_mode="tmwd"` and `tmwd_transport="auto"`.
 3. Use `browser_transport_health` when a task may fail because of hub/extension/transport readiness. It probes `ws` and/or `link`, reports `healthy` / `degraded` / `broken`, and returns a preferred transport plus a concrete suggestion.
-4. Use `browser_run_ops.prepare` for multi-step browser work that needs replayable evidence. Runs live outside the repo under `~/.tmwd-browser-mcp/runtime/runs` by default and contain `run.json`, `events.ndjson`, `artifacts/`, and `logs/`.
+4. Use `browser_run_ops.prepare` for multi-step browser work that needs replayable evidence. Runs live outside the repo under the active browser67 home (`~/.browser67/runtime/runs` for new installs, legacy `~/.tmwd-browser-mcp/runtime/runs` when detected) and contain `run.json`, `events.ndjson`, `artifacts/`, and `logs/`.
 5. Use `browser_scan` for current page/tabs/text.
 6. Use `browser_execute_js` for JS, bridge commands, CDP batch, cookies, and controlled navigation. For large DOM/network payloads, set `output_mode:"compact"` and an explicit `max_return_chars` to keep tool output bounded.
 7. Use `browser_wait` instead of ad-hoc sleeps for readiness gates. Supported wait types are `selector`, `text`, `function`, `dom_stable`, and `network_idle`.
@@ -63,7 +67,7 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - When the user is already using a page, do not take over that unmanaged tab for active work. Create or reuse a TMWD-owned tab instead:
   `browser_tab_lifecycle({action:"select_or_create", url, ownership_policy:"tmwd_only", reuse_scope:"origin_path", workspace_key})`.
 - Use `create_managed` only when a fresh TMWD-owned tab is explicitly needed; use `fresh:true` or `reuse:false` as the escape hatch.
-- Managed tab registry is outside the repo by default: `~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json`; use `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for isolated test/workspace runs.
+- Managed tab registry is outside the repo by default under the active browser67 home, canonically `~/.browser67/tab-workspace/managed-tabs.json`; use `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for isolated test/workspace runs.
 - `create_managed` / `select_or_create` wait for new tabs to become visible by default (`wait_until:"listed"`). Use `wait_until:"none"` only when the caller will do its own readiness wait.
 - `list_managed` is live-only by default and limits large arrays. Use
   `summary_only:true`, `max_items`, or `max_stale_items` for bounded

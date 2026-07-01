@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tmwd-browser-mcp.local/schemas/browser-doctor.schema.json",
-  "title": "tmwd-browser-mcp doctor JSON output",
-  "description": "Machine-readable output contract for `tmwd-browser-mcp doctor --json`.",
+  "$id": "https://browser67.local/schemas/browser-doctor.schema.json",
+  "title": "browser67 doctor JSON output",
+  "description": "Machine-readable output contract for `browser67 doctor --json`.",
   "type": "object",
   "required": [
     "ok",

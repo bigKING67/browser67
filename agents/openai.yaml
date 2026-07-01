@@ -1,7 +1,7 @@
 interface:
-  display_name: "TMWD Browser MCP"
-  short_description: "Use tmwd_browser for real Chrome/Edge profile automation"
-  default_prompt: "Use tmwd_browser for logged-in Chrome/Edge pages, current tabs, CDP bridge, downloads/uploads, clipboard write/paste wrappers, and managed tab lifecycle."
+  display_name: "browser67"
+  short_description: "Use browser67 for real Chrome/Edge automation and TMWD-backed JS reverse workflows"
+  default_prompt: "Use browser67's tmwd_browser MCP for logged-in Chrome/Edge pages, current tabs, CDP bridge, downloads/uploads, clipboard write/paste wrappers, and managed tab lifecycle; use js-reverse for observe/capture/rebuild workflows."
 
 dependencies:
   tools:

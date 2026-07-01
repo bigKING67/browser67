@@ -4,7 +4,7 @@ import { assertOpenAiToolSchemaCompatibility } from "./schema-compat.mjs";
 async function assertToolSurface({ rpc, timeoutMs }) {
   const toolsList = await rpc.call("tools/list", {}, timeoutMs);
   const tools = Array.isArray(toolsList?.result?.tools) ? toolsList.result.tools : [];
-  assertOpenAiToolSchemaCompatibility(tools, "browser-structured-mcp");
+  assertOpenAiToolSchemaCompatibility(tools, "browser67-tmwd-browser");
   const names = tools
     .map((entry) => (typeof entry?.name === "string" ? entry.name : ""))
     .filter((name) => name.length > 0);

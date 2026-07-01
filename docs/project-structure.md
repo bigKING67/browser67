@@ -1,0 +1,69 @@
+# browser67 project structure
+
+browser67 is maintained as a long-lived agent browser runtime. New code must
+make the target surface obvious and keep runtime, MCP, native, and governance
+concerns separated.
+
+## Current canonical surfaces
+
+- `tmwd_browser`: real Chrome/Edge profile automation through TMWD.
+- `js-reverse`: TMWD-backed reverse workflow surface.
+- TMWD runtime/hub/extension bridge.
+- Repo-external runtime artifacts and evidence.
+- Governance contracts, doctors, readiness checks, and upstream audits.
+
+## Current source layout
+
+The current implementation still preserves several compatibility entrypoints:
+
+- `src/mcp/browser/server.mjs`: browser67 `tmwd_browser` MCP entrypoint.
+- `src/mcp/js-reverse/server.mjs`: `js-reverse` MCP entrypoint.
+- `src/server.mjs` and `src/js-reverse-server.mjs`: compatibility shims for
+  existing MCP configs.
+- `src/server/`: browser MCP protocol, dispatch, and browser-core tools.
+- `src/js-reverse-server/`: JS reverse protocol, tools, hooks, network, frames,
+  scripts, artifacts, and lifecycle.
+- `src/tmwd-runtime/` and `src/tmwd-runtime.mjs`: TMWD transport runtime.
+- `src/tmwd-hub/`, `src/tmwd-hub.mjs`, `src/tmwd-hub-control/`: local hub and
+  operator control.
+- `src/auth/`: login profiles, lifecycle sidecars, manual-required states, and
+  CAPTCHA planning.
+- `src/browser-wrappers/`, `src/browser-screenshot/`, `src/tab-workspace/`:
+  browser operation wrappers and managed-tab ownership.
+- `src/native-*`, `src/native-*/*`, `src/physical-input/`: native fallback and
+  physical-input provider planning.
+- `src/runtime/paths/home.mjs`: canonical browser67 runtime-home resolution.
+
+## Target structure direction
+
+Future refactors should move toward:
+
+```text
+src/mcp/browser/
+src/mcp/js-reverse/
+src/runtime/tmwd/
+src/runtime/hub/
+src/runtime/artifacts/
+src/browser/auth/
+src/browser/tabs/
+src/browser/captcha/
+src/native/
+src/governance/
+```
+
+Move in batches and keep old entrypoint shims until downstream MCP configs and
+contracts have migrated.
+
+## Directory rules
+
+- Do not add new top-level generic directories such as `utils`, `helpers`,
+  `misc`, `new`, `tmp`, or `experimental`.
+- Do not create shared abstractions until at least two independent call sites
+  need them.
+- New externally visible MCP capabilities need tool schema, runtime validation,
+  deterministic contract coverage, docs/skill updates, and either live proof or
+  an explicit skipped/blocked reason.
+- Runtime artifacts must live outside the repository under the active browser67
+  home or an explicit test override.
+- Large browser outputs must be bounded or written as artifacts with
+  path/hash/count metadata.

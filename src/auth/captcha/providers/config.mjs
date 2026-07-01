@@ -2,7 +2,9 @@ import { access, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const DEFAULT_CAPTCHA_PROVIDER_CONFIG_DIR = "~/.tmwd-browser-mcp/captcha-providers";
+import { resolveBrowser67HomePath } from "../../../runtime/paths/home.mjs";
+
+const DEFAULT_CAPTCHA_PROVIDER_CONFIG_DIR = "~/.browser67/captcha-providers";
 const JFBYM_ENV_FILE = "jfbym.env";
 const DEFAULT_JFBYM_BASE_URL = "https://api.jfbym.com/api/YmServer/customApi";
 const DEFAULT_JFBYM_TIMEOUT_MS = 60_000;
@@ -144,10 +146,13 @@ async function readEnvFileIfPresent(filePath) {
 }
 
 function providerConfigDir(args = {}) {
+  const configured = args.captcha_provider_config_dir
+    || process.env.TMWD_CAPTCHA_PROVIDER_CONFIG_DIR;
+  if (!configured) {
+    return path.resolve(resolveBrowser67HomePath(), "captcha-providers");
+  }
   return path.resolve(expandHome(
-    args.captcha_provider_config_dir
-      || process.env.TMWD_CAPTCHA_PROVIDER_CONFIG_DIR
-      || DEFAULT_CAPTCHA_PROVIDER_CONFIG_DIR,
+    configured,
   ));
 }
 

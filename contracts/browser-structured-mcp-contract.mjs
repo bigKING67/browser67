@@ -136,7 +136,7 @@ async function run() {
       cli.timeout_ms,
     );
     assert.equal(typeof init?.result?.serverInfo?.name, "string");
-    assert.equal(init.result.serverInfo.name, "browser-structured-mcp");
+    assert.equal(init.result.serverInfo.name, "browser67-tmwd-browser");
     rpc.notify("notifications/initialized", {});
 
     await assertToolSurface({ rpc, timeoutMs: cli.timeout_ms });

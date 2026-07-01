@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_OPTIONAL_LIVE_PROOF_DIR = join(homedir(), ".tmwd-browser-mcp", "optional-live-proofs");
+import { resolveBrowser67HomePath } from "../src/runtime/paths/home.mjs";
+
+const DEFAULT_OPTIONAL_LIVE_PROOF_DIR = join(resolveBrowser67HomePath(), "optional-live-proofs");
 const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|authorization|credential)/i;
 const SENSITIVE_VALUE_PATTERN = /(?:\bBearer\s+[A-Za-z0-9._~+/-]+=*|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|(?:^|[;,\s])(?:sid|sessionid|token|cookie|authorization)=\S+)/i;
 const PLACEHOLDER_COMMAND_PATTERN = /(?:replace with exact|placeholder|template-only|template only)/i;

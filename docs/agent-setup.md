@@ -1,6 +1,6 @@
 # Agent setup
 
-This repository is meant to be used by agents as a paired toolkit:
+browser67 is meant to be used by agents as a paired real-browser runtime:
 
 - `tmwd_browser`: real Chrome/Edge profile automation through TMWD.
 - `js-reverse`: TMWD-backed JavaScript reverse engineering, API discovery,
@@ -17,7 +17,8 @@ owns observe/capture/rebuild workflows.
 | Codex host hard-finally adapter | `src/codex-host-finalizer.mjs` |
 | Copy-ready global prompt rules | `docs/global-prompt-snippet.md` |
 | Project-level prompt for this repo | `AGENTS.md` |
-| TMWD browser skill | `skills/tmwd-browser-mcp/` |
+| browser67 skill | `skills/browser67/` |
+| Legacy TMWD browser skill | `skills/tmwd-browser-mcp/` |
 | JS reverse skill | `skills/js-reverse/` |
 | JS reverse SOP entrypoint | `docs/js-reverse-SOP.md` |
 | Generic agent descriptor | `agents/openai.yaml` |
@@ -38,7 +39,7 @@ Add both MCP servers. Replace `/path/to/browser67` with the clone path.
 ```toml
 [mcp_servers.tmwd_browser]
 command = "node"
-args = ["/path/to/browser67/src/server.mjs"]
+args = ["/path/to/browser67/src/mcp/browser/server.mjs"]
 
 [mcp_servers.tmwd_browser.env]
 BROWSER_STRUCTURED_TMWD_MODE = "tmwd"
@@ -48,7 +49,7 @@ BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT = "http://127.0.0.1:18766/link"
 
 [mcp_servers.js-reverse]
 command = "node"
-args = ["/path/to/browser67/src/js-reverse-server.mjs"]
+args = ["/path/to/browser67/src/mcp/js-reverse/server.mjs"]
 
 [mcp_servers.js-reverse.env]
 BROWSER_STRUCTURED_TMWD_MODE = "tmwd"
@@ -57,11 +58,34 @@ BROWSER_STRUCTURED_TMWD_WS_ENDPOINT = "ws://127.0.0.1:18765"
 BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT = "http://127.0.0.1:18766/link"
 ```
 
-`npm run setup` also writes local registry entries for both servers into
-`~/.tmwd-browser-mcp/mcp/servers.toml`. That file is a helper registry, not a
+`browser67 setup` / `npm run setup` also writes local registry entries for both
+servers into the active browser67 home under `mcp/servers.toml`. That file is a helper registry, not a
 replacement for the target agent's own MCP config if it does not read that path.
 
 ## Skill installation
+
+For Pi, prefer package installation:
+
+```bash
+pi install git:github.com/bigKING67/browser67@<tag-or-commit>
+```
+
+During active local development:
+
+```bash
+pi install /Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp
+```
+
+This loads package skills from:
+
+```text
+skills/browser67
+skills/tmwd-browser-mcp
+skills/js-reverse
+```
+
+Do not copy these skills into `~/.pi/agent/skills` when `~/.pi/agent` is an
+in-place `pi-67` checkout; keep browser67 as the source of truth.
 
 For Codex-style skill directories, copy both skills into the user's skill root:
 

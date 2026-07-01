@@ -1,16 +1,18 @@
-# tmwd-browser-mcp
+# browser67
 
-Standalone TMWD browser MCP server for real Chrome/Edge profile automation.
-This repository is published as `browser67` for agents that need both real
-browser automation and TMWD-backed JavaScript reverse-engineering tools.
+browser67 is a real-browser agent runtime for Chrome/Edge automation,
+TMWD-backed JavaScript reverse workflows, evidence-first browser operations,
+and long-term agent tooling.
 
-This project extracts the `browser-structured-mcp` path from `grobot`, keeps the
-GenericAgent/TMWebDriver extension protocol aligned, and adds a focused runtime
-for Codex, grobot, and JS reverse workflows.
+The old `tmwd-browser-mcp` name is now a compatibility alias for the
+`tmwd_browser` MCP surface and legacy package/bin/runtime paths. New docs,
+commands, and project identity use `browser67`. The repo keeps the
+GenericAgent/TMWebDriver extension protocol aligned, but browser67 owns its own
+runtime, contracts, skills, docs, and agent integration surface.
 
 ## What this project owns
 
-- MCP tools:
+- `tmwd_browser` MCP tools:
   - `browser_scan`
   - `browser_execute_js`
   - `browser_wait`
@@ -26,7 +28,7 @@ for Codex, grobot, and JS reverse workflows.
   - `browser_auth_ops`
   - `browser_clipboard_ops`
   - `browser_native_input`
-- JS reverse MCP server:
+- `js-reverse` MCP server:
   - `check_browser_health`
   - `list_scripts` / `search_in_scripts`
   - `list_frames`
@@ -40,6 +42,9 @@ for Codex, grobot, and JS reverse workflows.
 - Native input fallback for blocked browser-side automation
 - Doctor/live-gate contracts for reproducible readiness checks
 - JS reverse docs and skill material under `docs/js-reverse/` and `skills/js-reverse/`
+- Canonical naming, compatibility, runtime-home, and quality-governance docs:
+  `docs/naming-and-compatibility.md`, `docs/migration-browser67.md`,
+  `docs/project-structure.md`, and `docs/maintenance-quality-model.md`
 - Auth/profile lifecycle modules under `src/auth/`:
   profile storage, login/manual-required detection, DOM submit/wait logic, and
   MCP action handlers are kept separate so login behavior can evolve without a
@@ -55,9 +60,9 @@ for Codex, grobot, and JS reverse workflows.
   existing imports stable while removing the previous wrapper monolith.
 - JS reverse server internals under `src/js-reverse-server/`, grouped by MCP
   tool schemas, shared utilities, TMWD adapter, managed-tab lifecycle,
-  script-source discovery, and injected runtime code. `src/js-reverse-server.mjs`
-  remains the executable MCP entrypoint while the long-lived implementation
-  details stay modular.
+  script-source discovery, and injected runtime code. `src/mcp/js-reverse/server.mjs`
+  is the canonical executable MCP entrypoint; `src/js-reverse-server.mjs`
+  remains a compatibility shim.
 
 ## Why TMWD first
 
@@ -90,21 +95,50 @@ For an existing checkout:
 npm install
 ```
 
+## Install as a Pi package
+
+For Pi, install the repository as a package so its skills are loaded from the
+package checkout instead of being copied into `~/.pi/agent/skills`:
+
+```bash
+pi install git:github.com/bigKING67/browser67@<tag-or-commit>
+```
+
+During active local development, install the checkout path:
+
+```bash
+pi install /Users/gaoqian/Documents/sixseven/codeproject/tmwd-browser-mcp
+```
+
+The package manifest exposes:
+
+```text
+skills/browser67
+skills/tmwd-browser-mcp
+skills/js-reverse
+```
+
+MCP servers are still configured in the target agent's MCP config. For Pi,
+`~/.pi/agent/mcp.json` should point at the installed package checkout or the
+local development checkout.
+
 ## Prepare extension
 
 ```bash
-npm run setup
+browser67 setup
 ```
 
 Default extension target:
 
 ```text
-~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/
+~/.browser67/browser/tmwd_cdp_bridge/
 ```
 
-`npm run setup` also writes local registry entries for both
-`tmwd-browser-mcp` and `js-reverse` into
-`~/.tmwd-browser-mcp/mcp/servers.toml` unless `--skip-registry` is passed.
+`npm run setup` is equivalent. Setup also writes local registry entries for
+both `tmwd_browser` and `js-reverse` into the active browser67 home under
+`mcp/servers.toml` unless `--skip-registry` is passed. Existing legacy installs
+under `~/.tmwd-browser-mcp` stay supported; run `browser67 migrate-home --dry-run`
+to inspect a non-destructive copy migration to `~/.browser67`.
 
 For manual Chrome extension loading from this repository, prepare the
 project-local runtime copy:
@@ -163,7 +197,7 @@ npm run server
 Codex config should point directly at:
 
 ```text
-/path/to/browser67/src/server.mjs
+/path/to/browser67/src/mcp/browser/server.mjs
 ```
 
 Run the TMWD-backed JS reverse MCP server with:
@@ -175,7 +209,7 @@ npm run js-reverse:server
 Codex `js-reverse` config should point directly at:
 
 ```text
-/path/to/browser67/src/js-reverse-server.mjs
+/path/to/browser67/src/mcp/js-reverse/server.mjs
 ```
 
 ## Agent prompts and configs
@@ -190,7 +224,8 @@ material needed by other agents:
   map for agents/users searching by SOP.
 - `AGENTS.md`: project-level operating rules for agents working inside this
   repository.
-- `skills/tmwd-browser-mcp/`: skill/playbook for real-browser TMWD tasks.
+- `skills/browser67/`: canonical skill/playbook for browser67 runtime tasks.
+- `skills/tmwd-browser-mcp/`: legacy skill alias for real-browser TMWD tasks.
 - `skills/js-reverse/`: skill/playbook for JavaScript reverse-engineering tasks.
 - `agents/openai.yaml` and `skills/js-reverse/agents/openai.yaml`: portable
   agent metadata/prompts for agent systems that consume YAML descriptors.
@@ -307,7 +342,7 @@ screen coordinates. These knobs are for the local proof fixture only; real
 site challenges still use explicit confirmation and manual handoff boundaries.
 
 Optional JFBYM/Yunma provider planning is configured outside the repository at
-`~/.tmwd-browser-mcp/captcha-providers/jfbym.env` or an explicit
+the active browser67 home under `captcha-providers/jfbym.env` or an explicit
 `captcha_provider_config_dir`. The planner redacts provider secrets and only
 reports whether the token is configured. Example keys:
 
@@ -417,7 +452,7 @@ current terminal/Codex host. When the physical branch passes, it asserts both
 the slider completion/visible movement (`slider_visual_offset` /
 `handle_transform`) and checkbox inside-hotspot completion, then writes a
 sanitized repo-external proof under
-`~/.tmwd-browser-mcp/optional-live-proofs`
+`~/.browser67/optional-live-proofs`
 or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable
 that proof write, or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to make proof-write
 failure fail the gate.
@@ -449,7 +484,7 @@ bounded artifact-to-viewport-to-screen conversion, slider target interpretation,
 origin allowlist blocking, malformed/low-confidence response blocking, and
 redaction of fake tokens/image base64.
 `check:optional-live-proofs` validates sanitized JSON proof artifacts under
-`~/.tmwd-browser-mcp/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. It is
+`~/.browser67/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. It is
 non-blocking by default and exists for optional local CAPTCHA physical proof,
 cross-OS native-input proof, and approved external IdP live coverage; use
 `--strict` only when a local release gate should require every optional proof.
@@ -556,7 +591,8 @@ global audit for all currently registered TMWD workspaces.
 ## Runtime artifact retention
 
 TMWD run artifacts and `browser_screenshot_ops` PNG files are repo-external by
-default under `~/.tmwd-browser-mcp/runtime/runs` unless
+default under the active browser67 home (`~/.browser67/runtime/runs` for new
+installs) unless
 `BROWSER_STRUCTURED_RUN_ROOT` points to a different dedicated run root. They are
 not source files and should not be committed into this repository.
 
@@ -638,7 +674,7 @@ docs/upstream/genericagent/
 
 `extension/config.js` is intentionally not committed. `npm run setup` writes an
 install-local `config.js` with a per-install TID into
-`~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/`.
+the active browser67 home, canonically `~/.browser67/browser/tmwd_cdp_bridge/`.
 
 `UPSTREAM.lock.json` records the exact GenericAgent commit and extension file
 hashes used by this project. After intentionally updating GenericAgent and
@@ -660,7 +696,7 @@ npm run launchd:install
 This writes:
 
 ```text
-~/Library/LaunchAgents/com.browser67.tmwd-browser-mcp.plist
+~/Library/LaunchAgents/com.browser67.tmwd-hub.plist
 ```
 
 and runs the hub from:
@@ -673,31 +709,42 @@ If you previously installed an older pre-browser67 LaunchAgent, stop or
 uninstall that old service before installing this one so only one hub claims the
 default ports.
 
-Uninstall:
+Uninstall canonical LaunchAgent:
 
 ```bash
 npm run launchd:uninstall
 ```
 
+Uninstall canonical and legacy LaunchAgents:
+
+```bash
+npm run launchd:uninstall -- --all
+```
+
 ## Runtime paths
 
-Default runtime home:
+Canonical runtime home:
 
 ```text
-~/.tmwd-browser-mcp/
+~/.browser67/
 ```
 
 Important subpaths:
 
 ```text
-~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/
-~/.tmwd-browser-mcp/runtime/tmwd-hub-state.json
-~/.tmwd-browser-mcp/runtime/browser-live-gate-events.jsonl
-~/.tmwd-browser-mcp/mcp/servers.toml
+~/.browser67/browser/tmwd_cdp_bridge/
+~/.browser67/runtime/tmwd-hub-state.json
+~/.browser67/runtime/browser-live-gate-events.jsonl
+~/.browser67/mcp/servers.toml
 ```
 
 Override with:
 
 ```bash
-TMWD_BROWSER_MCP_HOME=/custom/path
+BROWSER67_HOME=/custom/path
 ```
+
+Legacy `TMWD_BROWSER_MCP_HOME` and `~/.tmwd-browser-mcp/` remain supported. Use
+`browser67 migrate-home --dry-run` and then `browser67 migrate-home --write` to
+copy legacy runtime state into `~/.browser67`; migration never deletes the
+legacy source.

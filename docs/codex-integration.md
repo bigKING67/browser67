@@ -1,11 +1,19 @@
 # Codex integration
 
+browser67 exposes two paired MCP surfaces for Codex:
+
+- `tmwd_browser`: real Chrome/Edge profile automation through TMWD.
+- `js-reverse`: TMWD-backed reverse workflows on the same browser runtime.
+
+Use `browser67` as the project/package/CLI name. `tmwd-browser-mcp` is only a
+legacy compatibility alias.
+
 Recommended Codex MCP block:
 
 ```toml
 [mcp_servers.tmwd_browser]
 command = "node"
-args = ["/path/to/browser67/src/server.mjs"]
+args = ["/path/to/browser67/src/mcp/browser/server.mjs"]
 
 [mcp_servers.tmwd_browser.env]
 BROWSER_STRUCTURED_TMWD_MODE = "tmwd"
@@ -66,7 +74,7 @@ approval_mode = "approve"
 
 [mcp_servers.js-reverse]
 command = "node"
-args = ["/path/to/browser67/src/js-reverse-server.mjs"]
+args = ["/path/to/browser67/src/mcp/js-reverse/server.mjs"]
 
 [mcp_servers.js-reverse.env]
 BROWSER_STRUCTURED_TMWD_MODE = "tmwd"

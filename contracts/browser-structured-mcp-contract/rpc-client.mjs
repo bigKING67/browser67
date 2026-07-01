@@ -7,7 +7,7 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..", "..");
 const browserStructuredServerPath = resolve(
   repoRoot,
-  "src/server.mjs",
+  "src/mcp/browser/server.mjs",
 );
 
 function createRpcClient() {

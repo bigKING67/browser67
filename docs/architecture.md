@@ -1,8 +1,8 @@
-# Architecture
+# browser67 architecture
 
 ```text
 Codex / MCP client
-  -> src/server.mjs
+  -> src/mcp/browser/server.mjs
   -> src/tmwd-runtime.mjs
   -> src/tmwd-hub.mjs
      -> src/tmwd-hub/{config,sessions,relay,ws-server,link-server,shutdown}.mjs
@@ -10,7 +10,7 @@ Codex / MCP client
   -> Chrome/Edge tab
 
 Codex / MCP client
-  -> src/js-reverse-server.mjs
+  -> src/mcp/js-reverse/server.mjs
   -> src/tmwd-runtime.mjs
   -> src/tmwd-hub.mjs
      -> src/tmwd-hub/{config,sessions,relay,ws-server,link-server,shutdown}.mjs
@@ -31,7 +31,8 @@ native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
 1. Keep TMWD user browser as the default for profile-sensitive work.
 2. Keep remote CDP explicit and visible.
 3. Keep extension source vendored and reproducible.
-4. Keep runtime artifacts under `~/.tmwd-browser-mcp`.
+4. Keep runtime artifacts under the active browser67 home, canonically
+   `~/.browser67` with legacy `~/.tmwd-browser-mcp` compatibility.
 5. Keep deterministic contracts separate from live browser gates.
 6. Keep GenericAgent provenance explicit in `UPSTREAM.lock.json`.
 7. Keep JS reverse MCP capabilities TMWD-backed and hook-first; debugger/callframe
@@ -43,16 +44,18 @@ native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
 
 - `extension/` is source-controlled and mirrors GenericAgent's extension except
   install-local `config.js`.
-- `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` is the Chrome/Edge unpacked
-  extension install target.
-- `~/.tmwd-browser-mcp/runtime/` is runtime state and logs. Run directories live
+- `~/.browser67/browser/tmwd_cdp_bridge/` is the canonical Chrome/Edge
+  unpacked extension install target. Legacy installs under
+  `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` remain supported during
+  migration.
+- `~/.browser67/runtime/` is runtime state and logs. Run directories live
   under `runtime/runs` and are governed by `npm run runtime:cleanup:dry-run`
   / `npm run runtime:cleanup -- --write` so screenshot evidence stays outside
   the repo without growing indefinitely.
 - `runtime/js-reverse/` is ignored local evidence, reports, and rebuild bundles
-  produced by `src/js-reverse-server.mjs`.
-- `~/Library/LaunchAgents/com.browser67.tmwd-browser-mcp.plist` is optional
-  user-level autostart state created by `npm run launchd:install`.
+  produced by `src/mcp/js-reverse/server.mjs`.
+- `~/Library/LaunchAgents/com.browser67.tmwd-hub.plist` is optional user-level
+  autostart state created by `npm run launchd:install`.
 - `src/tmwd-hub.mjs` and `src/tmwd-hub-control.mjs` are thin executable
   entrypoints. Hub state, session TTL, WS relay, link HTTP commands, shutdown,
   endpoint parsing, probing, and state-file IO live in sibling module folders.

@@ -60,7 +60,7 @@ async function initializeMcp(context) {
       version: "1.0.0",
     },
   }, context.cli.timeout_ms);
-  assert.equal(init?.result?.serverInfo?.name, "browser-structured-mcp");
+  assert.equal(init?.result?.serverInfo?.name, "browser67-tmwd-browser");
   context.rpc.notify("notifications/initialized", {});
 }
 

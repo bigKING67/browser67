@@ -121,7 +121,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
     },
   },
   browser_run_ops: {
-    description: "Create and manage externalized browser task run records under ~/.tmwd-browser-mcp/runtime/runs.",
+    description: "Create and manage externalized browser task run records under the active browser67 runtime/runs directory.",
     inputSchema: {
       type: "object",
       properties: {

@@ -13,7 +13,7 @@ proofs for near-100 optional gates that cannot be completed on every machine:
 The default proof directory is:
 
 ```text
-~/.tmwd-browser-mcp/optional-live-proofs
+~/.browser67/optional-live-proofs
 ```
 
 Override it when needed:

@@ -5,9 +5,31 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const home = process.env.HOME || process.cwd();
-const label = "com.browser67.tmwd-browser-mcp";
-const plistPath = resolve(home, "Library/LaunchAgents", `${label}.plist`);
+const canonicalLabel = "com.browser67.tmwd-hub";
+const legacyLabel = "com.browser67.tmwd-browser-mcp";
 const userTarget = `gui/${process.getuid?.() ?? ""}`;
+
+function parseArgs(argv = []) {
+  const parsed = {
+    legacy: false,
+    all: false,
+  };
+  for (const token of argv) {
+    if (token === "--legacy") {
+      parsed.legacy = true;
+      continue;
+    }
+    if (token === "--all") {
+      parsed.all = true;
+      continue;
+    }
+    if (!token) {
+      continue;
+    }
+    throw new Error(`unknown argument: ${token}`);
+  }
+  return parsed;
+}
 
 function runCommand(command, args, allowFailure = false) {
   const result = spawnSync(command, args, {
@@ -19,10 +41,24 @@ function runCommand(command, args, allowFailure = false) {
   return result;
 }
 
-function run() {
+function plistPathFor(label) {
+  return resolve(home, "Library/LaunchAgents", `${label}.plist`);
+}
+
+function removeLabel(label) {
+  const plistPath = plistPathFor(label);
   runCommand("launchctl", ["bootout", userTarget, plistPath], true);
   rmSync(plistPath, { force: true });
-  process.stdout.write(`${JSON.stringify({ ok: true, removed: plistPath, label })}\n`);
+  return { label, plist_path: plistPath };
+}
+
+function run() {
+  const args = parseArgs(process.argv.slice(2));
+  const labels = args.all
+    ? [canonicalLabel, legacyLabel]
+    : [args.legacy ? legacyLabel : canonicalLabel];
+  const removed = labels.map(removeLabel);
+  process.stdout.write(`${JSON.stringify({ ok: true, removed })}\n`);
   return 0;
 }
 

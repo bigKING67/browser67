@@ -18,11 +18,11 @@ Register both MCP servers. `tmwd_browser` owns real-browser automation, while
 ```toml
 [mcp_servers.tmwd_browser]
 command = "node"
-args = ["/path/to/browser67/src/server.mjs"]
+args = ["/path/to/browser67/src/mcp/browser/server.mjs"]
 
 [mcp_servers.js-reverse]
 command = "node"
-args = ["/path/to/browser67/src/js-reverse-server.mjs"]
+args = ["/path/to/browser67/src/mcp/js-reverse/server.mjs"]
 ```
 
 For TMWD-backed browser state, set the same hub environment on both servers:

@@ -1,28 +1,20 @@
-import os from "node:os";
 import { resolve } from "node:path";
 
+import {
+  expandUserPath,
+  resolveBrowser67HomePath,
+} from "../runtime/paths/home.mjs";
 import {
   OWNERSHIP_POLICIES,
   REUSE_SCOPES,
 } from "./constants.mjs";
-
-function expandUserPath(input) {
-  const value = String(input ?? "").trim();
-  if (value === "~") {
-    return os.homedir();
-  }
-  if (value.startsWith("~/")) {
-    return resolve(os.homedir(), value.slice(2));
-  }
-  return value;
-}
 
 function resolveRegistryPath() {
   const explicit = String(process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH ?? "").trim();
   if (explicit) {
     return resolve(expandUserPath(explicit));
   }
-  return resolve(os.homedir(), ".tmwd-browser-mcp/tab-workspace/managed-tabs.json");
+  return resolve(resolveBrowser67HomePath(), "tab-workspace/managed-tabs.json");
 }
 
 function normalizeBoolean(raw, fallback) {

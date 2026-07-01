@@ -7,13 +7,13 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
 import { normalizeEvidenceRecord } from "./evidence-schema.mjs";
+import { resolveBrowser67HomePath } from "./runtime/paths/home.mjs";
 
 const RUN_SCHEMA_VERSION = "tmwd.run.v1";
-const DEFAULT_RUN_ROOT = path.join(os.homedir(), ".tmwd-browser-mcp", "runtime", "runs");
+const DEFAULT_RUN_ROOT = path.join(resolveBrowser67HomePath(), "runtime", "runs");
 
 function runRoot() {
   return path.resolve(process.env.BROWSER_STRUCTURED_RUN_ROOT || DEFAULT_RUN_ROOT);

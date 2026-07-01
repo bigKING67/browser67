@@ -23,7 +23,7 @@ async function initializeAndAssertTools(rpc, cli) {
     },
     cli.timeout_ms,
   );
-  assert.equal(init?.result?.serverInfo?.name, "browser-structured-mcp");
+  assert.equal(init?.result?.serverInfo?.name, "browser67-tmwd-browser");
   rpc.notify("notifications/initialized", {});
 
   const toolsList = await rpc.call("tools/list", {}, cli.timeout_ms);

@@ -88,7 +88,7 @@ async function initializeRpc(rpc, timeoutMs) {
       version: "1.0.0",
     },
   }, timeoutMs);
-  assert.equal(init?.result?.serverInfo?.name, "browser-structured-mcp");
+  assert.equal(init?.result?.serverInfo?.name, "browser67-tmwd-browser");
   rpc.notify("notifications/initialized", {});
 }
 
