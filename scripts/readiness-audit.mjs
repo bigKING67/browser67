@@ -393,6 +393,7 @@ function buildJfbymProviderGap(config = {}) {
 function buildRequiredChecks({ packageJson, readme, skill, verifySource, report }) {
   const scriptNames = [
     "check:syntax",
+    "check:project-structure",
     "check:performance-smoke",
     "check:regression-matrix",
     "check:task-templates",
@@ -446,6 +447,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
       "verify_includes_governance_gates",
       textIncludesAll(verifySource, [
         "check:performance-smoke",
+        "check:project-structure",
         "check:regression-matrix",
         "check:task-templates",
         "check:change-set",
@@ -466,7 +468,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "plan:optional-live-proofs",
         "proof:optional-live-status",
       ]),
-      "verify.mjs includes change-set, readiness, latest upstream audit, upstream review schema, captcha assist, ljqctrl, optional live proof audit, planning, and status gates",
+      "verify.mjs includes project-structure, change-set, readiness, latest upstream audit, upstream review schema, captcha assist, ljqctrl, optional live proof audit, planning, and status gates",
     ),
     createCheck(
       "change_set_grouped",
@@ -482,6 +484,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
       "readme_documents_gates",
       textIncludesAll(readme, [
         "npm run check:readiness",
+        "npm run check:project-structure",
         "npm run check:change-set",
         "npm run plan:scoped-commits",
         "npm run check:captcha-assist-live",
@@ -501,7 +504,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run proof:optional-live-status",
         "npm run proof:optional-live-record",
       ]),
-      "README lists readiness, change-set, scoped commit, captcha, native pointer, ljqctrl, upstream review schema, and optional proof planning/status/recording gates",
+      "README lists readiness, project-structure, change-set, scoped commit, captcha, native pointer, ljqctrl, upstream review schema, and optional proof planning/status/recording gates",
     ),
     createCheck(
       "skill_documents_captcha_boundaries",

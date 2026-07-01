@@ -67,3 +67,19 @@ contracts have migrated.
   home or an explicit test override.
 - Large browser outputs must be bounded or written as artifacts with
   path/hash/count metadata.
+
+## Executable structure gate
+
+Run the deterministic structure audit before accepting directory or entrypoint
+changes:
+
+```bash
+npm run check:project-structure
+```
+
+The gate is read-only and checks tracked files only. It verifies canonical
+top-level directories, canonical MCP entrypoints, runtime-home source location,
+legacy shim boundaries, `.gitignore` runtime/evidence exclusions, and a guarded
+allowlist for root-level `src/*.mjs` compatibility modules. If a future refactor
+adds a new root source module, either move it under a domain directory or update
+this document and the audit allowlist with an explicit migration rationale.

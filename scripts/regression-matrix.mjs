@@ -24,6 +24,12 @@ const MATRIX = [
     covers: ["esm-syntax", "scripts", "contracts"],
   },
   {
+    id: "project-structure",
+    command: "npm run check:project-structure",
+    tier: "required",
+    covers: ["directory-governance", "runtime-artifact-boundaries", "entrypoint-shims"],
+  },
+  {
     id: "performance-smoke",
     command: "npm run check:performance-smoke",
     tier: "required",

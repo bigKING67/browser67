@@ -20,6 +20,7 @@ function buildCommands(managedTabBaselineFile) {
     { command: "npm", args: ["run", "check:upstream-review"] },
     { command: "npm", args: ["run", "skills:check"] },
     { command: "npm", args: ["run", "check:syntax"] },
+    { command: "npm", args: ["run", "check:project-structure"] },
     { command: "npm", args: ["run", "check:performance-smoke"] },
     { command: "npm", args: ["run", "check:task-templates"] },
     { command: "npm", args: ["run", "check:regression-matrix"] },

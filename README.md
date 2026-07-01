@@ -394,6 +394,7 @@ added.
 ```bash
 npm run verify
 npm run check:syntax
+npm run check:project-structure
 npm run check:performance-smoke
 npm run check:task-templates
 npm run check:regression-matrix
@@ -423,7 +424,8 @@ npm run check:js-reverse-live
 ```
 
 `npm run check` runs deterministic MCP/schema/hub-control contracts plus the
-performance smoke, task-template, and regression-matrix gates. `check:live:*`
+project-structure, performance smoke, task-template, and regression-matrix
+gates. `check:live:*`
 uses the current local browser environment and can fail when the extension or hub
 is not connected. `check:captcha-assist-live` is planning-only by default and now
 also validates region-only screenshot artifact creation, scroll-adjusted CDP
@@ -513,6 +515,14 @@ for an intentional audited refresh of an existing proof. See
 It groups the current `git status --porcelain` paths by architecture area and
 fails only when a changed path has no review/commit bucket. Use it before
 splitting scoped commits; it does not stage, commit, delete, or rewrite files.
+`npm run check:project-structure` is the read-only directory-governance gate.
+It audits tracked files for canonical top-level directories, forbidden generic
+top-level directories, repo-tracked runtime/evidence/secret artifacts,
+canonical MCP entrypoints, legacy shim boundaries, `.gitignore` runtime
+exclusions, and new root-level `src/*.mjs` sprawl. If a refactor needs a new
+root source module, update `docs/project-structure.md` and the audit allowlist
+with a migration rationale; otherwise place new code under the owning domain
+directory.
 `npm run plan:scoped-commits` uses the same grouping contract to print a dry-run
 commit plan with exact `git add <paths...>` commands, suggested commit messages,
 risk notes, and per-slice verification commands. It is also plan-only and never
