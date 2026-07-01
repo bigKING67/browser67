@@ -457,7 +457,7 @@ function buildProofRedactionChecklist(proof, requirement) {
       checklistItem(
         "native_managed_tab_only",
         proof?.evidence?.managed_tab_only === true,
-        "Native proof must run only against TMWD-owned managed fixture tabs.",
+        "Native proof must run only against browser67-owned managed fixture tabs.",
       ),
       checklistItem(
         "native_no_fullscreen_screenshot",

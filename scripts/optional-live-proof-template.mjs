@@ -95,7 +95,7 @@ function createProofTemplate(requirement, now = new Date()) {
       expires_at: expiresAtFrom(checkedAt),
       command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
       managed_tab_only: true,
-      fixture: "local TMWD-owned managed tab",
+      fixture: "local browser67-owned managed tab",
       slider_completed: false,
       checkbox_completed: false,
       fullscreen_screenshot: false,
@@ -126,7 +126,7 @@ function createProofTemplate(requirement, now = new Date()) {
       expires_at: expiresAtFrom(checkedAt),
       command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
       evidence: {
-        fixture: "local TMWD-owned managed tab",
+        fixture: "local browser67-owned managed tab",
         managed_tab_only: true,
         fullscreen_screenshot: false,
         secrets_redacted: true,

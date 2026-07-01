@@ -520,7 +520,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:ljqctrl",
         "Do not keep trying selectors",
       ]),
-      "TMWD skill preserves CAPTCHA planning, physical gate, ljqctrl, and handoff boundaries",
+      "browser67 skill preserves CAPTCHA planning, physical gate, ljqctrl, and handoff boundaries",
     ),
   ];
 }

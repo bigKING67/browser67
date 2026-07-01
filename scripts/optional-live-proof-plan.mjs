@@ -156,10 +156,10 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
       live_gate: PHYSICAL_GATE_COMMAND,
     },
     prerequisites: [
-      "Run only on the local GUI host that owns the TMWD-managed browser tab.",
+      "Run only on the local GUI host that owns the browser67-managed browser tab.",
       "Grant OS permissions required by the native pointer provider.",
       "Set TMWD_CAPTCHA_ASSIST_PHYSICAL=1 and TMWD_CAPTCHA_ASSIST_CONFIRM=1 explicitly.",
-      "Use TMWD-owned managed fixture tabs only.",
+      "Use browser67-owned managed fixture tabs only.",
     ],
     evidence_requirements: [
       "slider_completed=true",
@@ -181,7 +181,7 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
     ],
     collection_steps: [
       "Run the native pointer readiness check.",
-      "Run the explicit physical gate on a TMWD-owned local fixture tab.",
+      "Run the explicit physical gate on a browser67-owned local fixture tab.",
       "Confirm the generated proof records slider completion and visible movement.",
       "Validate the repo-external proof directory.",
     ],
@@ -212,7 +212,7 @@ function buildNativeHostItem({ requirement, result, proofDir }) {
       live_gate: PHYSICAL_GATE_COMMAND,
     },
     prerequisites: [
-      `Run on a ${targetPlatform} host with the same repo and a TMWD-managed browser fixture.`,
+      `Run on a ${targetPlatform} host with the same repo and a browser67-managed browser fixture.`,
       "Verify native pointer click/drag support before the physical gate.",
       "Persist only sanitized proof JSON under the repo-external proof directory.",
     ],

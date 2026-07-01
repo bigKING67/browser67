@@ -121,7 +121,7 @@ const GROUPS = [
   {
     id: "js_reverse_mcp",
     title: "Split JS reverse MCP server and contracts",
-    description: "TMWD-backed JS reverse MCP server, contracts, common RPC helpers, and live gate.",
+    description: "browser67-backed JS reverse MCP server, contracts, common RPC helpers, and live gate.",
     commit_message: "Split JS reverse MCP server",
     verification: [
       "npm run check:js-reverse-mcp",
@@ -129,7 +129,7 @@ const GROUPS = [
       "npm run check:change-set",
     ],
     risk_notes: [
-      "JS reverse pages created by new_page must remain TMWD-managed.",
+      "JS reverse pages created by new_page must remain browser67-managed.",
       "Hook-first behavior must not pretend debugger callframes are supported.",
     ],
     patterns: [
@@ -225,9 +225,9 @@ const GROUPS = [
   },
   {
     id: "docs_skills_setup",
-    title: "Sync docs and TMWD skill guidance",
+    title: "Sync browser67 docs and skill guidance",
     description: "README, architecture docs, Codex integration docs, skills, and agent setup.",
-    commit_message: "Sync TMWD docs and skill guidance",
+    commit_message: "Sync browser67 docs and skill guidance",
     verification: [
       "npm run skills:check",
       "npm run check:change-set",
