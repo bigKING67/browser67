@@ -58,10 +58,11 @@ The canonical user-level macOS label is:
 com.browser67.tmwd-hub
 ```
 
-Legacy label:
+Legacy labels:
 
 ```text
 com.browser67.tmwd-browser-mcp
+com.gaoqian.tmwd-browser-mcp
 ```
 
 Install the canonical label with:

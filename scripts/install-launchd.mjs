@@ -14,9 +14,11 @@ const homeResolution = resolveBrowser67Home();
 const runtimeHome = homeResolution.path;
 const launchAgentsDir = resolve(home, "Library/LaunchAgents");
 const label = "com.browser67.tmwd-hub";
-const legacyLabel = "com.browser67.tmwd-browser-mcp";
+const legacyLabels = [
+  "com.browser67.tmwd-browser-mcp",
+  "com.gaoqian.tmwd-browser-mcp",
+];
 const plistPath = resolve(launchAgentsDir, `${label}.plist`);
-const legacyPlistPath = resolve(launchAgentsDir, `${legacyLabel}.plist`);
 const userTarget = `gui/${process.getuid?.() ?? ""}`;
 
 function xmlEscape(value) {
@@ -88,8 +90,11 @@ function run() {
   if (existsSync(plistPath)) {
     runCommand("launchctl", ["bootout", userTarget, plistPath], { allowFailure: true });
   }
-  if (existsSync(legacyPlistPath)) {
-    runCommand("launchctl", ["bootout", userTarget, legacyPlistPath], { allowFailure: true });
+  for (const legacyLabel of legacyLabels) {
+    const legacyPlistPath = resolve(launchAgentsDir, `${legacyLabel}.plist`);
+    if (existsSync(legacyPlistPath)) {
+      runCommand("launchctl", ["bootout", userTarget, legacyPlistPath], { allowFailure: true });
+    }
   }
   runCommand("launchctl", ["bootstrap", userTarget, plistPath]);
   runCommand("launchctl", ["kickstart", "-k", `${userTarget}/${label}`], { allowFailure: true });
@@ -97,7 +102,7 @@ function run() {
   process.stdout.write(`${JSON.stringify({
     ok: true,
     label,
-    legacy_label: legacyLabel,
+    legacy_labels: legacyLabels,
     plist_path: plistPath,
     runtime_home: runtimeHome,
     runtime_home_source: homeResolution.source,

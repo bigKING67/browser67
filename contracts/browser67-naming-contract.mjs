@@ -38,6 +38,7 @@ function assertPackage() {
 function assertDocsAndSkills() {
   assert.equal(readText("README.md").split(/\r?\n/, 1)[0], "# browser67");
   for (const file of [
+    "AGENTS.md",
     "docs/naming-and-compatibility.md",
     "docs/migration-browser67.md",
     "docs/project-structure.md",
@@ -48,8 +49,24 @@ function assertDocsAndSkills() {
   ]) {
     assertFile(file);
   }
+  assert.match(readText("AGENTS.md"), /# browser67 项目规范/);
+  assert.match(readText("AGENTS.md"), /browser67.*canonical project\/package\/CLI\/runtime umbrella/);
+  assert.match(readText("AGENTS.md"), /~\/\.browser67\/runtime/);
   assert.match(readText("docs/naming-and-compatibility.md"), /tmwd-browser-mcp.*compatibility alias/s);
   assert.match(readText("skills/tmwd-browser-mcp/SKILL.md"), /legacy skill name for browser67/);
+}
+
+function assertLaunchdCompatibility() {
+  for (const file of [
+    "scripts/install-launchd.mjs",
+    "scripts/uninstall-launchd.mjs",
+    "docs/migration-browser67.md",
+  ]) {
+    const text = readText(file);
+    assert.match(text, /com\.browser67\.tmwd-hub/);
+    assert.match(text, /com\.browser67\.tmwd-browser-mcp/);
+    assert.match(text, /com\.gaoqian\.tmwd-browser-mcp/);
+  }
 }
 
 function assertServerIdentity() {
@@ -120,6 +137,7 @@ function assertRetiredStructuredMcpName() {
 function run() {
   assertPackage();
   assertDocsAndSkills();
+  assertLaunchdCompatibility();
   assertServerIdentity();
   assertTopLevelStructure();
   assertRetiredStructuredMcpName();

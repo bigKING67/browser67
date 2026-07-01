@@ -1,15 +1,16 @@
-# tmwd-browser-mcp 项目规范
+# browser67 项目规范
 
-目标：把 GenericAgent/TMWebDriver 的真实浏览器控制能力抽成可长期维护的独立 MCP 项目，服务 Codex、grobot 和 JS 逆向任务。
+目标：把 GenericAgent/TMWebDriver 的真实浏览器控制能力抽成可长期维护的 browser67 MCP/tooling 项目，服务 Codex、grobot 和 JS 逆向任务。
 
 ## 设计边界
 
+- `browser67` 是 canonical project/package/CLI/runtime umbrella；`tmwd-browser-mcp` 只作为 legacy compatibility alias，不再作为新文档或新配置的项目主称呼。
 - 默认路径是 TMWD 用户真实浏览器：Chrome/Edge 扩展 + 本地 hub + MCP server。
 - `tmwd_mode=tmwd` 是登录态任务默认值；不要静默 fallback 到 remote-debugging CDP。
 - `tmwd_mode=remote_cdp` 仅用于 CI、受控 debug Chrome、JS 逆向需要 Network/Debugger/Script source 的场景。
-- 扩展源码放在 `extension/`，安装目标默认是 `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/`。
+- 扩展源码放在 `extension/`，安装目标默认是 `~/.browser67/browser/tmwd_cdp_bridge/`；legacy `~/.tmwd-browser-mcp/browser/tmwd_cdp_bridge/` 仅作迁移兼容。
 - `extension/config.js` 是安装态生成文件；源码只保留 `extension/config.example.js`，避免把上游/本机 TID 当作项目配置提交。
-- 运行态和日志默认放在 `~/.tmwd-browser-mcp/runtime/`，不要写入项目源码目录。
+- 运行态和日志默认放在 `~/.browser67/runtime/`；legacy `~/.tmwd-browser-mcp/runtime/` 只作迁移兼容，不要写入项目源码目录。
 
 ## 页面和浏览器操作
 

@@ -705,9 +705,9 @@ and runs the hub from:
 /path/to/browser67/src/tmwd-hub.mjs
 ```
 
-If you previously installed an older pre-browser67 LaunchAgent, stop or
-uninstall that old service before installing this one so only one hub claims the
-default ports.
+If you previously installed an older pre-browser67 LaunchAgent, `launchd:install`
+will boot out known legacy labels before starting the canonical service so only
+one hub claims the default ports.
 
 Uninstall canonical LaunchAgent:
 

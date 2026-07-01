@@ -206,6 +206,7 @@ const GROUPS = [
       "Pi package skills should be loaded from the package checkout, not copied into pi-67.",
     ],
     patterns: [
+      /^AGENTS\.md$/,
       /^\.gitignore$/,
       /^agents\/openai\.yaml$/,
       /^package-lock\.json$/,

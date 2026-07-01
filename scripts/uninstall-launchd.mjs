@@ -6,7 +6,10 @@ import { spawnSync } from "node:child_process";
 
 const home = process.env.HOME || process.cwd();
 const canonicalLabel = "com.browser67.tmwd-hub";
-const legacyLabel = "com.browser67.tmwd-browser-mcp";
+const legacyLabels = [
+  "com.browser67.tmwd-browser-mcp",
+  "com.gaoqian.tmwd-browser-mcp",
+];
 const userTarget = `gui/${process.getuid?.() ?? ""}`;
 
 function parseArgs(argv = []) {
@@ -55,8 +58,8 @@ function removeLabel(label) {
 function run() {
   const args = parseArgs(process.argv.slice(2));
   const labels = args.all
-    ? [canonicalLabel, legacyLabel]
-    : [args.legacy ? legacyLabel : canonicalLabel];
+    ? [canonicalLabel, ...legacyLabels]
+    : [args.legacy ? legacyLabels : [canonicalLabel]].flat();
   const removed = labels.map(removeLabel);
   process.stdout.write(`${JSON.stringify({ ok: true, removed })}\n`);
   return 0;
