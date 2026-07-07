@@ -607,7 +607,10 @@ proofs stay visible in the full local gate, prints the optional proof collection
 plan, and prints the operator status checklist. For managed-tab hygiene, `verify`
 captures a temporary baseline before live checks and then fails only on newly
 leaked unkept records; `npm run check:managed-tabs-clean` remains the strict
-global audit for all currently registered TMWD workspaces.
+global audit for all currently registered TMWD workspaces. The strict audit
+also groups leaked tabs by cleanup scope, reports duplicate URL groups, marks
+old unkept records, and prints scoped `finalize_task` suggestions so operators
+do not need to guess which workspace or task leaked tabs.
 
 ## Runtime artifact retention
 

@@ -431,9 +431,10 @@ sites to use the generic profile directory above.
 - Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
 - Use `prune_stale` or `list_managed` with `prune_stale:true` to remove registry records for managed tabs that no longer exist. This never closes unmanaged user tabs.
 - End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. The finalizer verifies closed managed tabs disappear from the live browser before reporting success. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
+- `finalize_task` returns `cleanup_summary` and a one-line `delivery_summary`; include that line in final responses or handoffs so missed close errors, kept tabs, stale prunes, and remaining unkept tabs are visible.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`. Treat `finalize_hint.required:true` as a visible reminder to run the suggested `finalize_task` call before final response or handoff.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
-- Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, which catches missing finalizers even when no live browser action is needed. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing browser67 workspaces do not make repository verification flaky.
+- Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, groups them by cleanup scope, reports duplicate URL groups, marks old unkept records, and prints scoped finalize suggestions. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing browser67 workspaces do not make repository verification flaky.
 - Use `npm run runtime:cleanup:dry-run` as the repo-external run/screenshot artifact retention audit. It is non-destructive by default; use `npm run runtime:cleanup -- --write` only when intentionally deleting planned old run directories.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the browser67 websocket explicitly to avoid successful actions ending with a command timeout.
@@ -493,7 +494,7 @@ Host policy:
 - Preserve `keep:true`: hints for kept tabs are `required:false`, and
   `finalize_task` preserves kept managed tabs even if called for the same scope.
 - Log `pending_count`, `ignored_count`, `scope_all_blocked_count`, closed tabs,
-  remaining tabs, and finalizer errors. Do not silently swallow cleanup failure.
+  `delivery_summary`, remaining tabs, and finalizer errors. Do not silently swallow cleanup failure.
 - On process restart or a fresh turn, use `npm run check:managed-tabs-clean` or a
   registry-backed recovery pass to detect missed finalizers.
 

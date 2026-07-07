@@ -166,6 +166,12 @@ managed-tab and evidence boundaries.
 - `docs/js-reverse/references/cases/`: reusable case templates.
 - `docs/upstream/genericagent/`: audited GenericAgent references for optional
   physical-input provider design and upstream absorption notes.
+- `docs/upstream/js-reverse/README.md`: external JS reverse reference review;
+  external repos and legacy local snapshots are reference-only unless promoted
+  by a future lock/review process.
+- `docs/upstream/js-reverse/references.json`: machine-readable ledger for the
+  canonical implementation, legacy snapshot policy, and external reference
+  candidates.
 
 ## Verification
 

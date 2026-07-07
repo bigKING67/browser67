@@ -46,7 +46,7 @@ args = ["/path/to/browser67/src/mcp/js-reverse/server.mjs"]
 3. **Evidence-first** — 每个补丁必须有代理日志或运行时捕获数据支撑。猜测 `window.xxx` 应该返回什么会导致本地通过但服务端验证失败。
 4. **一次一补丁** — 多个问题时只修第一个失败点（first divergence），复跑，确认前移，再修下一个。批量补丁出错后无法定位是哪个补丁的问题。
 5. **服务端验证为准** — 本地输出匹配浏览器是必要不充分条件，必须用真实服务器请求验证。
-6. **browser67-owned tabs only** — `new_page` 默认只复用 JS reverse/browser67 自己创建的 managed tab；如果用户自己已经打开同一个页面，不接管该 tab，而是新开或复用 `workspace_key` 下的 browser67-owned tab。任务结束默认对同一 `workspace_key`/`task_id` 执行 `finalize_task`，除非需要保留页面做证据复核。若 `new_page` 返回 `finalize_hint.required:true`，交付前按提示收尾。
+6. **browser67-owned tabs only** — `new_page` 默认只复用 JS reverse/browser67 自己创建的 managed tab；如果用户自己已经打开同一个页面，不接管该 tab，而是新开或复用 `workspace_key` 下的 browser67-owned tab。任务结束默认对同一 `workspace_key`/`task_id` 执行 `finalize_task`，除非需要保留页面做证据复核。若 `new_page` 返回 `finalize_hint.required:true`，交付前按提示收尾，并在交付中报告 `delivery_summary`。
 7. **Frame-aware first pass** — 遇到 iframe、微前端、验证码 widget、嵌入登录或跨域应用壳时，先用 `list_frames` 建 frame tree。证据至少记录 `frame_id`、`frame_path`、`url`、`origin`、`same_origin` / `degraded_mode`；same-origin frame 可继续递归观察，cross-origin frame 只信 element metadata / rect / sandbox / name / src 等 degraded 证据，不推断内部 DOM。
 8. **Structured evidence** — `record_reverse_evidence` 统一写入 `evidence.v1` 结构；每条证据标注 source、confidence、request/script/artifact 关联，便于 run artifact、报告和 handoff 复用。
 9. **Microfrontend-aware scope** — 先用 `detect_microfrontends` 判断 qiankun / Garfish / single-spa / micro-app / iframe / shadow DOM / sandbox 边界，再决定 hook scope。不能 hook 时必须说明是 cross-origin、closed shadow root、sandbox、还是需要 extension/CDP frame path。
@@ -191,7 +191,7 @@ get_script_source → deobfuscate_code → understand_code → summarize_code
 13. `get_hook_data(summary)` → 命中后 `get_hook_data(raw)` + `record_reverse_evidence`
 14. `export_evidence_bundle` 或 `export_rebuild_bundle`
 15. 本地补环境（Phase 4 循环）
-16. `finalize_task(workspace_key|task_id)` 清理 `keep:false` managed pages；若要保留现场，显式说明并使用 `keep:true`；若 `new_page` 返回 `finalize_hint.required:true`，按 `finalize_hint.suggested_arguments` 收尾
+16. `finalize_task(workspace_key|task_id)` 清理 `keep:false` managed pages，并返回 `cleanup_summary` / `delivery_summary`；若要保留现场，显式说明并使用 `keep:true`；若 `new_page` 返回 `finalize_hint.required:true`，按 `finalize_hint.suggested_arguments` 收尾
 
 ---
 
