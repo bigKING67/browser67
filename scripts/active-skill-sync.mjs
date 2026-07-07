@@ -26,6 +26,10 @@ function parseArgs(argv) {
     json: false,
     write: false,
     check: false,
+    listBackups: false,
+    restore: false,
+    backupRef: null,
+    confirmRestore: false,
     prune: false,
     confirmPrune: false,
   };
@@ -60,6 +64,31 @@ function parseArgs(argv) {
       parsed.write = true;
       continue;
     }
+    if (token === "--list-backups" || token === "--backups") {
+      parsed.listBackups = true;
+      continue;
+    }
+    if (token === "--restore") {
+      parsed.restore = true;
+      const value = String(argv[index + 1] ?? "").trim();
+      if (value && !value.startsWith("--")) {
+        parsed.backupRef = value;
+        index += 1;
+      }
+      continue;
+    }
+    if (token === "--backup") {
+      const value = String(argv[index + 1] ?? "").trim();
+      if (!value || value.startsWith("--")) throw new Error("missing --backup value");
+      parsed.backupRef = value;
+      parsed.restore = true;
+      index += 1;
+      continue;
+    }
+    if (token === "--confirm-restore") {
+      parsed.confirmRestore = true;
+      continue;
+    }
     if (token === "--check") {
       parsed.check = true;
       continue;
@@ -78,6 +107,16 @@ function parseArgs(argv) {
     }
     throw new Error(`unknown argument: ${token}`);
   }
+  const modeCount = [parsed.write, parsed.listBackups, parsed.restore].filter(Boolean).length;
+  if (modeCount > 1) {
+    throw new Error("--write, --list-backups, and --restore are mutually exclusive");
+  }
+  if (parsed.restore && !parsed.backupRef) {
+    throw new Error("--restore requires a backup id or path");
+  }
+  if (parsed.restore && !parsed.confirmRestore) {
+    throw new Error("--restore requires --confirm-restore");
+  }
   if (parsed.skills.length === 0) {
     throw new Error("--skills must include at least one skill id");
   }
@@ -90,12 +129,17 @@ function parseArgs(argv) {
 function usage() {
   return [
     "Usage: node scripts/active-skill-sync.mjs [--json] [--check]",
-    "       node scripts/active-skill-sync.mjs --write [--target ~/.agents/skills] [--json]",
+    "       node scripts/active-skill-sync.mjs --write [--target ~/.agents/skills] [--backup-dir <backup-root>] [--json]",
+    "       node scripts/active-skill-sync.mjs --list-backups [--target ~/.agents/skills] [--backup-dir <backup-root>] [--json]",
+    "       node scripts/active-skill-sync.mjs --restore <backup-id-or-path> --confirm-restore [--backup-dir <backup-root>] [--json]",
     "",
     "Compares browser67 canonical skills/ with an active skill install directory.",
     "Default target: ~/.agents/skills or BROWSER67_ACTIVE_SKILLS_DIR.",
+    "--backup-dir selects the backup root; timestamped backup entries are created under it.",
     "--check exits non-zero when the active copy drifts from canonical source.",
     "--write copies canonical files into the target after creating a backup.",
+    "--list-backups lists timestamped backups under the target backup root.",
+    "--restore copies a prior backup into the active target after backing up current files.",
     "--prune --confirm-prune removes target files that are not present in canonical source.",
   ].join("\n");
 }
@@ -164,6 +208,18 @@ function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
+function defaultBackupBase(targetRoot) {
+  return path.resolve(targetRoot, ".browser67-backups");
+}
+
+function backupBase(options, targetRoot) {
+  return path.resolve(expandHome(options.backupDir || defaultBackupBase(targetRoot)));
+}
+
+function newBackupRoot(options, targetRoot, prefix = "") {
+  return path.resolve(backupBase(options, targetRoot), `${prefix}${timestamp()}`);
+}
+
 function backupSkill({ skill, targetRoot, backupRoot }) {
   const targetDir = path.resolve(targetRoot, skill);
   if (!existsSync(targetDir)) return null;
@@ -195,13 +251,117 @@ function writeSkill({ skill, targetRoot, backupRoot, prune }) {
   };
 }
 
+function backupEntry({ backupDir, skills }) {
+  const id = path.basename(backupDir);
+  const presentSkills = skills.filter((skill) => {
+    const skillDir = path.resolve(backupDir, skill);
+    return existsSync(skillDir) && statSync(skillDir).isDirectory();
+  });
+  const fileCount = presentSkills.reduce((total, skill) => total + listFiles(path.resolve(backupDir, skill)).length, 0);
+  const stat = statSync(backupDir);
+  return {
+    id,
+    path: backupDir,
+    mtime: stat.mtime.toISOString(),
+    skills: presentSkills,
+    skill_count: presentSkills.length,
+    file_count: fileCount,
+  };
+}
+
+function buildBackupsReport(options) {
+  const targetRoot = path.resolve(expandHome(options.target));
+  const backupRoot = backupBase(options, targetRoot);
+  const backups = existsSync(backupRoot)
+    ? readdirSync(backupRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => backupEntry({ backupDir: path.resolve(backupRoot, entry.name), skills: options.skills }))
+      .filter((entry) => entry.skill_count > 0)
+      .sort((left, right) => right.id.localeCompare(left.id))
+    : [];
+  return {
+    ok: true,
+    check: "active-skill-backups",
+    mode: "backups",
+    target_root: targetRoot,
+    backup_root: backupRoot,
+    skills: options.skills,
+    backups,
+    summary: {
+      backup_count: backups.length,
+    },
+  };
+}
+
+function resolveBackupRef({ options, targetRoot }) {
+  const ref = String(options.backupRef ?? "").trim();
+  if (!ref) throw new Error("--restore requires a backup id or path");
+  const expanded = expandHome(ref);
+  if (path.isAbsolute(expanded) || expanded.includes("/") || expanded.includes("\\")) {
+    return path.resolve(expanded);
+  }
+  return path.resolve(backupBase(options, targetRoot), ref);
+}
+
+function restoreSkill({ skill, targetRoot, restoreSourceRoot, currentBackupRoot }) {
+  const sourceDir = path.resolve(restoreSourceRoot, skill);
+  if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) {
+    throw new Error(`backup does not contain requested skill: ${skill}`);
+  }
+  const targetDir = path.resolve(targetRoot, skill);
+  const currentBackupDir = backupSkill({ skill, targetRoot, backupRoot: currentBackupRoot });
+  mkdirSync(targetDir, { recursive: true });
+  cpSync(sourceDir, targetDir, { recursive: true, force: true });
+  return {
+    skill,
+    source_backup_dir: sourceDir,
+    current_backup_dir: currentBackupDir,
+  };
+}
+
+function buildRestoreReport(options) {
+  const targetRoot = path.resolve(expandHome(options.target));
+  const restoreSourceRoot = resolveBackupRef({ options, targetRoot });
+  if (!existsSync(restoreSourceRoot) || !statSync(restoreSourceRoot).isDirectory()) {
+    throw new Error(`backup not found: ${restoreSourceRoot}`);
+  }
+  const before = options.skills.map((skill) => skillStatus({ skill, targetRoot }));
+  const currentBackupRoot = newBackupRoot(options, targetRoot, "pre-restore-");
+  const restores = options.skills.map((skill) => restoreSkill({
+    skill,
+    targetRoot,
+    restoreSourceRoot,
+    currentBackupRoot,
+  }));
+  const after = options.skills.map((skill) => skillStatus({ skill, targetRoot }));
+  const driftCount = after.filter((row) => row.status !== "current").length;
+  return {
+    ok: true,
+    check: "active-skill-restore",
+    mode: "restore",
+    target_root: targetRoot,
+    source_root: sourceRoot,
+    skills: options.skills,
+    restore_source_root: restoreSourceRoot,
+    current_backup_root: currentBackupRoot,
+    before,
+    restores,
+    after,
+    summary: {
+      skill_count: options.skills.length,
+      restored_count: restores.length,
+      drift_count: driftCount,
+    },
+  };
+}
+
 function buildReport(options) {
   const targetRoot = path.resolve(expandHome(options.target));
   const before = options.skills.map((skill) => skillStatus({ skill, targetRoot }));
   const writes = [];
   let backupRoot = null;
   if (options.write) {
-    backupRoot = path.resolve(expandHome(options.backupDir || path.join(targetRoot, ".browser67-backups", timestamp())));
+    backupRoot = newBackupRoot(options, targetRoot);
     mkdirSync(targetRoot, { recursive: true });
     for (const skill of options.skills) {
       writes.push(writeSkill({
@@ -233,6 +393,12 @@ function buildReport(options) {
   };
 }
 
+function buildModeReport(options) {
+  if (options.listBackups) return buildBackupsReport(options);
+  if (options.restore) return buildRestoreReport(options);
+  return buildReport(options);
+}
+
 function formatStatusRows(rows) {
   const lines = [];
   for (const row of rows) {
@@ -245,6 +411,25 @@ function formatStatusRows(rows) {
 }
 
 function formatText(report) {
+  if (report.mode === "backups") {
+    const lines = [
+      `active_skill_backups=count=${report.summary.backup_count} target=${report.target_root} backup_root=${report.backup_root}`,
+    ];
+    for (const backup of report.backups) {
+      lines.push(`  - ${backup.id} skills=${backup.skills.join(",")} files=${backup.file_count} path=${backup.path}`);
+    }
+    return `${lines.join("\n")}\n`;
+  }
+  if (report.mode === "restore") {
+    const lines = [
+      `active_skill_restore=ok target=${report.target_root} backup=${report.restore_source_root} restored=${report.summary.restored_count} active_drift=${report.summary.drift_count}`,
+      `current_backup_root=${report.current_backup_root}`,
+    ];
+    for (const restore of report.restores) {
+      lines.push(`  - restored ${restore.skill} from=${restore.source_backup_dir} current_backup=${restore.current_backup_dir ?? "none"}`);
+    }
+    return `${lines.join("\n")}\n`;
+  }
   const lines = [
     `active_skill_sync=${report.ok ? "current" : "drift"} mode=${report.mode} target=${report.target_root} drift=${report.summary.drift_count}`,
   ];
@@ -265,7 +450,7 @@ function main() {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  const report = buildReport(options);
+  const report = buildModeReport(options);
   process.stdout.write(options.json ? `${JSON.stringify(report)}\n` : formatText(report));
   if (options.check && !report.ok) {
     process.exitCode = 1;

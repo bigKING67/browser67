@@ -37,6 +37,8 @@ function assertPackage() {
   assert.equal(pkg.scripts?.["skills:active:diff"], "node scripts/active-skill-sync.mjs --json");
   assert.equal(pkg.scripts?.["skills:active:check"], "node scripts/active-skill-sync.mjs --check");
   assert.equal(pkg.scripts?.["skills:active:sync"], "node scripts/active-skill-sync.mjs --write");
+  assert.equal(pkg.scripts?.["skills:active:backups"], "node scripts/active-skill-sync.mjs --list-backups --json");
+  assert.equal(pkg.scripts?.["skills:active:restore"], "node scripts/active-skill-sync.mjs --restore");
   assert.equal(pkg.scripts?.["check:active-skill-sync"], "node contracts/active-skill-sync-contract.mjs");
   assert.equal(pkg.scripts?.["verify:local"], "npm run verify && npm run skills:active:check");
   assert.equal(pkg.scripts?.["check:runtime-home"], "node contracts/runtime-home-contract.mjs");

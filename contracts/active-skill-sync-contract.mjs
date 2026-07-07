@@ -60,6 +60,56 @@ function assertWriteAndBackup(tempRoot) {
   const check = run(["--target", tempRoot, "--skills", "js-reverse", "--json", "--check"]);
   assert.equal(check.ok, true);
   assert.equal(check.after[0].status, "current");
+
+  return write.backup_root;
+}
+
+function assertBackupListAndRestore(tempRoot, backupDir) {
+  const backupId = path.basename(backupDir);
+  const list = run(["--target", tempRoot, "--skills", "js-reverse", "--json", "--list-backups"]);
+  assert.equal(list.ok, true);
+  assert.equal(list.mode, "backups");
+  assert.equal(list.backups.some((backup) => backup.id === backupId), true);
+
+  const missingConfirm = spawnSync(process.execPath, [
+    "scripts/active-skill-sync.mjs",
+    "--target",
+    tempRoot,
+    "--skills",
+    "js-reverse",
+    "--json",
+    "--restore",
+    backupId,
+  ], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  assert.notEqual(missingConfirm.status, 0);
+  assert.match(String(missingConfirm.stderr), /--restore requires --confirm-restore/);
+
+  const restore = run(["--target", tempRoot, "--skills", "js-reverse", "--json", "--restore", backupId, "--confirm-restore"]);
+  assert.equal(restore.ok, true);
+  assert.equal(restore.mode, "restore");
+  assert.equal(restore.summary.restored_count, 1);
+  assert.equal(existsSync(restore.current_backup_root), true);
+  assert.equal(readFileSync(path.resolve(tempRoot, "js-reverse", "SKILL.md"), "utf8").includes("fixture drift"), true);
+
+  const check = run(["--target", tempRoot, "--skills", "js-reverse", "--json", "--check"], 1);
+  assert.equal(check.summary.drift_count, 1);
+
+  const customBackupRoot = path.resolve(tempRoot, "custom-backups");
+  const customWrite = run(["--target", tempRoot, "--skills", "js-reverse", "--json", "--write", "--backup-dir", customBackupRoot]);
+  assert.equal(path.dirname(customWrite.backup_root), customBackupRoot);
+  const customBackupId = path.basename(customWrite.backup_root);
+  const customList = run(["--target", tempRoot, "--skills", "js-reverse", "--json", "--list-backups", "--backup-dir", customBackupRoot]);
+  assert.equal(customList.backups.some((backup) => backup.id === customBackupId), true);
+
+  const customRestore = run(["--target", tempRoot, "--skills", "js-reverse", "--json", "--restore", customBackupId, "--backup-dir", customBackupRoot, "--confirm-restore"]);
+  assert.equal(customRestore.summary.restored_count, 1);
+  assert.equal(path.dirname(customRestore.current_backup_root), customBackupRoot);
+  assert.match(path.basename(customRestore.current_backup_root), /^pre-restore-/);
+  assert.equal(readFileSync(path.resolve(tempRoot, "js-reverse", "SKILL.md"), "utf8").includes("fixture drift"), true);
 }
 
 function assertPruneRequiresConfirmation(tempRoot) {
@@ -97,13 +147,14 @@ function main() {
   const tempRoot = mkdtempSync(path.join(tmpdir(), "browser67-active-skills-"));
   try {
     assertDiffAndCheck(tempRoot);
-    assertWriteAndBackup(tempRoot);
+    const backupDir = assertWriteAndBackup(tempRoot);
+    assertBackupListAndRestore(tempRoot, backupDir);
     assertPruneRequiresConfirmation(tempRoot);
     assertPrune(tempRoot);
     process.stdout.write(`${JSON.stringify({
       ok: true,
       check: "active-skill-sync-contract",
-      scenarios: ["diff", "check-fails-on-drift", "write-with-backup", "prune-confirmation"],
+      scenarios: ["diff", "check-fails-on-drift", "write-with-backup", "backup-list", "restore-with-current-backup", "prune-confirmation"],
     })}\n`);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });

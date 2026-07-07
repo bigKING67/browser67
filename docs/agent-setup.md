@@ -98,11 +98,16 @@ before writes:
 npm run skills:active:diff -- --target ~/.agents/skills
 npm run skills:active:check -- --target ~/.agents/skills
 npm run skills:active:sync -- --target ~/.agents/skills
+npm run skills:active:backups -- --target ~/.agents/skills
+npm run skills:active:restore -- <backup-id-or-path> --target ~/.agents/skills --confirm-restore
 ```
 
 Use `--target ~/.codex/skills` for Codex installations that load skills from
 `~/.codex/skills`. The helper never prunes extra files unless called with
-`--prune --confirm-prune`.
+`--prune --confirm-prune`, and restore creates a new `pre-restore-*` backup of
+the current active copy before writing files from the selected backup. Backups
+default to `<target>/.browser67-backups`; pass `--backup-dir <backup-root>` when
+an install needs a separate backup root.
 
 The active skill copy is only a loader-facing install artifact. Keep
 `skills/browser67`, `skills/tmwd-browser-mcp`, and `skills/js-reverse` as the

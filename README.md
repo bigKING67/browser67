@@ -158,9 +158,20 @@ Synchronize only after intentionally updating the active agent environment:
 npm run skills:active:sync -- --target ~/.agents/skills
 ```
 
-The sync command creates a timestamped backup under the target directory before
-copying files. It does not delete extra target files unless explicitly run with
-`--prune --confirm-prune`. The deterministic offline contract is:
+List and restore active-skill backups:
+
+```bash
+npm run skills:active:backups -- --target ~/.agents/skills
+npm run skills:active:restore -- <backup-id-or-path> --target ~/.agents/skills --confirm-restore
+```
+
+The sync command creates a timestamped backup under the target backup root
+before copying files. The default backup root is `<target>/.browser67-backups`;
+override it with `--backup-dir <backup-root>` when needed. It does not delete
+extra target files unless explicitly run with `--prune --confirm-prune`.
+Restore also creates a fresh `pre-restore-*` backup under the same backup root
+before copying the selected backup into place. The deterministic offline
+contract is:
 
 ```bash
 npm run check:active-skill-sync

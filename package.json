@@ -62,6 +62,8 @@
     "skills:active:diff": "node scripts/active-skill-sync.mjs --json",
     "skills:active:check": "node scripts/active-skill-sync.mjs --check",
     "skills:active:sync": "node scripts/active-skill-sync.mjs --write",
+    "skills:active:backups": "node scripts/active-skill-sync.mjs --list-backups --json",
+    "skills:active:restore": "node scripts/active-skill-sync.mjs --restore",
     "tasks:templates": "node scripts/task-template.mjs list --json",
     "check:pi-package": "node contracts/pi-package-contract.mjs",
     "check:syntax": "node scripts/syntax-check.mjs",

@@ -58,12 +58,22 @@ Use the repo helper instead of hand-copying:
 npm run skills:active:diff
 npm run skills:active:check
 npm run skills:active:sync -- --target ~/.agents/skills
+npm run skills:active:backups -- --target ~/.agents/skills
+npm run skills:active:restore -- <backup-id-or-path> --target ~/.agents/skills --confirm-restore
 ```
 
 - `skills:active:diff` is read-only and reports drift.
 - `skills:active:check` is read-only and exits non-zero on drift.
 - `skills:active:sync` writes the active copy after creating a timestamped
-  backup under the target root.
+  backup under the target backup root.
+- `skills:active:backups` lists timestamped backups under the target backup
+  root.
+- `skills:active:restore` restores one backup into the active copy after
+  creating a fresh `pre-restore-*` backup of the current files under the same
+  backup root.
+- The default backup root is `<target>/.browser67-backups`; pass
+  `--backup-dir <backup-root>` to use an alternate root for sync, list, and
+  restore.
 - Extra target files are not deleted unless `--prune --confirm-prune` is passed.
 
 Use `npm run verify:local` when local acceptance should include the strict

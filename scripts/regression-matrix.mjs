@@ -27,7 +27,7 @@ const MATRIX = [
     id: "active-skill-sync",
     command: "npm run check:active-skill-sync",
     tier: "required",
-    covers: ["active-skill-install", "dry-run-sync", "backup-before-write"],
+    covers: ["active-skill-install", "dry-run-sync", "backup-before-write", "backup-list", "restore-current-backup"],
   },
   {
     id: "active-skill-local-check",
