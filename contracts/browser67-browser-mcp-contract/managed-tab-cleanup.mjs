@@ -6,15 +6,16 @@ import path from "node:path";
 
 function managedRecord(tabId, patch = {}) {
   const now = new Date().toISOString();
+  const url = patch.url ?? `http://cleanup.example/${tabId}`;
   return {
     tab_id: tabId,
     owner: "tmwd",
     source: "contract",
     workspace_key: "cleanup-contract",
-    reuse_key: `http://cleanup.example/${tabId}`,
-    url: `http://cleanup.example/${tabId}`,
+    reuse_key: patch.reuse_key ?? url,
+    url,
     title: tabId,
-    origin: "http://cleanup.example",
+    origin: patch.origin ?? "http://cleanup.example",
     path_scope: `/${tabId}`,
     keep: false,
     dry_run: false,
@@ -97,6 +98,29 @@ async function assertManagedTabCleanupBaselineContract() {
     assert.equal(leakedAfterBaseline.payload?.effective_unkept_count, 1);
     assert.equal(leakedAfterBaseline.payload?.ignored_preexisting_unkept_count, 1);
     assert.equal(leakedAfterBaseline.payload?.unkept?.[0]?.tab_id, "new-unkept");
+    assert.equal(leakedAfterBaseline.payload?.unkept_by_workspace?.[0]?.workspace_key, "cleanup-contract");
+    assert.equal(leakedAfterBaseline.payload?.unkept_by_workspace?.[0]?.suggested_arguments?.action, "finalize_task");
+    assert.match(leakedAfterBaseline.payload?.unkept?.[0]?.suggested_command ?? "", /workspace_key=cleanup-contract/);
+
+    await writeRegistry(registryPath, [
+      managedRecord("dup-a", {
+        workspace_key: "workspace-a",
+        url: "http://duplicate.example/shared",
+        origin: "http://duplicate.example",
+        path_scope: "/shared",
+      }),
+      managedRecord("dup-b", {
+        workspace_key: "workspace-b",
+        url: "http://duplicate.example/shared",
+        origin: "http://duplicate.example",
+        path_scope: "/shared",
+      }),
+    ]);
+    const duplicateDiagnostics = runCleanupScript(["--json", "--old-after-minutes", "0"], env);
+    assert.equal(duplicateDiagnostics.status, 1);
+    assert.equal(duplicateDiagnostics.payload?.duplicate_url_groups_total_count, 1);
+    assert.equal(duplicateDiagnostics.payload?.duplicate_url_groups?.[0]?.workspace_count, 2);
+    assert.equal(duplicateDiagnostics.payload?.old_unkept_total_count, 2);
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

@@ -243,6 +243,9 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabFinalizeDryRunPayload?.finalizer_policy?.preserves_keep_true, true);
   assert.equal(tabFinalizeDryRunPayload?.close_unkept?.action, "close_unkept");
   assert.equal(tabFinalizeDryRunPayload?.remaining?.unkept_count, 0);
+  assert.equal(tabFinalizeDryRunPayload?.cleanup_summary?.workspace_key, "contract-workspace");
+  assert.equal(tabFinalizeDryRunPayload?.cleanup_summary?.remaining_unkept_count, 0);
+  assert.match(tabFinalizeDryRunPayload?.delivery_summary ?? "", /browser67 cleanup: finalize_task workspace_key=contract-workspace/);
 
   const tabListManagedCall = await rpc.call(
     "tools/call",

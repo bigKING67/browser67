@@ -7,6 +7,8 @@ import {
 import {
   deleteManagedTab,
   getManagedTab,
+  buildFinalizeCleanupSummary,
+  formatFinalizeDeliverySummary,
   listManagedTabRecords,
   managedTabPayload,
   updateManagedTab,
@@ -243,6 +245,13 @@ async function finalizeManagedTask(args = {}) {
   }
   const remainingRecords = await scopedManagedRecords(closeScope);
   const remaining = summarizeFinalizeRemainder(remainingRecords, args);
+  const cleanupSummary = buildFinalizeCleanupSummary({
+    scope: closeScope,
+    closeUnkept,
+    dryRun,
+    pruneStale,
+    remaining,
+  });
   const pruneOk = !pruneStale || pruneStale.status === "success";
   const closeOk = closeUnkept.status === "success";
   return {
@@ -261,6 +270,10 @@ async function finalizeManagedTask(args = {}) {
     prune_stale: pruneStale,
     close_unkept: closeUnkept,
     remaining,
+    cleanup_summary: cleanupSummary,
+    delivery_summary: formatFinalizeDeliverySummary(cleanupSummary, {
+      prefix: "browser67 cleanup",
+    }),
     next_step: dryRun
       ? "Call finalize_task without dry_run to close the listed keep=false managed tabs."
       : "Report the finalize_task result in the task handoff or final response.",
