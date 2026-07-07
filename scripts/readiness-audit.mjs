@@ -421,12 +421,14 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "js-reverse:upstream-audit",
     "check:js-reverse-upstream-audit",
     "skills:active:diff",
+    "skills:active:check",
     "skills:active:sync",
     "check:active-skill-sync",
     "plan:optional-live-proofs",
     "proof:optional-live-status",
     "proof:optional-live-template",
     "proof:optional-live-record",
+    "verify:local",
     "verify",
   ];
 
@@ -480,6 +482,11 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
       "verify.mjs includes project-structure, change-set, readiness, latest upstream audit, upstream review schema, captcha assist, ljqctrl, optional live proof audit, planning, and status gates",
     ),
     createCheck(
+      "local_verify_includes_active_skill_check",
+      String(packageJson.scripts?.["verify:local"] ?? "").includes("skills:active:check"),
+      "verify:local runs the strict active skill drift gate outside default verify",
+    ),
+    createCheck(
       "change_set_grouped",
       report.ok,
       `changed=${report.changed_paths_count} grouped=${report.grouped_paths_count} ungrouped=${report.ungrouped_paths_count}`,
@@ -512,6 +519,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run js-reverse:upstream-audit",
         "npm run check:js-reverse-upstream-audit",
         "npm run skills:active:diff",
+        "npm run skills:active:check",
         "npm run check:active-skill-sync",
         "npm run plan:optional-live-proofs",
         "npm run proof:optional-live-status",

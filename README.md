@@ -146,6 +146,12 @@ Check active-copy drift without writing files:
 npm run skills:active:diff
 ```
 
+Fail a local gate when the active copy drifts:
+
+```bash
+npm run skills:active:check
+```
+
 Synchronize only after intentionally updating the active agent environment:
 
 ```bash
@@ -159,6 +165,10 @@ copying files. It does not delete extra target files unless explicitly run with
 ```bash
 npm run check:active-skill-sync
 ```
+
+See `docs/active-skill-runtime-model.md` for the exact boundary between
+AGENTS routing rules, version-controlled skill source, active skill copies, MCP
+runtime entrypoints, and external JS reverse reference repositories.
 
 ## Prepare extension
 
@@ -658,6 +668,9 @@ global audit for all currently registered TMWD workspaces. The strict audit
 also groups leaked tabs by cleanup scope, reports duplicate URL groups, marks
 old unkept records, and prints scoped `finalize_task` suggestions so operators
 do not need to guess which workspace or task leaked tabs.
+Use `npm run verify:local` when the active `~/.agents/skills` install must also
+match the version-controlled `skills/` source; it runs `verify` and then fails on
+active skill drift via `npm run skills:active:check`.
 
 ## Runtime artifact retention
 

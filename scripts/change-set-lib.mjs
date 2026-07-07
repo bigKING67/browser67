@@ -242,7 +242,7 @@ const GROUPS = [
     ],
     patterns: [
       /^README\.md$/,
-      /^docs\/(?:agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs)\.md$/,
+      /^docs\/(?:active-skill-runtime-model|agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs)\.md$/,
       /^docs\/js-reverse(?:-SOP\.md|\/)/,
       /^skills\/js-reverse\//,
       /^skills\/tmwd-browser-mcp\//,

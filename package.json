@@ -60,6 +60,7 @@
     "js-reverse:upstream-audit": "node scripts/js-reverse-upstream-audit.mjs",
     "skills:check": "node scripts/check-js-reverse-sync.mjs",
     "skills:active:diff": "node scripts/active-skill-sync.mjs --json",
+    "skills:active:check": "node scripts/active-skill-sync.mjs --check",
     "skills:active:sync": "node scripts/active-skill-sync.mjs --write",
     "tasks:templates": "node scripts/task-template.mjs list --json",
     "check:pi-package": "node contracts/pi-package-contract.mjs",
@@ -118,6 +119,7 @@
     "launchd:uninstall": "node scripts/uninstall-launchd.mjs",
     "release:ready": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced",
     "release:ready:strict": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced --strict-optional-proofs",
+    "verify:local": "npm run verify && npm run skills:active:check",
     "verify": "node scripts/verify.mjs",
     "list:files": "find . -path ./node_modules -prune -o -type f -print | sort"
   },

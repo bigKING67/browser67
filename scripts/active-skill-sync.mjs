@@ -94,6 +94,7 @@ function usage() {
     "",
     "Compares browser67 canonical skills/ with an active skill install directory.",
     "Default target: ~/.agents/skills or BROWSER67_ACTIVE_SKILLS_DIR.",
+    "--check exits non-zero when the active copy drifts from canonical source.",
     "--write copies canonical files into the target after creating a backup.",
     "--prune --confirm-prune removes target files that are not present in canonical source.",
   ].join("\n");

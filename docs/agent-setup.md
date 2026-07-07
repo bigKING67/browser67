@@ -96,12 +96,20 @@ before writes:
 
 ```bash
 npm run skills:active:diff -- --target ~/.agents/skills
+npm run skills:active:check -- --target ~/.agents/skills
 npm run skills:active:sync -- --target ~/.agents/skills
 ```
 
 Use `--target ~/.codex/skills` for Codex installations that load skills from
 `~/.codex/skills`. The helper never prunes extra files unless called with
 `--prune --confirm-prune`.
+
+The active skill copy is only a loader-facing install artifact. Keep
+`skills/browser67`, `skills/tmwd-browser-mcp`, and `skills/js-reverse` as the
+version-controlled source of truth, and keep MCP configs pointed at
+`src/mcp/browser/server.mjs` and `src/mcp/js-reverse/server.mjs`. See
+`docs/active-skill-runtime-model.md` for the full source/runtime/active-copy
+model.
 
 For agents that consume YAML descriptors, use:
 

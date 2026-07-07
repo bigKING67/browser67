@@ -30,6 +30,12 @@ const MATRIX = [
     covers: ["active-skill-install", "dry-run-sync", "backup-before-write"],
   },
   {
+    id: "active-skill-local-check",
+    command: "npm run skills:active:check",
+    tier: "local",
+    covers: ["active-skill-install", "local-drift-gate"],
+  },
+  {
     id: "syntax",
     command: "npm run check:syntax",
     tier: "required",
