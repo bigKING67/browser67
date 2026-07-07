@@ -11,6 +11,10 @@ export {
   planManagedTab,
 } from "./tab-workspace/records.mjs";
 export {
+  buildFinalizeCleanupSummary,
+  formatFinalizeDeliverySummary,
+} from "./tab-workspace/finalizer-summary.mjs";
+export {
   deleteManagedTab,
   getManagedTab,
   listManagedTabRecords,
