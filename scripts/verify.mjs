@@ -13,6 +13,7 @@ function buildCommands(managedTabBaselineFile) {
       label: "managed tab cleanup baseline",
     },
     { command: "npm", args: ["run", "extension:check"] },
+    { command: "npm", args: ["run", "check:extension-install-doctor"] },
     { command: "npm", args: ["run", "upstream:check"] },
     { command: "npm", args: ["run", "upstream:audit"] },
     { command: "npm", args: ["run", "upstream:audit:latest"] },

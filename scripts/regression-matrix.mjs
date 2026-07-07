@@ -48,6 +48,12 @@ const MATRIX = [
     covers: ["directory-governance", "runtime-artifact-boundaries", "entrypoint-shims"],
   },
   {
+    id: "extension-install-doctor",
+    command: "npm run check:extension-install-doctor",
+    tier: "required",
+    covers: ["installed-extension-drift", "setup-reload-guidance", "generated-config-ignore"],
+  },
+  {
     id: "performance-smoke",
     command: "npm run check:performance-smoke",
     tier: "required",

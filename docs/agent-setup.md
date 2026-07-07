@@ -344,7 +344,11 @@ to dry-run validate a real sanitized proof before adding `--write`.
 - Keep the browser extension installed from the active browser67 home,
   canonically `~/.browser67/browser/tmwd_cdp_bridge/`, or the documented local
   runtime copy.
-- Reload the unpacked extension after extension source changes.
+- Run `npm run extension:doctor` when browser behavior suggests old bridge code
+  may still be installed; it is read-only and ignores the install-local
+  generated `config.js`.
+- Reload the unpacked extension after extension source changes or after
+  `extension:doctor` reports `needs_browser_extension_reload:true`.
 - Refresh old target tabs after extension reload so content scripts reinject.
 - Treat all browser profile data and JS reverse evidence as sensitive local
   runtime data.

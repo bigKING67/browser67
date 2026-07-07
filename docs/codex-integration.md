@@ -561,11 +561,12 @@ ledger after a new manual upstream review.
 `npm run check:upstream-audit` covers the deterministic fixture contract for
 these decisions.
 
-After extension source changes, run `npm run setup`, reload the unpacked
-extension from the active browser67 home, canonically
-`~/.browser67/browser/tmwd_cdp_bridge/`, then refresh old
-tabs so content scripts are reinjected. If manually loading from the standalone
-project, run `npm run setup:local-extension` and load exactly:
+After extension source changes, run `npm run extension:doctor` to compare
+`extension/` with the installed unpacked extension. If it reports drift, run
+`npm run setup`, reload the unpacked extension from the active browser67 home,
+canonically `~/.browser67/browser/tmwd_cdp_bridge/`, then refresh old tabs so
+content scripts are reinjected. If manually loading from the standalone project,
+run `npm run setup:local-extension` and load exactly:
 
 ```text
 /path/to/browser67/runtime/chrome-extension/tmwd_cdp_bridge/

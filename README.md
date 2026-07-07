@@ -199,6 +199,21 @@ both `tmwd_browser` and `js-reverse` into the active browser67 home under
 under `~/.tmwd-browser-mcp` stay supported; run `browser67 migrate-home --dry-run`
 to inspect a non-destructive copy migration to `~/.browser67`.
 
+Check whether the installed unpacked extension matches this repository before
+assuming the running browser has current bridge code:
+
+```bash
+npm run extension:doctor
+npm run check:extension-install-doctor
+```
+
+`extension:doctor` is read-only. It compares `extension/` with the installed
+target, ignores the install-local generated `config.js`, and reports
+`needs_setup`, `needs_clean_setup`, and `needs_browser_extension_reload`.
+When drift is reported, run `npm run setup`, reload the unpacked extension from
+the reported target directory, then refresh old target tabs so content scripts
+are reinjected.
+
 For manual Chrome extension loading from this repository, prepare the
 project-local runtime copy:
 
@@ -733,6 +748,8 @@ npm run js-reverse:upstream-audit -- --json
 npm run check:js-reverse-upstream-audit
 npm run upstream:check
 npm run extension:check
+npm run extension:doctor
+npm run check:extension-install-doctor
 npm run extension:sync
 npm run upstream:lock
 ```
