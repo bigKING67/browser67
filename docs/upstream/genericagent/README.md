@@ -7,6 +7,8 @@ browser67 without replacing the local architecture.
 
 - Upstream repo: `https://github.com/lsdefine/GenericAgent`
 - Audited commit: `c25ea7c15c4b3f217318a1d86a7ee097dfbb5085`
+- Latest reviewed remote main: `15f7eb1a6d1b0d86f0d2fd8268ea27432c14a072`
+  (`2026-07-07`)
 - Upstream release context: `desktop-portable-v0.1.4`
 - Imported reference path: `memory/macljqCtrl.py`
 
@@ -39,6 +41,14 @@ browser67 without replacing the local architecture.
 - Windows `ljqCtrl` DPI and click-check lessons: make the process DPI-aware,
   use raw `FindBlock` score, and stop when click pixel-change is near zero
   instead of blind retrying.
+
+## Boundary with js-reverse references
+
+GenericAgent remains the audited browser/TMWebDriver provenance source for
+extension and physical-input ideas. It is not the implementation upstream for
+browser67's `js-reverse` MCP surface. External JS reverse references and legacy
+local snapshots are tracked separately in `docs/upstream/js-reverse/README.md`
+and `docs/upstream/js-reverse/references.json`.
 
 Run the local audit entrypoint before future upstream absorption work:
 
