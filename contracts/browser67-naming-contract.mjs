@@ -31,6 +31,7 @@ function assertPackage() {
   assert.equal(pkg.bin?.["tmwd-browser-mcp"], "./bin/tmwd-browser-mcp.mjs");
   assert.equal(pkg.bin?.["tmwd-browser"], "./bin/tmwd-browser.mjs");
   assert.equal(pkg.scripts?.["check:browser67-naming"], "node contracts/browser67-naming-contract.mjs");
+  assert.equal(pkg.scripts?.["check:js-reverse-upstream"], "node contracts/js-reverse-upstream-reference-contract.mjs");
   assert.equal(pkg.scripts?.["check:runtime-home"], "node contracts/runtime-home-contract.mjs");
   assert.equal(pkg.scripts?.["migrate:home"], "node scripts/migrate-home.mjs");
 }
@@ -185,9 +186,44 @@ function assertAgentFacingPromptBranding() {
   }
   assert.match(readText("docs/agent-setup.md"), /skills\/browser67/);
   assert.match(readText("skills/tmwd-browser-mcp/SKILL.md"), /Legacy alias for browser67/);
+  assertJsReverseSkillBoundary();
+}
+
+function assertJsReverseSkillBoundary() {
   for (const file of ["docs/js-reverse/SKILL.md", "skills/js-reverse/SKILL.md"]) {
+    const text = readText(file);
+    assert.match(
+      text,
+      /browser67-backed/,
+      `js-reverse skill must keep browser67-backed as the default path: ${file}`,
+    );
+    assert.match(
+      text,
+      /browser67-owned/,
+      `js-reverse skill must preserve browser67-owned managed tab lifecycle: ${file}`,
+    );
+    assert.match(
+      text,
+      /finalize_task/,
+      `js-reverse skill must preserve finalize_task cleanup guidance: ${file}`,
+    );
+    assert.match(
+      text,
+      /record_reverse_evidence/,
+      `js-reverse skill must preserve structured reverse evidence capture: ${file}`,
+    );
+    assert.match(
+      text,
+      /evidence\.v1/,
+      `js-reverse skill must preserve evidence.v1 contract: ${file}`,
+    );
     assert.doesNotMatch(
-      readText(file),
+      text,
+      /ACTION REQUIRED|读完后立刻执行|field-journal\/precedent-reverse|bootstrap-reverse/,
+      `js-reverse skill must not inherit reverse-skill auto-execution/bootstrap semantics: ${file}`,
+    );
+    assert.doesNotMatch(
+      text,
       /Playwright MCP.*互补使用/,
       `js-reverse skill must keep browser67 as the default automation path: ${file}`,
     );

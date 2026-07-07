@@ -32,7 +32,8 @@ two paired MCP surfaces:
 3. For legacy runtime migration, run `browser67 migrate-home --dry-run` before
    `browser67 migrate-home --write`.
 4. For real browser work, select/create browser67-owned managed tabs and finalize
-   the current `workspace_key`/`task_id` before handoff.
+   the current `workspace_key`/`task_id` before handoff; report the returned
+   `delivery_summary` so tab cleanup state is visible.
 5. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
    `js-reverse new_page`.
 
