@@ -594,12 +594,21 @@ aligned sources, changed files, final-newline-only drift, missing local bridge
 features, missing source, latest-temp local clones, reviewed remote drift, and
 stale review-ledger detection.
 
+`npm run js-reverse:upstream-audit -- --json` checks the external JS reverse
+reference ledger in `docs/upstream/js-reverse/references.json` against each
+reference's remote `HEAD` / `refs/heads/main` without importing any code. It
+reports `status=current` when every reviewed commit is still current and
+`status=review_needed` when a reference repo has moved. Add `--require-current`
+when a local gate should fail on newly moved external references. The
+deterministic fixture gate is `npm run check:js-reverse-upstream-audit`; it
+keeps this audit behavior offline-testable.
+
 `npm run verify` is the local full gate for maintenance changes. It checks
 GenericAgent extension alignment, local and latest-temp upstream provenance,
 the upstream review ledger schema, JS reverse docs/skill sync, all `.mjs`
 syntax, change-set grouping, readiness scoring, deterministic
 contracts, performance smoke, task-template validation, regression-matrix
-availability, live doctor readiness, JS reverse live readiness, auth-profile
+availability, JS reverse upstream-reference freshness, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
 popup resume paths), diagnostic-only `ljqCtrl` probing, and npm audit.
 It also runs the optional proof audit in non-blocking mode so missing external
@@ -658,6 +667,8 @@ To check or resync against the local GenericAgent checkout:
 npm run upstream:audit
 npm run check:upstream-audit
 npm run check:upstream-review
+npm run js-reverse:upstream-audit -- --json
+npm run check:js-reverse-upstream-audit
 npm run upstream:check
 npm run extension:check
 npm run extension:sync

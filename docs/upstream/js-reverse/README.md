@@ -45,6 +45,20 @@ These repositories are reference only:
 
 Machine-readable details live in `references.json`.
 
+Audit current remote freshness with:
+
+```bash
+npm run js-reverse:upstream-audit -- --json
+npm run check:js-reverse-upstream-audit
+```
+
+The audit is read-only. It compares every `reviewed_commit` in
+`references.json` with the corresponding remote `HEAD` / `refs/heads/main`,
+reports `status=review_needed` when an external reference has moved, and keeps
+`direct_import_allowed=false` as a hard policy boundary. Use
+`--require-current` only when a local gate should fail on moved external
+references.
+
 ## Absorbable ideas
 
 Useful ideas may be translated into browser67 tools, contracts, SOPs, templates,

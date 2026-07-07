@@ -136,8 +136,10 @@ const GROUPS = [
       /^src\/js-reverse-server(?:\.mjs|\/)/,
       /^contracts\/js-reverse-mcp(?:-common|-contract|-live-gate)?(?:\.mjs|\/)/,
       /^contracts\/js-reverse-upstream-reference-contract\.mjs$/,
+      /^contracts\/js-reverse-upstream-audit-contract\.mjs$/,
       /^docs\/schemas\/js-reverse-upstream-reference\.schema\.json$/,
       /^docs\/upstream\/js-reverse(?:\/|$)/,
+      /^scripts\/js-reverse-upstream-audit\.mjs$/,
     ],
   },
   {

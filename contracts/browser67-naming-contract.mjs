@@ -32,6 +32,8 @@ function assertPackage() {
   assert.equal(pkg.bin?.["tmwd-browser"], "./bin/tmwd-browser.mjs");
   assert.equal(pkg.scripts?.["check:browser67-naming"], "node contracts/browser67-naming-contract.mjs");
   assert.equal(pkg.scripts?.["check:js-reverse-upstream"], "node contracts/js-reverse-upstream-reference-contract.mjs");
+  assert.equal(pkg.scripts?.["check:js-reverse-upstream-audit"], "node contracts/js-reverse-upstream-audit-contract.mjs");
+  assert.equal(pkg.scripts?.["js-reverse:upstream-audit"], "node scripts/js-reverse-upstream-audit.mjs");
   assert.equal(pkg.scripts?.["check:runtime-home"], "node contracts/runtime-home-contract.mjs");
   assert.equal(pkg.scripts?.["migrate:home"], "node scripts/migrate-home.mjs");
 }

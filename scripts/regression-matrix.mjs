@@ -18,6 +18,12 @@ const MATRIX = [
     covers: ["js-reverse-surface", "frame-surface", "evidence-schema", "managed-lifecycle"],
   },
   {
+    id: "js-reverse-upstream-audit",
+    command: "npm run check:js-reverse-upstream-audit",
+    tier: "required",
+    covers: ["js-reverse-reference-ledger", "external-reference-drift", "reference-only-policy"],
+  },
+  {
     id: "syntax",
     command: "npm run check:syntax",
     tier: "required",
