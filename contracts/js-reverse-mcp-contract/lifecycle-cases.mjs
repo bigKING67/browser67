@@ -86,6 +86,9 @@ async function runLifecycleCases(rpc, cli) {
   assert.equal(finalizeDryRunPayload?.finalizer_policy?.closes_only_managed_tabs, true);
   assert.equal(finalizeDryRunPayload?.finalizer_policy?.preserves_keep_true, true);
   assert.equal(finalizeDryRunPayload?.remaining?.unkept_count, 0);
+  assert.equal(finalizeDryRunPayload?.cleanup_summary?.workspace_key, "js-reverse-contract");
+  assert.equal(finalizeDryRunPayload?.cleanup_summary?.remaining_unkept_count, 0);
+  assert.match(finalizeDryRunPayload?.delivery_summary ?? "", /js-reverse cleanup: finalize_task workspace_key=js-reverse-contract/);
 }
 
 export {

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://browser67.local/schemas/js-reverse-upstream-reference.schema.json",
+  "title": "js-reverse upstream reference ledger",
+  "description": "Machine-readable policy for browser67's canonical js-reverse implementation, legacy local snapshots, and external reference candidates.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "canonical",
+    "legacy_snapshot_policy",
+    "references",
+    "non_goals"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "canonical": {
+      "type": "object",
+      "required": [
+        "implementation",
+        "paths"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "implementation": {
+          "type": "string",
+          "enum": [
+            "browser67"
+          ]
+        },
+        "paths": {
+          "$ref": "#/$defs/string_array"
+        }
+      }
+    },
+    "legacy_snapshot_policy": {
+      "type": "object",
+      "required": [
+        "description",
+        "direct_import_allowed",
+        "may_override_canonical"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "direct_import_allowed": {
+          "type": "boolean"
+        },
+        "may_override_canonical": {
+          "type": "boolean"
+        }
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reference"
+      }
+    },
+    "non_goals": {
+      "$ref": "#/$defs/string_array"
+    }
+  },
+  "$defs": {
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": [
+        "name",
+        "remote",
+        "reviewed_commit",
+        "role",
+        "direct_import_allowed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "reviewed_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{40}$"
+        },
+        "role": {
+          "type": "string"
+        },
+        "direct_import_allowed": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "canonical": {
+    "implementation": "browser67",
+    "paths": [
+      "src/mcp/js-reverse/server.mjs",
+      "src/js-reverse-server/",
+      "skills/js-reverse/",
+      "docs/js-reverse/"
+    ]
+  },
+  "legacy_snapshot_policy": {
+    "description": "Local sibling js-reverse skill snapshots are legacy references only unless they are Git repositories with a reviewed remote and lock.",
+    "direct_import_allowed": false,
+    "may_override_canonical": false
+  },
+  "references": [
+    {
+      "name": "zhaoxuya520/reverse-skill",
+      "remote": "https://github.com/zhaoxuya520/reverse-skill.git",
+      "reviewed_commit": "9ec60377bfdcafa0b317ed3612acc6c46270be78",
+      "role": "reference_only_skill_router_pack",
+      "direct_import_allowed": false
+    },
+    {
+      "name": "NoOne-hub/JSReverser-MCP",
+      "remote": "https://github.com/NoOne-hub/JSReverser-MCP.git",
+      "reviewed_commit": "65e2e3cb70c10a79dfd1ba4410a2c876113e676c",
+      "role": "external_mcp_reference_candidate",
+      "direct_import_allowed": false
+    },
+    {
+      "name": "zhizhuodemao/js-reverse-mcp",
+      "remote": "https://github.com/zhizhuodemao/js-reverse-mcp.git",
+      "reviewed_commit": "0e19693f496b4600dbc9381e76293d7afa96c001",
+      "role": "external_mcp_reference_candidate",
+      "direct_import_allowed": false
+    }
+  ],
+  "non_goals": [
+    "replace_browser67_backed_js_reverse_skill",
+    "import_reverse_skill_action_required_semantics",
+    "auto_install_external_tools",
+    "auto_write_mcp_config",
+    "copy_reverse_skill_pack",
+    "promote_jshookmcp_or_anything_analyzer_to_default_entry",
+    "allow_legacy_local_snapshot_to_override_canonical"
+  ]
+}

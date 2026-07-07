@@ -1,6 +1,8 @@
 import { sessionPointers } from "../session-registry.mjs";
 import {
+  buildFinalizeCleanupSummary,
   deleteManagedTab,
+  formatFinalizeDeliverySummary,
   listManagedTabRecords,
 } from "../tab-workspace.mjs";
 import { bridgeCommand } from "./tmwd-adapter.mjs";
@@ -125,6 +127,13 @@ async function handleFinalizeTask(args) {
   }
   const closeUnkept = await closeUnkeptScopedRecords(args, scope);
   const remaining = summarizeRecords(await recordsInScope(scope));
+  const cleanupSummary = buildFinalizeCleanupSummary({
+    closeUnkept,
+    dryRun,
+    pruneStale,
+    remaining,
+    scope,
+  });
   const ok = (pruneStale?.ok ?? true) === true && closeUnkept.ok === true;
   return {
     ok,
@@ -146,6 +155,11 @@ async function handleFinalizeTask(args) {
     prune_stale: pruneStale,
     close_unkept: closeUnkept,
     remaining,
+    cleanup_summary: cleanupSummary,
+    delivery_summary: formatFinalizeDeliverySummary(cleanupSummary, {
+      prefix: "js-reverse cleanup",
+      include_close_verified: false,
+    }),
     note: dryRun
       ? "dry_run only; no pages were closed"
       : "finalize_task completed; report this cleanup result with reverse evidence",
