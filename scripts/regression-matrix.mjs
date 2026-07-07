@@ -36,6 +36,12 @@ const MATRIX = [
     covers: ["active-skill-install", "local-drift-gate"],
   },
   {
+    id: "skills-roots-audit",
+    command: "npm run check:skills-roots-audit",
+    tier: "required",
+    covers: ["multi-root-skill-audit", "broken-symlink-detection", "no-blind-sync-guidance"],
+  },
+  {
     id: "syntax",
     command: "npm run check:syntax",
     tier: "required",

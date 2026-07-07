@@ -165,6 +165,20 @@ npm run skills:active:backups -- --target ~/.agents/skills
 npm run skills:active:restore -- <backup-id-or-path> --target ~/.agents/skills --confirm-restore
 ```
 
+Audit browser67-managed skills across common active/private roots without
+writing files:
+
+```bash
+npm run skills:roots:audit
+npm run check:skills-roots-audit
+```
+
+The roots audit checks `~/.agents/skills`, `~/.codex/skills`, and
+`~/.pi/agent/skills` by default. Treat `~/.agents/skills` as the shared active
+root unless a caller explicitly selects another root. Other roots are audit-only
+until you prove an agent loader actually reads them; do not blindly sync
+browser67 skills into every root.
+
 The sync command creates a timestamped backup under the target backup root
 before copying files. The default backup root is `<target>/.browser67-backups`;
 override it with `--backup-dir <backup-root>` when needed. It does not delete
@@ -175,6 +189,7 @@ contract is:
 
 ```bash
 npm run check:active-skill-sync
+npm run check:skills-roots-audit
 ```
 
 See `docs/active-skill-runtime-model.md` for the exact boundary between

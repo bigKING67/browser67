@@ -60,6 +60,7 @@ npm run skills:active:check
 npm run skills:active:sync -- --target ~/.agents/skills
 npm run skills:active:backups -- --target ~/.agents/skills
 npm run skills:active:restore -- <backup-id-or-path> --target ~/.agents/skills --confirm-restore
+npm run skills:roots:audit
 ```
 
 - `skills:active:diff` is read-only and reports drift.
@@ -75,6 +76,9 @@ npm run skills:active:restore -- <backup-id-or-path> --target ~/.agents/skills -
   `--backup-dir <backup-root>` to use an alternate root for sync, list, and
   restore.
 - Extra target files are not deleted unless `--prune --confirm-prune` is passed.
+- `skills:roots:audit` is read-only. It reports browser67-managed skills across
+  common active/private roots such as `~/.agents/skills`, `~/.codex/skills`, and
+  `~/.pi/agent/skills`, including stale copies and broken symlinks.
 
 Use `npm run verify:local` when local acceptance should include the strict
 active skill drift check. The default `npm run verify` keeps active skill drift
@@ -142,6 +146,8 @@ explicit promotion plan, contract coverage, and browser67 ownership review.
   `codex mcp list`.
 - Do not sync active skills by hand. Use `skills:active:sync` so backups and
   drift checks remain auditable.
+- Do not blindly sync every skill root found by `skills:roots:audit`. Treat
+  non-selected roots as audit-only until you prove an agent loader reads them.
 - Do not make symlinks the default install model. Copy plus backup plus drift
   checks is the safer product path for shared agent roots.
 - Do not promote an old standalone `js-reverse` checkout into the active runtime

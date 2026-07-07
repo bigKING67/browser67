@@ -23,6 +23,8 @@ function buildCommands(managedTabBaselineFile) {
     { command: "npm", args: ["run", "js-reverse:upstream-audit", "--", "--json"] },
     { command: "npm", args: ["run", "check:active-skill-sync"] },
     { command: "npm", args: ["run", "skills:active:diff"] },
+    { command: "npm", args: ["run", "check:skills-roots-audit"] },
+    { command: "npm", args: ["run", "skills:roots:audit"] },
     { command: "npm", args: ["run", "skills:check"] },
     { command: "npm", args: ["run", "check:syntax"] },
     { command: "npm", args: ["run", "check:project-structure"] },

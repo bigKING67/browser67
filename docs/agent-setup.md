@@ -100,6 +100,7 @@ npm run skills:active:check -- --target ~/.agents/skills
 npm run skills:active:sync -- --target ~/.agents/skills
 npm run skills:active:backups -- --target ~/.agents/skills
 npm run skills:active:restore -- <backup-id-or-path> --target ~/.agents/skills --confirm-restore
+npm run skills:roots:audit
 ```
 
 Use `--target ~/.codex/skills` for Codex installations that load skills from
@@ -108,6 +109,12 @@ Use `--target ~/.codex/skills` for Codex installations that load skills from
 the current active copy before writing files from the selected backup. Backups
 default to `<target>/.browser67-backups`; pass `--backup-dir <backup-root>` when
 an install needs a separate backup root.
+
+Use `skills:roots:audit` before touching additional roots such as
+`~/.codex/skills` or `~/.pi/agent/skills`. It is read-only and reports stale
+copies, missing browser67-managed skills, and broken symlinks. Do not sync
+browser67 skills into audit-only roots unless that specific agent loader is
+confirmed to read them.
 
 The active skill copy is only a loader-facing install artifact. Keep
 `skills/browser67`, `skills/tmwd-browser-mcp`, and `skills/js-reverse` as the

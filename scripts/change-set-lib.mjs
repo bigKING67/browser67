@@ -288,8 +288,9 @@ const GROUPS = [
     ],
     patterns: [
       /^package\.json$/,
-      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|setup-captcha-provider-jfbym|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync)\.mjs$/,
+      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|setup-captcha-provider-jfbym|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync|skills-roots-audit)\.mjs$/,
       /^contracts\/active-skill-sync-contract\.mjs$/,
+      /^contracts\/skills-roots-audit-contract\.mjs$/,
       /^contracts\/runtime-artifact-cleanup-contract\.mjs$/,
       /^templates\/tasks\//,
     ],

@@ -39,7 +39,9 @@ function assertPackage() {
   assert.equal(pkg.scripts?.["skills:active:sync"], "node scripts/active-skill-sync.mjs --write");
   assert.equal(pkg.scripts?.["skills:active:backups"], "node scripts/active-skill-sync.mjs --list-backups --json");
   assert.equal(pkg.scripts?.["skills:active:restore"], "node scripts/active-skill-sync.mjs --restore");
+  assert.equal(pkg.scripts?.["skills:roots:audit"], "node scripts/skills-roots-audit.mjs --json");
   assert.equal(pkg.scripts?.["check:active-skill-sync"], "node contracts/active-skill-sync-contract.mjs");
+  assert.equal(pkg.scripts?.["check:skills-roots-audit"], "node contracts/skills-roots-audit-contract.mjs");
   assert.equal(pkg.scripts?.["extension:doctor"], "node scripts/extension-install-doctor.mjs --json");
   assert.equal(pkg.scripts?.["check:extension-install-doctor"], "node contracts/extension-install-doctor-contract.mjs");
   assert.equal(pkg.scripts?.["verify:local"], "npm run verify && npm run skills:active:check");
@@ -250,6 +252,7 @@ function assertProjectSurfaceBranding() {
     "src/js-reverse-server/hooks.mjs",
     "scripts/change-set-lib.mjs",
     "scripts/extension-install-doctor.mjs",
+    "scripts/skills-roots-audit.mjs",
     "scripts/optional-live-proof-template.mjs",
     "scripts/optional-live-proof-plan.mjs",
     "scripts/optional-live-proof-audit.mjs",
