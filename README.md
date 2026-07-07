@@ -123,6 +123,43 @@ MCP servers are still configured in the target agent's MCP config. For Pi,
 `~/.pi/agent/mcp.json` should point at the installed package checkout or the
 local development checkout.
 
+## Active Codex skill copies
+
+The version-controlled canonical skill sources live in this repository:
+
+```text
+skills/browser67
+skills/tmwd-browser-mcp
+skills/js-reverse
+```
+
+Codex/Agents may load active skills from a separate install directory such as
+`~/.agents/skills`. That active copy is what the skill loader reads during a
+session; it is not automatically updated by editing this repository. The
+`js-reverse` MCP runtime should still point at browser67's server entrypoint
+(`src/mcp/js-reverse/server.mjs`), while the `js-reverse` skill is the playbook
+text loaded from the active skill directory.
+
+Check active-copy drift without writing files:
+
+```bash
+npm run skills:active:diff
+```
+
+Synchronize only after intentionally updating the active agent environment:
+
+```bash
+npm run skills:active:sync -- --target ~/.agents/skills
+```
+
+The sync command creates a timestamped backup under the target directory before
+copying files. It does not delete extra target files unless explicitly run with
+`--prune --confirm-prune`. The deterministic offline contract is:
+
+```bash
+npm run check:active-skill-sync
+```
+
 ## Prepare extension
 
 ```bash
@@ -608,7 +645,8 @@ GenericAgent extension alignment, local and latest-temp upstream provenance,
 the upstream review ledger schema, JS reverse docs/skill sync, all `.mjs`
 syntax, change-set grouping, readiness scoring, deterministic
 contracts, performance smoke, task-template validation, regression-matrix
-availability, JS reverse upstream-reference freshness, live doctor readiness, JS reverse live readiness, auth-profile
+availability, active-skill sync tooling, JS reverse upstream-reference
+freshness, live doctor readiness, JS reverse live readiness, auth-profile
 onboarding/lifecycle/live smoke (including manual CAPTCHA, MFA, SSO, and OAuth
 popup resume paths), diagnostic-only `ljqCtrl` probing, and npm audit.
 It also runs the optional proof audit in non-blocking mode so missing external

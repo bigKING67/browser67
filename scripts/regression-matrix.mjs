@@ -24,6 +24,12 @@ const MATRIX = [
     covers: ["js-reverse-reference-ledger", "external-reference-drift", "reference-only-policy"],
   },
   {
+    id: "active-skill-sync",
+    command: "npm run check:active-skill-sync",
+    tier: "required",
+    covers: ["active-skill-install", "dry-run-sync", "backup-before-write"],
+  },
+  {
     id: "syntax",
     command: "npm run check:syntax",
     tier: "required",

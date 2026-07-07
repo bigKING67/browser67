@@ -88,16 +88,20 @@ skills/js-reverse
 Do not copy these skills into `~/.pi/agent/skills` when `~/.pi/agent` is an
 in-place `pi-67` checkout; keep browser67 as the source of truth.
 
-For Codex-style skill directories, copy the canonical browser67 and js-reverse
-skills into the user's skill root. Copy `tmwd-browser-mcp` only when an older
-agent still routes by that legacy alias:
+For Codex-style skill directories, synchronize the canonical browser67 and
+js-reverse skills into the user's active skill root. Copy `tmwd-browser-mcp`
+only when an older agent still routes by that legacy alias. Prefer the
+repo helper over hand-copying because it can diff first and creates backups
+before writes:
 
 ```bash
-mkdir -p ~/.codex/skills
-cp -R /path/to/browser67/skills/browser67 ~/.codex/skills/
-cp -R /path/to/browser67/skills/tmwd-browser-mcp ~/.codex/skills/
-cp -R /path/to/browser67/skills/js-reverse ~/.codex/skills/
+npm run skills:active:diff -- --target ~/.agents/skills
+npm run skills:active:sync -- --target ~/.agents/skills
 ```
+
+Use `--target ~/.codex/skills` for Codex installations that load skills from
+`~/.codex/skills`. The helper never prunes extra files unless called with
+`--prune --confirm-prune`.
 
 For agents that consume YAML descriptors, use:
 
