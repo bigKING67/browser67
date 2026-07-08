@@ -152,7 +152,10 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   first, `selector` / `clip` for focused component evidence, and `full_page`
   only on bounded pages with an explicit `max_pixels`. For responsive evidence,
   pass `viewport:{width,height,dpr,is_mobile}`; the wrapper applies temporary
-  CDP device metrics and clears them after capture by default. Pass
+  CDP device metrics, verifies the page viewport and PNG artifact dimensions
+  against the requested viewport, and clears the override after capture by
+  default. A responsive capture with stale desktop-sized artifact dimensions
+  returns a verification error instead of success. Pass
   `layout_selectors` to return compact selector rect/computed-style metrics for
   L3/L4 visual evidence. For `target:"selector"`, browser67 also pre-samples the
   target selector's layout metrics before the final selector probe. If the final

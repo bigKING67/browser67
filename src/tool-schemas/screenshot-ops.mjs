@@ -5,7 +5,7 @@ import {
 
 const SCREENSHOT_TOOL_SCHEMAS = {
   browser_screenshot_ops: {
-    description: "Capture real-browser PNG screenshots through TMWD/CDP and write repo-external artifacts. selector captures pre-sample layout metrics and may fall back to the measured clip when the selector detaches between probes. Returns metadata and artifact path, never screenshot base64.",
+    description: "Capture real-browser PNG screenshots through TMWD/CDP and write repo-external artifacts. selector captures pre-sample layout metrics and may fall back to the measured clip when the selector detaches between probes. Responsive viewport captures verify requested viewport metrics against PNG dimensions before returning success. Returns metadata and artifact path, never screenshot base64.",
     inputSchema: {
       type: "object",
       properties: {

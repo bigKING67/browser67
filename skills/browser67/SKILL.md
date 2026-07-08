@@ -40,7 +40,8 @@ two paired MCP surfaces:
 ## Quality bar
 
 - Keep browser-visible claims backed by live browser evidence or a clear skipped
-  reason.
+  reason; responsive screenshots must include viewport/PNG dimension verification
+  before treating a mobile artifact as valid evidence.
 - Keep large outputs bounded; write screenshots, run records, and rebuild
   bundles as repo-external artifacts with path/hash/count metadata.
 - Do not silently fallback from browser67 login-state tasks to remote CDP.

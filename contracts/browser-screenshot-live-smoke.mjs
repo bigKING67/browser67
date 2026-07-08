@@ -251,6 +251,13 @@ async function run() {
     assert.equal(mobileViewport.viewport_override?.cleanup?.cleared, true);
     assert.equal(mobileViewport.page?.viewport?.inner_width, 390);
     assert.equal(mobileViewport.page?.viewport?.inner_height, 844);
+    assert.equal(mobileViewport.viewport_override?.verification?.ok, true);
+    assert.equal(mobileViewport.viewport_override?.verification?.page?.ok, true);
+    assert.equal(mobileViewport.viewport_override?.verification?.artifact?.ok, true);
+    assert.equal(mobileViewport.viewport_override?.verification?.artifact?.expected?.width, 780);
+    assert.equal(mobileViewport.viewport_override?.verification?.artifact?.expected?.height, 1688);
+    assert.equal(mobileViewport.artifact.width, 780);
+    assert.equal(mobileViewport.artifact.height, 1688);
     assert.equal(mobileViewport.layout_metrics?.selectors?.capture_target?.found, true);
     assert.equal(typeof mobileViewport.layout_metrics?.horizontal_overflow, "boolean");
 

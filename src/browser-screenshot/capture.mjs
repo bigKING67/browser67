@@ -19,6 +19,11 @@ import {
   roundCoordinate,
 } from "./clip.mjs";
 import { writeScreenshotArtifact } from "./artifact.mjs";
+import {
+  assertViewportOverrideArtifactVerification,
+  assertViewportOverridePageVerification,
+  buildViewportOverrideVerification,
+} from "./verification.mjs";
 
 const INTERNAL_SELECTOR_METRIC_KEY = "__browser67_target_selector";
 
@@ -71,6 +76,42 @@ const PAGE_METADATA_SCRIPT = `return (() => {
     }
   };
 })();`;
+
+function viewportOverrideSettleScript(requested) {
+  return `return await new Promise((resolve) => {
+  const expected = ${JSON.stringify({
+    width: Number(requested?.width ?? 0),
+    height: Number(requested?.height ?? 0),
+    dpr: Number(requested?.dpr ?? 1),
+  })};
+  let attempts = 0;
+  const sample = () => ({
+    inner_width: Number(window.innerWidth || 0),
+    inner_height: Number(window.innerHeight || 0),
+    device_pixel_ratio: Number(window.devicePixelRatio || 1)
+  });
+  const matches = (value) => (
+    Math.abs(value.inner_width - expected.width) <= 1
+    && Math.abs(value.inner_height - expected.height) <= 1
+    && Math.abs(value.device_pixel_ratio - expected.dpr) <= 0.01
+  );
+  const tick = () => {
+    attempts += 1;
+    const value = sample();
+    if (matches(value) || attempts >= 8) {
+      resolve({
+        ok: matches(value),
+        attempts,
+        expected,
+        actual: value
+      });
+      return;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+});`;
+}
 
 function selectorClipScript(selector) {
   return `return await (async () => {
@@ -640,12 +681,27 @@ async function captureBrowserScreenshot(args = {}) {
         requested: viewportOverride.requested,
         cdp_params: viewportOverride.cdp_params,
       };
+      const settled = await evaluatePageScript(args, preferred, viewportOverrideSettleScript(viewportOverride.requested));
+      preferred = settled.preferred;
+      transportAttempts = mergeTransportAttempts(transportAttempts, settled.transport_attempts);
+      viewportOverrideResult.settle = settled.value;
     }
 
     const pageEval = await evaluatePageScript(args, preferred, PAGE_METADATA_SCRIPT);
     preferred = pageEval.preferred;
     transportAttempts = mergeTransportAttempts(transportAttempts, pageEval.transport_attempts);
     page = pageEval.value;
+    if (viewportOverrideResult) {
+      const pageVerification = buildViewportOverrideVerification({
+        page,
+        target,
+        viewportOverrideResult,
+      });
+      viewportOverrideResult.verification = {
+        page: pageVerification?.page,
+      };
+      assertViewportOverridePageVerification(pageVerification?.page);
+    }
 
     if (includeLayoutMetrics) {
       const metricsEval = await evaluatePageScript(args, preferred, layoutMetricsScript(effectiveLayoutSelectors));
@@ -742,6 +798,16 @@ async function captureBrowserScreenshot(args = {}) {
       clip,
       cdpClip,
     });
+    if (viewportOverrideResult) {
+      const verification = buildViewportOverrideVerification({
+        artifact: artifact.artifact,
+        page,
+        target,
+        viewportOverrideResult,
+      });
+      viewportOverrideResult.verification = verification;
+      assertViewportOverrideArtifactVerification(verification, artifact.artifact);
+    }
 
     return {
       ok: true,

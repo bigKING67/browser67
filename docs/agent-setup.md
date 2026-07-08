@@ -170,6 +170,10 @@ Use target=viewport for the baseline, target=selector or target=clip for
 focused component evidence, and target=full_page only on bounded pages with an
 explicit max_pixels. Screenshot artifacts are written outside the repo under
 the browser67 run root and tool results return metadata only, never image base64.
+Responsive viewport captures verify both page viewport metrics and PNG artifact
+dimensions against the requested viewport; stale desktop-sized artifacts fail
+with a screenshot verification error instead of being reported as valid mobile
+evidence.
 Audit retained screenshot/run evidence with `npm run runtime:cleanup:dry-run`;
 apply retention only with the explicit write path
 `npm run runtime:cleanup -- --write`.
