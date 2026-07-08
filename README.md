@@ -761,6 +761,7 @@ npm run check:upstream-audit
 npm run check:upstream-review
 npm run js-reverse:upstream-audit -- --json
 npm run check:js-reverse-upstream-audit
+npm run check:js-reverse-absorption-matrix
 npm run upstream:check
 npm run extension:check
 npm run extension:doctor

@@ -24,6 +24,12 @@ const MATRIX = [
     covers: ["js-reverse-reference-ledger", "external-reference-drift", "reference-only-policy"],
   },
   {
+    id: "js-reverse-absorption-matrix",
+    command: "npm run check:js-reverse-absorption-matrix",
+    tier: "required",
+    covers: ["js-reverse-reference-ledger", "promotion-requirements", "direct-import-boundary"],
+  },
+  {
     id: "active-skill-sync",
     command: "npm run check:active-skill-sync",
     tier: "required",

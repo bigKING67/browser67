@@ -33,6 +33,7 @@ function assertPackage() {
   assert.equal(pkg.scripts?.["check:browser67-naming"], "node contracts/browser67-naming-contract.mjs");
   assert.equal(pkg.scripts?.["check:js-reverse-upstream"], "node contracts/js-reverse-upstream-reference-contract.mjs");
   assert.equal(pkg.scripts?.["check:js-reverse-upstream-audit"], "node contracts/js-reverse-upstream-audit-contract.mjs");
+  assert.equal(pkg.scripts?.["check:js-reverse-absorption-matrix"], "node contracts/js-reverse-absorption-matrix-contract.mjs");
   assert.equal(pkg.scripts?.["js-reverse:upstream-audit"], "node scripts/js-reverse-upstream-audit.mjs");
   assert.equal(pkg.scripts?.["skills:active:diff"], "node scripts/active-skill-sync.mjs --json");
   assert.equal(pkg.scripts?.["skills:active:check"], "node scripts/active-skill-sync.mjs --check");

@@ -44,12 +44,15 @@ These repositories are reference only:
 | `zhizhuodemao/js-reverse-mcp` | `0e19693f496b4600dbc9381e76293d7afa96c001` | external JS reverse MCP reference candidate |
 
 Machine-readable details live in `references.json`.
+Per-reference absorption decisions live in `absorption-matrix.md`; keep it in
+sync with `references.json` through `npm run check:js-reverse-absorption-matrix`.
 
 Audit current remote freshness with:
 
 ```bash
 npm run js-reverse:upstream-audit -- --json
 npm run check:js-reverse-upstream-audit
+npm run check:js-reverse-absorption-matrix
 ```
 
 The audit is read-only. It compares every `reviewed_commit` in
