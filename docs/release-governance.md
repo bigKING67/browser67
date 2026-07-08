@@ -44,6 +44,10 @@ This adds the same hard requirement as:
 npm run check:optional-live-proofs -- --strict
 ```
 
+In non-strict release readiness, missing optional live proofs are reported as
+advisories rather than warnings, because they require external target hosts or
+approved IdP tenants and are not local-release blockers.
+
 ## Optional live proofs
 
 Optional live proofs are not faked or downgraded into required local checks;

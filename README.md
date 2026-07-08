@@ -651,7 +651,7 @@ local release gate should fail on optional gaps too.
 governance without requiring a clean worktree. It checks package/package-lock
 version consistency, current `CHANGELOG.md` coverage, release docs, canonical
 and legacy bin entries, `verify` coverage, change-set grouping, and optional
-proof status. Use `npm run release:ready` after committing and pushing; it runs
+proof status as an advisory. Use `npm run release:ready` after committing and pushing; it runs
 `npm run verify`, then requires the worktree to be clean and synced with
 `origin/main`. Use `npm run release:ready:strict` only when cross-OS native and
 approved external IdP optional live proofs are part of the release acceptance

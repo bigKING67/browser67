@@ -94,6 +94,10 @@ function warning(id, evidence, next = "") {
   return { id, evidence, next };
 }
 
+function advisory(id, evidence, next = "") {
+  return { id, evidence, next };
+}
+
 function semverLike(version) {
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(String(version || ""));
 }
@@ -220,11 +224,13 @@ async function buildReadiness(args) {
       "Use npm run release:ready after syncing origin/main.",
     ));
   }
+
+  const advisories = [];
   if (!args.strict_optional_proofs && !optionalProofAudit.complete) {
-    warnings.push(warning(
+    advisories.push(advisory(
       "optional_live_proofs_incomplete_non_strict",
       `satisfied=${optionalProofAudit.summary.satisfied_count}/${optionalProofAudit.summary.required_count} missing=${optionalProofAudit.summary.missing_count}`,
-      "Use npm run release:ready:strict only when cross-OS and approved external IdP proofs are required.",
+      "Optional live proofs require cross-OS hosts or approved external IdP tenants; use npm run release:ready:strict only when they are release acceptance criteria.",
     ));
   }
 
@@ -244,9 +250,11 @@ async function buildReadiness(args) {
     },
     checks,
     warnings,
+    advisories,
     summary: {
       failed_count: failed.length,
       warning_count: warnings.length,
+      advisory_count: advisories.length,
       changed_paths_count: status.ok ? status.changed_paths.length : null,
       ahead: aheadBehind.ok ? aheadBehind.ahead : null,
       behind: aheadBehind.ok ? aheadBehind.behind : null,
@@ -258,7 +266,7 @@ async function buildReadiness(args) {
 
 function outputText(report) {
   process.stdout.write(
-    `release_readiness=${report.status} version=${report.version} failed=${report.summary.failed_count} warnings=${report.summary.warning_count}\n`,
+    `release_readiness=${report.status} version=${report.version} failed=${report.summary.failed_count} warnings=${report.summary.warning_count} advisories=${report.summary.advisory_count}\n`,
   );
   for (const item of report.checks) {
     process.stdout.write(`  - ${item.id}: ${item.ok ? "ok" : "fail"} (${item.evidence})\n`);
@@ -269,6 +277,15 @@ function outputText(report) {
   if (report.warnings.length > 0) {
     process.stdout.write("\nwarnings:\n");
     for (const item of report.warnings) {
+      process.stdout.write(`  - ${item.id}: ${item.evidence}\n`);
+      if (item.next) {
+        process.stdout.write(`    next=${item.next}\n`);
+      }
+    }
+  }
+  if (report.advisories.length > 0) {
+    process.stdout.write("\nadvisories:\n");
+    for (const item of report.advisories) {
       process.stdout.write(`  - ${item.id}: ${item.evidence}\n`);
       if (item.next) {
         process.stdout.write(`    next=${item.next}\n`);
