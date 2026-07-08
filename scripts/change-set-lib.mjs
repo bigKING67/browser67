@@ -267,8 +267,8 @@ const GROUPS = [
     ],
     patterns: [
       /^UPSTREAM\.(?:lock|review)\.json$/,
-      /^scripts\/upstream-audit\.mjs$/,
-      /^contracts\/upstream-audit-contract\.mjs$/,
+      /^scripts\/(?:upstream-audit|upstream-review-refresh-plan)\.mjs$/,
+      /^contracts\/(?:upstream-audit-contract|upstream-review-refresh-plan-contract)\.mjs$/,
       /^contracts\/upstream-review-schema-contract\.mjs$/,
       /^docs\/schemas\/upstream-review\.schema\.json$/,
       /^docs\/upstream\/genericagent(?:\/|$)/,

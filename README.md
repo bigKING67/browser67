@@ -177,7 +177,10 @@ The roots audit checks `~/.agents/skills`, `~/.codex/skills`, and
 `~/.pi/agent/skills` by default. Treat `~/.agents/skills` as the shared active
 root unless a caller explicitly selects another root. Other roots are audit-only
 until you prove an agent loader actually reads them; do not blindly sync
-browser67 skills into every root.
+browser67 skills into every root. The default npm command prints a compact
+operator summary and marks non-selected roots as
+`audit_only_not_actionable`; use `node scripts/skills-roots-audit.mjs --json`
+only when a caller needs per-skill diagnostics for audit-only roots.
 
 The sync command creates a timestamped backup under the target backup root
 before copying files. The default backup root is `<target>/.browser67-backups`;
@@ -618,10 +621,10 @@ risk notes, and per-slice verification commands. It is also plan-only and never
 stages files.
 `npm run check:readiness` turns the near-100 quality target into a deterministic
 readiness audit: it verifies required governance/docs/skill gates, reports a
-score, and lists optional hardening gaps such as pending scoped commits,
-unconfigured or invalid `ljqCtrl`, unavailable native pointer actions, local
-physical CAPTCHA proof states, cross-OS native live proof, and provider-specific
-OAuth/SSO/MFA live gates. The
+score, prints a `score_breakdown`, and lists optional hardening gaps such as
+pending scoped commits, unconfigured or invalid `ljqCtrl`, unavailable native
+pointer actions, local physical CAPTCHA proof states, cross-OS native live
+proof, and provider-specific OAuth/SSO/MFA live gates. The
 `ljqCtrl` readiness row is platform-aware and based on the same diagnostic-only
 Python capability probe as `npm run check:ljqctrl`, not just the presence of
 environment variables. The bundled GenericAgent `ljqCtrl` implementation is
@@ -646,12 +649,21 @@ pointer with `npm run plan:optional-live-proofs -- --json`, the active proof
 directory, and the missing proof ids, so callers can render the next collection
 command without recomputing the audit. It is read-only; use `--strict` when a
 local release gate should fail on optional gaps too.
+The headline `score` keeps the historical all-in optional-proof model. The
+`score_breakdown` additionally separates `local_release_score` from
+`external_optional_score`, and reports whether `external_proofs_required` and
+`blocking` are true. Normal local release work should read
+`local_release_score=100.000` with `external_proofs_required=false` as local
+release-ready even when cross-OS or approved-IdP proof collection remains open.
 
 `npm run check:release-readiness` validates release metadata and release
 governance without requiring a clean worktree. It checks package/package-lock
 version consistency, current `CHANGELOG.md` coverage, release docs, canonical
 and legacy bin entries, `verify` coverage, change-set grouping, and optional
-proof status as an advisory. Use `npm run release:ready` after committing and pushing; it runs
+proof status as a compact advisory. Add
+`-- --show-optional-proof-detail` when you intentionally want the missing proof
+ids, proof directory, and status/plan commands in the text output. Use
+`npm run release:ready` after committing and pushing; it runs
 `npm run verify`, then requires the worktree to be clean and synced with
 `origin/main`. Use `npm run release:ready:strict` only when cross-OS native and
 approved external IdP optional live proofs are part of the release acceptance
@@ -677,6 +689,14 @@ reports `upstream_review.status`, `upstream_review.stale`, and
 `upstream_review.next_command`; `status=stale` means remote `main` has moved
 past the reviewed commit and the ledger must be refreshed after a new manual
 absorption review.
+`npm run upstream:review-refresh-plan` automates the no-write refresh plan for
+that manual-review ledger. It runs the latest-temp upstream audit, prints the
+reviewed remote commit, merge mode, changed files, preserve-feature checklist,
+and the exact confirmation command. Use `-- --json` for machine-readable plans,
+`-- --print-review` to inspect the proposed `UPSTREAM.review.json` body, and
+only use `-- --write --confirm-reviewed` after the upstream diff has been
+manually reviewed. Follow a write with `npm run check:upstream-review` and, for
+remote-main drift, `npm run upstream:audit:latest`.
 `npm run check:upstream-audit` exercises deterministic fixture scenarios for
 aligned sources, changed files, final-newline-only drift, missing local bridge
 features, missing source, latest-temp local clones, reviewed remote drift, and
@@ -757,8 +777,10 @@ To check or resync against the local GenericAgent checkout:
 
 ```bash
 npm run upstream:audit
+npm run upstream:review-refresh-plan
 npm run check:upstream-audit
 npm run check:upstream-review
+npm run check:upstream-review-refresh-plan
 npm run js-reverse:upstream-audit -- --json
 npm run check:js-reverse-upstream-audit
 npm run check:js-reverse-absorption-matrix
@@ -787,6 +809,11 @@ Use `npm run upstream:audit:latest` for a no-write temporary clone of upstream
 `recommended_action` entries so future updates can be selectively absorbed, plus
 `upstream_review.status/stale/next_command` so callers can tell whether the
 review ledger is current or stale.
+Use `npm run upstream:review-refresh-plan` immediately after that manual
+latest-temp review when the ledger is stale. It is preview-only by default;
+`-- --json` preserves the complete plan for tooling, `-- --print-review` prints
+the proposed ledger body, and `-- --write --confirm-reviewed` is the explicit
+write path for `UPSTREAM.review.json`.
 When remote `main` has already been reviewed, `UPSTREAM.review.json` suppresses
 the pending-review warning while still keeping `safe_to_direct_sync:false` for
 known keep-local bridge drift.

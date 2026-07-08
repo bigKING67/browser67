@@ -265,12 +265,15 @@ function auditRoot({ rootInput, sharedRootPath, skills }) {
   }, {});
   const driftCount = managed.filter((row) => row.status !== "current").length;
   const brokenSymlinkCount = managed.filter((row) => row.status === "broken_symlink").length;
+  const auditOnly = role !== "shared_active_root";
   return {
     input: rootInput,
     path: rootPath,
     role,
     browser67_managed_default_target: role === "shared_active_root",
     sync_policy: role === "shared_active_root" ? "sync_allowed_when_intentional" : "audit_only_do_not_blind_sync",
+    actionability: auditOnly ? "audit_only_not_actionable" : "active_root_actionable",
+    actionable: auditOnly ? false : driftCount > 0,
     root_status: kind.kind,
     exists: kind.exists,
     is_symlink: kind.is_symlink,
@@ -297,7 +300,7 @@ function buildRecommendations({ roots, sharedRootPath }) {
     "Do not blindly sync browser67 skills into audit-only roots; first prove that an agent loader actually reads that root.",
   ];
   const broken = roots.flatMap((root) => root.managed_skills
-    .filter((skill) => skill.status === "broken_symlink")
+    .filter((skill) => skill.status === "broken_symlink" && root.path === sharedRootPath)
     .map((skill) => `${root.path}/${skill.skill}`));
   if (broken.length > 0) {
     recommendations.push(`Replace broken symlinks with copy installs via skills:active:sync: ${broken.join(", ")}`);
@@ -308,7 +311,7 @@ function buildRecommendations({ roots, sharedRootPath }) {
   }
   const auditDrift = roots.filter((root) => root.path !== sharedRootPath && root.summary.drift_count > 0);
   if (auditDrift.length > 0) {
-    recommendations.push("Audit-only roots contain missing or stale browser67-managed skills; leave them unchanged unless that agent root is confirmed active.");
+    recommendations.push("Audit-only roots contain missing, stale, or broken browser67-managed skills; this is not actionable until that specific agent loader is confirmed active.");
   }
   return recommendations;
 }
@@ -345,6 +348,8 @@ function buildReport(options) {
       existing_root_count: roots.filter((root) => root.exists).length,
       managed_skill_location_count: duplicateManagedSkills.reduce((total, row) => total + row.location_count, 0),
       drift_root_count: roots.filter((root) => root.summary.drift_count > 0).length,
+      actionable_drift_root_count: roots.filter((root) => root.actionable === true).length,
+      audit_only_not_actionable_root_count: roots.filter((root) => root.actionability === "audit_only_not_actionable" && root.summary.drift_count > 0).length,
       broken_symlink_count: roots.reduce((total, root) => total + root.summary.broken_symlink_count, 0),
     },
     recommendations: buildRecommendations({ roots, sharedRootPath }),
@@ -353,12 +358,16 @@ function buildReport(options) {
 
 function formatText(report) {
   const lines = [
-    `skills_roots_audit=ok roots=${report.summary.root_count} existing=${report.summary.existing_root_count} shared=${report.shared_root}`,
+    `skills_roots_audit=ok roots=${report.summary.root_count} existing=${report.summary.existing_root_count} shared=${report.shared_root} actionable_drift_roots=${report.summary.actionable_drift_root_count} audit_only_not_actionable=${report.summary.audit_only_not_actionable_root_count}`,
   ];
   for (const root of report.roots) {
-    lines.push(`  - ${root.role} path=${root.path} status=${root.root_status} policy=${root.sync_policy} current=${root.summary.current_count} drift=${root.summary.drift_count} missing=${root.summary.missing_count} broken_symlinks=${root.summary.broken_symlink_count}`);
-    for (const skill of root.managed_skills) {
-      lines.push(`      ${skill.skill}: ${skill.status} install_model=${skill.install_model} changed=${skill.changed.length} extra=${skill.extra.length}`);
+    lines.push(`  - ${root.role} path=${root.path} status=${root.root_status} actionability=${root.actionability} current=${root.summary.current_count} drift=${root.summary.drift_count} missing=${root.summary.missing_count} broken_symlinks=${root.summary.broken_symlink_count}`);
+    if (root.actionability === "active_root_actionable" || root.summary.drift_count === 0) {
+      for (const skill of root.managed_skills) {
+        lines.push(`      ${skill.skill}: ${skill.status} install_model=${skill.install_model} changed=${skill.changed.length} extra=${skill.extra.length}`);
+      }
+    } else {
+      lines.push("      detail=hidden; rerun node scripts/skills-roots-audit.mjs --json for per-skill audit-only diagnostics");
     }
   }
   lines.push("recommendations:");

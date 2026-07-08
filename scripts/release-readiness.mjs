@@ -15,6 +15,7 @@ function parseArgs(argv) {
     require_clean: false,
     require_synced: false,
     strict_optional_proofs: false,
+    show_optional_proof_detail: false,
   };
   for (const token of argv) {
     if (token === "--json") {
@@ -31,6 +32,10 @@ function parseArgs(argv) {
     }
     if (token === "--strict-optional-proofs") {
       parsed.strict_optional_proofs = true;
+      continue;
+    }
+    if (token === "--show-optional-proof-detail") {
+      parsed.show_optional_proof_detail = true;
       continue;
     }
     if (!token) {
@@ -94,8 +99,8 @@ function warning(id, evidence, next = "") {
   return { id, evidence, next };
 }
 
-function advisory(id, evidence, next = "") {
-  return { id, evidence, next };
+function advisory(id, evidence, next = "", details = {}) {
+  return { id, evidence, next, details };
 }
 
 function semverLike(version) {
@@ -227,10 +232,20 @@ async function buildReadiness(args) {
 
   const advisories = [];
   if (!args.strict_optional_proofs && !optionalProofAudit.complete) {
+    const optionalProofScope = optionalProofAudit.summary.local_missing_count > 0
+      ? "local_and_external_optional"
+      : "external_optional";
     advisories.push(advisory(
       "optional_live_proofs_incomplete_non_strict",
-      `satisfied=${optionalProofAudit.summary.satisfied_count}/${optionalProofAudit.summary.required_count} missing=${optionalProofAudit.summary.missing_count}`,
+      `satisfied=${optionalProofAudit.summary.satisfied_count}/${optionalProofAudit.summary.required_count} missing=${optionalProofAudit.summary.missing_count} scope=${optionalProofScope}`,
       "Optional live proofs require cross-OS hosts or approved external IdP tenants; use npm run release:ready:strict only when they are release acceptance criteria.",
+      {
+        proof_dir: optionalProofAudit.proof_dir,
+        missing: optionalProofAudit.missing,
+        local_missing: optionalProofAudit.local_missing,
+        plan_command: "npm run plan:optional-live-proofs",
+        status_command: "npm run proof:optional-live-status",
+      },
     ));
   }
 
@@ -247,6 +262,9 @@ async function buildReadiness(args) {
       require_clean: args.require_clean,
       require_synced: args.require_synced,
       strict_optional_proofs: args.strict_optional_proofs,
+    },
+    output: {
+      show_optional_proof_detail: args.show_optional_proof_detail,
     },
     checks,
     warnings,
@@ -289,6 +307,13 @@ function outputText(report) {
       process.stdout.write(`  - ${item.id}: ${item.evidence}\n`);
       if (item.next) {
         process.stdout.write(`    next=${item.next}\n`);
+      }
+      if (report.output.show_optional_proof_detail && item.details && Object.keys(item.details).length > 0) {
+        const missing = [...(item.details.local_missing ?? []), ...(item.details.missing ?? [])];
+        process.stdout.write(`    detail_missing=${missing.join(",") || "none"}\n`);
+        process.stdout.write(`    detail_proof_dir=${item.details.proof_dir ?? "unknown"}\n`);
+        process.stdout.write(`    detail_plan=${item.details.plan_command ?? "npm run plan:optional-live-proofs"}\n`);
+        process.stdout.write(`    detail_status=${item.details.status_command ?? "npm run proof:optional-live-status"}\n`);
       }
     }
   }

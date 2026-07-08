@@ -418,8 +418,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "release:ready:strict",
     "upstream:audit",
     "upstream:audit:latest",
+    "upstream:review-refresh-plan",
     "check:upstream-audit",
     "check:upstream-review",
+    "check:upstream-review-refresh-plan",
     "js-reverse:upstream-audit",
     "check:js-reverse-upstream-audit",
     "check:js-reverse-absorption-matrix",
@@ -478,8 +480,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:release-readiness",
         "upstream:audit",
         "upstream:audit:latest",
+        "upstream:review-refresh-plan",
         "check:upstream-audit",
         "check:upstream-review",
+        "check:upstream-review-refresh-plan",
         "js-reverse:upstream-audit",
         "check:js-reverse-upstream-audit",
         "check:js-reverse-absorption-matrix",
@@ -526,8 +530,10 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run release:ready",
         "npm run upstream:audit",
         "npm run upstream:audit:latest",
+        "npm run upstream:review-refresh-plan",
         "npm run check:upstream-audit",
         "npm run check:upstream-review",
+        "npm run check:upstream-review-refresh-plan",
         "npm run js-reverse:upstream-audit",
         "npm run check:js-reverse-upstream-audit",
         "npm run skills:active:diff",
@@ -633,6 +639,32 @@ function computeScore(requiredChecks, optionalGaps) {
   return Math.round(score * 1000) / 1000;
 }
 
+function isExternalOptionalProofGap(gap = {}) {
+  return gap.id === "cross_os_native_live_not_proven"
+    || gap.id === "complex_idp_optional_live_not_proven";
+}
+
+function computeScoreBreakdown(requiredChecks, optionalGaps, strict) {
+  const failedRequired = requiredChecks.filter((check) => check.required && !check.ok);
+  const requiredDeduction = failedRequired.length * 1.0;
+  const localOptionalDeduction = optionalGaps
+    .filter((gap) => !isExternalOptionalProofGap(gap))
+    .reduce((total, gap) => total + gap.deduction, 0);
+  const externalOptionalDeduction = optionalGaps
+    .filter((gap) => isExternalOptionalProofGap(gap))
+    .reduce((total, gap) => total + gap.deduction, 0);
+  const roundScore = (value) => Math.round(Math.max(0, value) * 1000) / 1000;
+  return {
+    local_release_score: roundScore(100 - requiredDeduction - localOptionalDeduction),
+    external_optional_score: roundScore(100 - requiredDeduction - localOptionalDeduction - externalOptionalDeduction),
+    local_optional_deduction: Math.round(localOptionalDeduction * 1000) / 1000,
+    external_optional_deduction: Math.round(externalOptionalDeduction * 1000) / 1000,
+    external_optional_gap_count: optionalGaps.filter((gap) => isExternalOptionalProofGap(gap) && gap.deduction > 0).length,
+    local_optional_gap_count: optionalGaps.filter((gap) => !isExternalOptionalProofGap(gap) && gap.deduction > 0).length,
+    external_proofs_required: strict === true,
+  };
+}
+
 function statusFor(score, requiredOk, optionalGaps, strict) {
   if (!requiredOk) return "not_ready";
   if (strict && optionalGaps.some((gap) => gap.deduction > 0)) return "strict_optional_gaps";
@@ -666,12 +698,18 @@ async function buildAudit(args) {
   const optional_gaps = await buildOptionalGaps({ report });
   const required_ok = required_checks.every((check) => !check.required || check.ok);
   const score = computeScore(required_checks, optional_gaps);
+  const score_breakdown = computeScoreBreakdown(required_checks, optional_gaps, args.strict);
+  const blocking = !(required_ok && score >= args.fail_below && (!args.strict || optional_gaps.every((gap) => gap.deduction === 0)));
 
   return {
-    ok: required_ok && score >= args.fail_below && (!args.strict || optional_gaps.every((gap) => gap.deduction === 0)),
+    ok: !blocking,
     status: statusFor(score, required_ok, optional_gaps, args.strict),
     check: "tmwd-readiness-audit",
     score,
+    score_breakdown: {
+      ...score_breakdown,
+      blocking,
+    },
     fail_below: args.fail_below,
     strict: args.strict,
     required_ok,
@@ -690,6 +728,9 @@ async function buildAudit(args) {
 function outputText(audit) {
   process.stdout.write(
     `readiness_audit=${audit.status} score=${audit.score.toFixed(3)} required_ok=${audit.required_ok} optional_gaps=${audit.summary.optional_gap_count}\n`,
+  );
+  process.stdout.write(
+    `score_breakdown local_release_score=${audit.score_breakdown.local_release_score.toFixed(3)} external_optional_score=${audit.score_breakdown.external_optional_score.toFixed(3)} external_proofs_required=${audit.score_breakdown.external_proofs_required} blocking=${audit.score_breakdown.blocking}\n`,
   );
   process.stdout.write(
     `change_set changed=${audit.summary.changed_paths_count} grouped=${audit.summary.grouped_paths_count} ungrouped=${audit.summary.ungrouped_paths_count} groups=${audit.summary.scoped_commit_groups}\n`,

@@ -35,12 +35,14 @@ function assertPackage() {
   assert.equal(pkg.scripts?.["check:js-reverse-upstream-audit"], "node contracts/js-reverse-upstream-audit-contract.mjs");
   assert.equal(pkg.scripts?.["check:js-reverse-absorption-matrix"], "node contracts/js-reverse-absorption-matrix-contract.mjs");
   assert.equal(pkg.scripts?.["js-reverse:upstream-audit"], "node scripts/js-reverse-upstream-audit.mjs");
+  assert.equal(pkg.scripts?.["upstream:review-refresh-plan"], "node scripts/upstream-review-refresh-plan.mjs");
+  assert.equal(pkg.scripts?.["check:upstream-review-refresh-plan"], "node contracts/upstream-review-refresh-plan-contract.mjs");
   assert.equal(pkg.scripts?.["skills:active:diff"], "node scripts/active-skill-sync.mjs --json");
   assert.equal(pkg.scripts?.["skills:active:check"], "node scripts/active-skill-sync.mjs --check");
   assert.equal(pkg.scripts?.["skills:active:sync"], "node scripts/active-skill-sync.mjs --write");
   assert.equal(pkg.scripts?.["skills:active:backups"], "node scripts/active-skill-sync.mjs --list-backups --json");
   assert.equal(pkg.scripts?.["skills:active:restore"], "node scripts/active-skill-sync.mjs --restore");
-  assert.equal(pkg.scripts?.["skills:roots:audit"], "node scripts/skills-roots-audit.mjs --json");
+  assert.equal(pkg.scripts?.["skills:roots:audit"], "node scripts/skills-roots-audit.mjs");
   assert.equal(pkg.scripts?.["check:active-skill-sync"], "node contracts/active-skill-sync-contract.mjs");
   assert.equal(pkg.scripts?.["check:skills-roots-audit"], "node contracts/skills-roots-audit-contract.mjs");
   assert.equal(pkg.scripts?.["extension:doctor"], "node scripts/extension-install-doctor.mjs --json");

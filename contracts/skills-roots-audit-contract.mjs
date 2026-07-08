@@ -77,11 +77,14 @@ function main() {
     const shared = report.roots.find((root) => root.path === sharedRoot);
     assert.equal(shared.role, "shared_active_root");
     assert.equal(shared.sync_policy, "sync_allowed_when_intentional");
+    assert.equal(shared.actionability, "active_root_actionable");
     assert.equal(shared.summary.current_count, 3);
     assert.equal(shared.summary.drift_count, 0);
 
     const stale = report.roots.find((root) => root.path === staleRoot);
     assert.equal(stale.sync_policy, "audit_only_do_not_blind_sync");
+    assert.equal(stale.actionability, "audit_only_not_actionable");
+    assert.equal(stale.actionable, false);
     const staleJsReverse = stale.managed_skills.find((skill) => skill.skill === "js-reverse");
     assert.equal(staleJsReverse.status, "drift");
     assert.deepEqual(staleJsReverse.changed, ["SKILL.md"]);
@@ -97,11 +100,14 @@ function main() {
     const missing = report.roots.find((root) => root.path === missingRoot);
     assert.equal(missing.root_status, "missing");
     assert.equal(missing.summary.missing_count, 3);
+    assert.equal(report.summary.actionable_drift_root_count, 0);
+    assert.equal(report.summary.audit_only_not_actionable_root_count >= 1, true);
 
     const duplicateJsReverse = report.duplicate_managed_skills.find((row) => row.skill === "js-reverse");
     assert.equal(duplicateJsReverse.location_count, 2);
     assert.equal(report.recommendations.some((item) => item.includes("Do not blindly sync")), true);
     assert.equal(report.recommendations.some((item) => item.includes("selected active root")), true);
+    assert.equal(report.recommendations.some((item) => item.includes("not actionable until")), true);
 
     process.stdout.write(`${JSON.stringify({
       ok: true,
