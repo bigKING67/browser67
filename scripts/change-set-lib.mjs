@@ -93,6 +93,7 @@ const GROUPS = [
       /^src\/(?:evidence-schema|run-lifecycle)\.mjs$/,
       /^contracts\/browser-screenshot-live-smoke\.mjs$/,
       /^contracts\/browser67-browser-mcp-contract(?:\.mjs|\/)/,
+      /^contracts\/browser-job-persistence-contract\.mjs$/,
     ],
   },
   {
@@ -218,6 +219,7 @@ const GROUPS = [
       /^agents\/openai\.yaml$/,
       /^package-lock\.json$/,
       /^package\.json$/,
+      /^\.github\/workflows\/ci\.yml$/,
       /^bin\/(?:browser67|tmwd-browser|tmwd-browser-mcp)\.mjs$/,
       /^contracts\/(?:browser67-naming-contract|runtime-home-contract|setup-extension-contract|extension-install-doctor-contract|pi-package-contract)\.mjs$/,
       /^docs\/(?:maintenance-quality-model|migration-browser67|naming-and-compatibility|project-structure|release-governance)\.md$/,
@@ -243,7 +245,7 @@ const GROUPS = [
     ],
     patterns: [
       /^README\.md$/,
-      /^docs\/(?:active-skill-runtime-model|agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs)\.md$/,
+      /^docs\/(?:active-skill-runtime-model|agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs|native-live-linux|native-live-windows)\.md$/,
       /^docs\/js-reverse(?:-SOP\.md|\/)/,
       /^skills\/js-reverse\//,
       /^skills\/tmwd-browser-mcp\//,
@@ -289,7 +291,7 @@ const GROUPS = [
     ],
     patterns: [
       /^package\.json$/,
-      /^scripts\/(?:verify|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|setup-captcha-provider-jfbym|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync|skills-roots-audit)\.mjs$/,
+      /^scripts\/(?:verify|verification-manifest|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|setup-captcha-provider-jfbym|native-live-proof-gate|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync|skills-roots-audit)\.mjs$/,
       /^contracts\/active-skill-sync-contract\.mjs$/,
       /^contracts\/skills-roots-audit-contract\.mjs$/,
       /^contracts\/runtime-artifact-cleanup-contract\.mjs$/,

@@ -36,6 +36,10 @@ two paired MCP surfaces:
    `delivery_summary` so tab cleanup state is visible.
 5. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
    `js-reverse new_page`.
+6. For Linux/Windows portability proof, run `npm run check:native-live` on the
+   matching interactive GUI host first. Run `proof:native-live` only with the
+   explicit physical/confirm environment flags and `--write`; never fabricate a
+   target-OS proof on another platform.
 
 ## Quality bar
 
@@ -45,6 +49,8 @@ two paired MCP surfaces:
 - Keep large outputs bounded; write screenshots, run records, and rebuild
   bundles as repo-external artifacts with path/hash/count metadata.
 - Do not silently fallback from browser67 login-state tasks to remote CDP.
+- Treat headless CI, SSH-only Linux, and locked/disconnected Windows sessions as
+  insufficient for `native-live-linux` / `native-live-win32` proof.
 - Keep docs, skills, schemas, and contracts synchronized for externally visible
   behavior changes.
 - Run `npm run check:mcp`, `npm run check:js-reverse-mcp`,

@@ -145,7 +145,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
     },
   },
   browser_job_ops: {
-    description: "Start, inspect, fetch, and best-effort cancel in-process browser execution jobs backed by browser_execute_js.",
+    description: "Start, inspect, fetch, persist, and recover run-backed browser execution jobs. Cancellation is explicit intent-only once Runtime.evaluate is in flight.",
     inputSchema: {
       type: "object",
       properties: {

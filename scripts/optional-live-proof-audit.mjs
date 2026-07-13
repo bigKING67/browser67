@@ -291,8 +291,14 @@ function validateProof(proof, requirement) {
     errors.push("placeholder_command_not_accepted");
   }
   if (requirement.type === "native_live") {
+    if (proof.provider_id !== "native-os") {
+      errors.push("native_provider_id_must_be_native_os");
+    }
     if (!Array.isArray(proof.actions) || proof.actions.length === 0) {
       errors.push("native_actions_required");
+    }
+    if (!Array.isArray(proof.actions) || !proof.actions.includes("get_window_rect")) {
+      errors.push("native_get_window_rect_action_required");
     }
     if (!Array.isArray(proof.actions) || !proof.actions.includes("click")) {
       errors.push("native_click_action_required");
@@ -311,6 +317,18 @@ function validateProof(proof, requirement) {
       }
       if (proof.evidence.secrets_redacted !== true) {
         errors.push("native_secrets_redacted_must_be_true");
+      }
+      if (proof.evidence.window_rect_verified !== true) {
+        errors.push("native_window_rect_verified_must_be_true");
+      }
+      if (proof.evidence.drag_completed !== true) {
+        errors.push("native_drag_completed_must_be_true");
+      }
+      if (proof.evidence.click_completed !== true) {
+        errors.push("native_click_completed_must_be_true");
+      }
+      if (proof.evidence.browser_private_state_access !== false) {
+        errors.push("native_browser_private_state_access_must_be_false");
       }
     }
   }
@@ -463,6 +481,18 @@ function buildProofRedactionChecklist(proof, requirement) {
         "native_no_fullscreen_screenshot",
         proof?.evidence?.fullscreen_screenshot === false,
         "Native proof must not rely on fullscreen screenshots.",
+      ),
+      checklistItem(
+        "native_actions_verified",
+        proof?.evidence?.window_rect_verified === true
+          && proof?.evidence?.drag_completed === true
+          && proof?.evidence?.click_completed === true,
+        "Native proof must verify get_window_rect, drag, and click against the managed fixture.",
+      ),
+      checklistItem(
+        "native_no_browser_private_state",
+        proof?.evidence?.browser_private_state_access === false,
+        "Native proof must explicitly avoid browser private state access.",
       ),
     );
   }

@@ -1,5 +1,5 @@
 const CAPABILITIES = {
-  schema_revision: 2,
+  schema_revision: 3,
   server_revision: "managed-tabs-v4",
   supports_select_or_create: true,
   supports_tabs_close: true,
@@ -13,6 +13,11 @@ const CAPABILITIES = {
   supports_screenshot_viewport_override: true,
   supports_screenshot_layout_metrics: true,
   supports_design_craft_l4_evidence_manifest: true,
+  supports_durable_jobs: true,
+  supports_job_restart_recovery: true,
+  supports_job_abort: false,
+  supports_persistent_debugger: false,
+  supports_protocol_solver_apply: false,
   managed_registry_default_path: "~/.browser67/tab-workspace/managed-tabs.json",
   legacy_managed_registry_path: "~/.tmwd-browser-mcp/tab-workspace/managed-tabs.json",
 };

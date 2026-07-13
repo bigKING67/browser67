@@ -14,6 +14,7 @@ function parseArgs(argv) {
     json: false,
     require_clean: false,
     require_synced: false,
+    require_current_upstreams: false,
     strict_optional_proofs: false,
     show_optional_proof_detail: false,
   };
@@ -28,6 +29,10 @@ function parseArgs(argv) {
     }
     if (token === "--require-synced") {
       parsed.require_synced = true;
+      continue;
+    }
+    if (token === "--require-current-upstreams") {
+      parsed.require_current_upstreams = true;
       continue;
     }
     if (token === "--strict-optional-proofs") {
@@ -91,6 +96,61 @@ function gitAheadBehind() {
   };
 }
 
+function gitVersionAnchor(version) {
+  const result = runGit([
+    "log",
+    "-1",
+    "--format=%H",
+    "-S",
+    `\"version\": \"${version}\"`,
+    "--",
+    "package.json",
+  ]);
+  if (!result.ok || !result.stdout) {
+    return { ok: false, commit: null, commits_after: null, error: result.stderr || "version anchor not found" };
+  }
+  const count = runGit(["rev-list", "--count", `${result.stdout}..HEAD`]);
+  return {
+    ok: count.ok,
+    commit: result.stdout,
+    commits_after: count.ok ? Number(count.stdout) : null,
+    error: count.ok ? "" : count.stderr || count.stdout,
+  };
+}
+
+function changelogSection(text, title) {
+  const lines = String(text).split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === `## ${title}`);
+  if (start < 0) return "";
+  const relativeEnd = lines.slice(start + 1).findIndex((line) => /^##\s+/.test(line));
+  const end = relativeEnd < 0 ? lines.length : start + 1 + relativeEnd;
+  return lines.slice(start + 1, end).join("\n");
+}
+
+function hasChangelogBullet(text) {
+  return /^\s*-\s+\S/m.test(String(text));
+}
+
+function runNodeJson(script, args = []) {
+  const result = spawnSync(process.execPath, [script, ...args], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      report: null,
+      error: String(result.stderr || result.stdout || `${script} failed`).trim(),
+    };
+  }
+  try {
+    return { ok: true, report: JSON.parse(String(result.stdout || "").trim()), error: "" };
+  } catch (error) {
+    return { ok: false, report: null, error: `invalid JSON from ${script}: ${String(error?.message ?? error)}` };
+  }
+}
+
 function check(id, ok, evidence, next = "") {
   return { id, ok: Boolean(ok), evidence, next };
 }
@@ -122,6 +182,7 @@ async function buildReadiness(args) {
   const verifySource = readText("scripts/verify.mjs");
   const status = gitStatus();
   const aheadBehind = gitAheadBehind();
+  const versionAnchor = gitVersionAnchor(pkg.version);
   const changeSet = buildChangeSetReport();
   const optionalProofAudit = await buildOptionalLiveProofAudit({});
 
@@ -137,9 +198,9 @@ async function buildReadiness(args) {
     check(
       "release_scripts_registered",
       pkg.scripts?.["check:release-readiness"] === "node scripts/release-readiness.mjs"
-        && typeof pkg.scripts?.["release:ready"] === "string"
-        && typeof pkg.scripts?.["release:ready:strict"] === "string",
-      "check:release-readiness, release:ready, release:ready:strict",
+        && pkg.scripts?.["release:ready"]?.includes("--require-current-upstreams")
+        && pkg.scripts?.["release:ready:strict"]?.includes("--require-current-upstreams"),
+      "check:release-readiness plus current-upstream strict release scripts",
     ),
     check(
       "verify_includes_release_readiness",
@@ -151,6 +212,15 @@ async function buildReadiness(args) {
       changelog.includes(`## ${pkg.version} - `),
       `CHANGELOG.md heading for ${pkg.version}`,
       "Add a dated CHANGELOG.md entry before declaring a release-ready browser67 version.",
+    ),
+    check(
+      "changelog_unreleased_covers_post_version_changes",
+      versionAnchor.ok
+        && (versionAnchor.commits_after === 0 || hasChangelogBullet(changelogSection(changelog, "Unreleased"))),
+      versionAnchor.ok
+        ? `version_anchor=${versionAnchor.commit.slice(0, 12)} commits_after=${versionAnchor.commits_after} unreleased_has_entries=${hasChangelogBullet(changelogSection(changelog, "Unreleased"))}`
+        : versionAnchor.error,
+      "Add a non-empty CHANGELOG.md Unreleased section for material commits made after the current version was introduced.",
     ),
     check(
       "release_governance_doc",
@@ -202,6 +272,27 @@ async function buildReadiness(args) {
       aheadBehind.ok && aheadBehind.ahead === 0 && aheadBehind.behind === 0,
       aheadBehind.ok ? `behind=${aheadBehind.behind} ahead=${aheadBehind.ahead}` : aheadBehind.error,
       "Push or pull origin/main before declaring the checkout release-ready.",
+    ));
+  }
+
+  if (args.require_current_upstreams) {
+    const genericAgent = runNodeJson("scripts/upstream-audit.mjs", ["--json"]);
+    const jsReverse = runNodeJson("scripts/js-reverse-upstream-audit.mjs", ["--json", "--require-current"]);
+    checks.push(check(
+      "genericagent_upstream_review_current",
+      genericAgent.ok && genericAgent.report?.upstream_review?.status === "current",
+      genericAgent.ok
+        ? `status=${genericAgent.report?.upstream_review?.status ?? "unknown"} reviewed=${genericAgent.report?.upstream_review?.reviewed_commit ?? "none"} remote=${genericAgent.report?.remote_main?.commit ?? "none"}`
+        : genericAgent.error,
+      "Review the latest GenericAgent remote main, then refresh UPSTREAM.review.json before release.",
+    ));
+    checks.push(check(
+      "js_reverse_reference_reviews_current",
+      jsReverse.ok && jsReverse.report?.status === "current",
+      jsReverse.ok
+        ? `status=${jsReverse.report?.status ?? "unknown"} stale=${jsReverse.report?.summary?.stale_count ?? "unknown"} remote_errors=${jsReverse.report?.summary?.remote_error_count ?? "unknown"}`
+        : jsReverse.error,
+      "Review moved JS reverse references and refresh docs/upstream/js-reverse/references.json plus the absorption matrix before release.",
     ));
   }
 
@@ -261,6 +352,7 @@ async function buildReadiness(args) {
     strict: {
       require_clean: args.require_clean,
       require_synced: args.require_synced,
+      require_current_upstreams: args.require_current_upstreams,
       strict_optional_proofs: args.strict_optional_proofs,
     },
     output: {

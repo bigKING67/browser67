@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Refresh GenericAgent and JS reverse reference review ledgers against current upstream commits while preserving browser67 as the canonical implementation.
+- Add strict release-time upstream freshness checks and require non-empty Unreleased notes for commits made after the current package version anchor.
+- Add run-backed browser job checkpoints, restart recovery to explicit `interrupted` results, and accurate non-preemptive cancellation metadata.
+- Add additive capability flags for durable jobs, debugger availability, and CAPTCHA protocol-solver apply support.
+- Add tiered verification commands, a machine-readable verification manifest, and cross-platform deterministic GitHub CI with isolated remote-CDP coverage.
+- Add a separate c8 coverage-baseline CI job that uploads a machine-readable summary without imposing an invented initial threshold.
+- Add p95/p99 run-event latency observations to the deterministic performance smoke gate.
+- Add a default 500-run retention ceiling alongside age and total-size cleanup budgets.
+- Add dedicated Linux/Windows GUI native-live proof gates that verify native window geometry plus physical drag/click and automatically record sanitized target-OS proof JSON.
+
 ## 0.2.0 - 2026-07-01
 
 - Promote `browser67` as the canonical project/package/CLI/runtime identity.
@@ -14,4 +26,3 @@
   boundaries.
 - Keep GenericAgent/TMWebDriver provenance explicit through upstream lock and
   review gates.
-

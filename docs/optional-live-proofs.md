@@ -82,12 +82,12 @@ npm run proof:optional-live-template -- --all --write
 ```
 
 `--write` stores `*.template.json` files under the proof directory using
-`ok:false` and `template_only:true`, so templates do not satisfy the audit until
-the real live gate has been run and the proof is intentionally edited into a
-sanitized passing artifact. Passing proofs must remove `template_only:true` and
-replace any placeholder command with the exact approved command or runbook entry
-that produced the sanitized evidence. The local CAPTCHA physical gate writes its
-passing proof automatically after a successful run:
+`ok:false` and `template_only:true`, so templates do not satisfy the audit. Do
+not edit native templates into passing artifacts. The local CAPTCHA physical
+gate and the Linux/Windows `proof:native-live` gate write their passing proofs
+automatically after successful real-host runs. External IdP proofs must replace
+`template_only:true` and placeholder commands only with sanitized results from
+an approved real provider gate.
 
 After a Linux/Windows host or approved external IdP live gate produces a
 sanitized JSON proof, record it through the validator instead of copying files
@@ -111,11 +111,38 @@ refresh.
 
 ```bash
 npm run check:native-pointer
+npm run check:native-live
 
 TMWD_CAPTCHA_ASSIST_PHYSICAL=1 \
 TMWD_CAPTCHA_ASSIST_CONFIRM=1 \
 npm run check:captcha-assist-physical-live
 ```
+
+For Linux/Windows target-OS proof collection, use the dedicated gate instead of
+converting the CAPTCHA proof by hand:
+
+```bash
+TMWD_NATIVE_LIVE_PHYSICAL=1 \
+TMWD_NATIVE_LIVE_CONFIRM=1 \
+npm run proof:native-live -- --write --json
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:TMWD_NATIVE_LIVE_PHYSICAL = "1"
+$env:TMWD_NATIVE_LIVE_CONFIRM = "1"
+npm run proof:native-live -- --write --json
+```
+
+The native gate runs only on `linux` or `win32`, requires a real interactive GUI
+session, refuses to run without explicit confirmation and `--write`, blocks
+before pointer input when an existing proof would be overwritten, and forces the
+`native-os` provider. It creates browser67-owned local fixture tabs, verifies a
+positive-size native window rectangle plus visible drag/click completion,
+finalizes the fixture tabs, and writes only sanitized JSON. Complete host setup
+instructions are in `docs/native-live-linux.md` and
+`docs/native-live-windows.md`.
 
 The gate only counts as executable when the selected physical provider can
 actually affect the browser window. The physical wrapper performs native pointer
@@ -166,9 +193,13 @@ Rejected candidates remain visible for cleanup, but they do not block completion
 when every requirement already has a separate accepted proof. A passing proof
 must be explicit about these invariants:
 
-- Native proofs include both `click` and `drag` actions.
+- Native proofs include `get_window_rect`, `click`, and `drag` actions and set
+  `provider_id:"native-os"`.
 - Native proofs set `evidence.managed_tab_only:true`.
 - Native proofs set `evidence.fullscreen_screenshot:false`.
+- Native proofs set `evidence.window_rect_verified:true`,
+  `evidence.drag_completed:true`, `evidence.click_completed:true`, and
+  `evidence.browser_private_state_access:false`.
 - Native and IdP proofs set `evidence.secrets_redacted:true`.
 - Local CAPTCHA physical proofs set `evidence.browser_private_state_access:false`.
 - Local CAPTCHA physical proofs include visible slider movement evidence:
@@ -230,17 +261,27 @@ cross-host local CAPTCHA proofs do not satisfy the local physical gate.
   "actions": ["get_window_rect", "click", "drag"],
   "checked_at": "2026-06-17T00:00:00.000Z",
   "expires_at": "2026-09-17T00:00:00.000Z",
-  "command": "npm run check:captcha-assist-physical-live",
+  "command": "TMWD_NATIVE_LIVE_PHYSICAL=1 TMWD_NATIVE_LIVE_CONFIRM=1 npm run proof:native-live -- --write",
   "evidence": {
     "fixture": "local browser67-owned managed tab",
     "managed_tab_only": true,
     "fullscreen_screenshot": false,
-    "secrets_redacted": true
+    "secrets_redacted": true,
+    "window_rect_verified": true,
+    "window_rect_dimensions_positive": true,
+    "drag_completed": true,
+    "click_completed": true,
+    "visible_completion_verified": true,
+    "browser_private_state_access": false,
+    "finalized_managed_tabs_closed": true
   }
 }
 ```
 
-Create a separate file for Windows with `"platform": "win32"`.
+The dedicated gate creates `native-live-linux.json` or
+`native-live-win32.json` automatically on the matching target OS. Transfer only
+that sanitized JSON file to the release host, then use
+`proof:optional-live-record` for dry validation and canonical persistence.
 
 ## External IdP proof example
 

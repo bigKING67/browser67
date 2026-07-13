@@ -53,6 +53,7 @@ Fast deterministic gates:
 
 ```bash
 npm run check:mcp
+npm run check:job-persistence
 npm run check:js-reverse-mcp
 npm run check:doctor-schema
 npm run check:browser67-naming
@@ -69,6 +70,17 @@ Broad local gate:
 npm run check
 npm run verify
 npm run release:ready
+```
+
+Tiered and machine-readable gates:
+
+```bash
+npm run verify:manifest
+npm run coverage:contracts
+npm run verify:ci
+npm run verify:live
+npm run verify:platform
+npm run verify:all
 ```
 
 Live gates when browser/runtime behavior changes:

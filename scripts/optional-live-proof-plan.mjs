@@ -10,6 +10,7 @@ import {
 } from "./optional-live-proof-audit.mjs";
 import { detectNativeInputCapabilities } from "../src/native-input.mjs";
 import { buildNativePointerReadinessReport } from "../src/native-capabilities/pointer-readiness.mjs";
+import { nativeLiveCommand } from "./native-live-proof-gate.mjs";
 
 const PHYSICAL_GATE_COMMAND = "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live";
 const NATIVE_POINTER_COMMAND = "npm run check:native-pointer";
@@ -190,18 +191,23 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
   };
 }
 
-function buildNativeHostItem({ requirement, result, proofDir }) {
+function buildNativeHostItem({ requirement, result, proofDir, nativePointer }) {
   const targetPlatform = requirement.matches.platform;
   const currentHostMatches = process.platform === targetPlatform;
   const satisfied = result?.satisfied === true;
+  const liveGateCommand = nativeLiveCommand(targetPlatform);
   const nextCommand = satisfied
     ? validateProofCommand(proofDir)
-    : currentHostMatches ? PHYSICAL_GATE_COMMAND : `Run this plan on a ${targetPlatform} host`;
+    : currentHostMatches
+      ? (nativePointer?.ok === true ? liveGateCommand : NATIVE_POINTER_COMMAND)
+      : `Run this plan on a ${targetPlatform} GUI host`;
   return {
     ...baseItem({ requirement, result, proofDir }),
     status: satisfied
       ? "satisfied"
-      : currentHostMatches ? "run_on_this_host_with_explicit_opt_in" : "requires_target_platform_host",
+      : currentHostMatches
+        ? (nativePointer?.ok === true ? "run_on_this_host_with_explicit_opt_in" : "blocked_by_native_pointer")
+        : "requires_target_platform_host",
     collection_mode: "cross_os_native_physical_gate",
     current_platform: process.platform,
     target_platform: targetPlatform,
@@ -209,20 +215,28 @@ function buildNativeHostItem({ requirement, result, proofDir }) {
     commands: {
       ...baseCommands(requirement, proofDir),
       native_pointer_readiness: NATIVE_POINTER_COMMAND,
-      live_gate: PHYSICAL_GATE_COMMAND,
+      native_live_readiness: "npm run check:native-live",
+      live_gate: liveGateCommand,
     },
     prerequisites: [
-      `Run on a ${targetPlatform} host with the same repo and a browser67-managed browser fixture.`,
+      `Run on a ${targetPlatform} GUI host with the same repo, an interactive desktop session, and a visible Chrome/Edge window.`,
       "Verify native pointer click/drag support before the physical gate.",
-      "Persist only sanitized proof JSON under the repo-external proof directory.",
+      "Use the unpacked browser67 extension and local hub; headless CI/SSH-only hosts do not qualify.",
+      "Persist only the gate-generated sanitized proof JSON under the repo-external proof directory.",
     ],
     evidence_requirements: [
       `platform=${targetPlatform}`,
+      "provider_id=native-os",
+      "actions include get_window_rect",
       "actions include click",
       "actions include drag",
       "evidence.managed_tab_only=true",
       "evidence.fullscreen_screenshot=false",
       "evidence.secrets_redacted=true",
+      "evidence.window_rect_verified=true",
+      "evidence.drag_completed=true",
+      "evidence.click_completed=true",
+      "evidence.browser_private_state_access=false",
     ],
     safety_boundaries: [
       "Do not run against user unmanaged tabs.",
@@ -230,12 +244,15 @@ function buildNativeHostItem({ requirement, result, proofDir }) {
       "Do not mark templates as accepted proof.",
     ],
     collection_steps: [
-      `Move to a ${targetPlatform} GUI host with this repo and TMWD browser setup.`,
+      `Move to a ${targetPlatform} GUI host with this repo, TMWD browser setup, and an unlocked interactive desktop.`,
       "Run native pointer readiness on that host.",
-      "Run the explicit physical live gate or equivalent approved native live gate.",
-      "Record sanitized proof JSON with proof:optional-live-record.",
-      "Validate all optional proofs from the shared repo-external proof directory.",
+      "Run check:native-live to confirm the no-input target-host readiness result.",
+      "Run the explicit proof:native-live physical gate; it creates a managed fixture, verifies get_window_rect/drag/click, finalizes its tabs, and records sanitized JSON automatically.",
+      "Transfer only the generated native-live-*.json file to the release host and record it through proof:optional-live-record.",
+      "Validate all optional proofs from the release host's repo-external proof directory.",
     ],
+    native_pointer: currentHostMatches ? nativePointer : undefined,
+    permission_recovery: currentHostMatches ? nativePointer?.permission_recovery : undefined,
   };
 }
 
@@ -288,7 +305,7 @@ function buildPlanItem({ requirement, result, proofDir, nativePointer }) {
     return buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer });
   }
   if (requirement.type === "native_live") {
-    return buildNativeHostItem({ requirement, result, proofDir });
+    return buildNativeHostItem({ requirement, result, proofDir, nativePointer });
   }
   return buildIdpItem({ requirement, result, proofDir });
 }
@@ -326,7 +343,7 @@ async function buildOptionalLiveProofPlan(args = {}) {
       "This plan does not move the mouse.",
       "This plan does not open Chrome or create managed tabs.",
       "This plan does not read browser private state.",
-      "This plan does not write proof files unless the user runs the listed template command.",
+      "This plan does not write proof files unless the operator runs a listed write-enabled command.",
     ],
     items,
   };

@@ -157,6 +157,7 @@ async function assertCaptchaPlan({ callTool, cli, workspaceKey }, captchaTabId) 
   assert.equal(typeof captchaPlan.coordinate_transform?.screen_estimate?.click?.x, "number");
   assert.equal(captchaPlan.captcha_policy?.strategy_id, "captcha_router_v2");
   assert.equal(captchaPlan.captcha_policy?.protocol_solver_default_enabled, false);
+  assert.equal(captchaPlan.captcha_policy?.protocol_solver_apply_supported, false);
   assert.equal(captchaPlan.captcha_router?.selected_route?.route_type, "physical_coordinate");
   assert.equal(captchaPlan.captcha_router?.protocol_block_reason, "protocol_solver_not_requested");
   assert.equal(Array.isArray(captchaPlan.captcha_providers), true);

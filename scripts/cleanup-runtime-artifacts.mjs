@@ -11,6 +11,7 @@ import {
 
 const DEFAULT_MAX_AGE_DAYS = 30;
 const DEFAULT_MAX_TOTAL_MB = 1024;
+const DEFAULT_MAX_RUN_COUNT = 500;
 const DEFAULT_KEEP_LATEST = 50;
 const DEFAULT_ACTIVE_GRACE_MINUTES = 120;
 const DEFAULT_MAX_ITEMS = 20;
@@ -54,6 +55,7 @@ function parseArgs(argv = []) {
     json: false,
     max_age_days: numericEnv("TMWD_RUNTIME_CLEANUP_MAX_AGE_DAYS", DEFAULT_MAX_AGE_DAYS),
     max_total_mb: numericEnv("TMWD_RUNTIME_CLEANUP_MAX_TOTAL_MB", DEFAULT_MAX_TOTAL_MB),
+    max_run_count: integerEnv("TMWD_RUNTIME_CLEANUP_MAX_RUN_COUNT", DEFAULT_MAX_RUN_COUNT),
     keep_latest: integerEnv("TMWD_RUNTIME_CLEANUP_KEEP_LATEST", DEFAULT_KEEP_LATEST),
     active_grace_minutes: integerEnv(
       "TMWD_RUNTIME_CLEANUP_ACTIVE_GRACE_MINUTES",
@@ -80,6 +82,11 @@ function parseArgs(argv = []) {
     }
     if (token === "--max-total-mb") {
       parsed.max_total_mb = parseNonNegativeNumber(argv[index + 1], "--max-total-mb");
+      index += 1;
+      continue;
+    }
+    if (token === "--max-run-count") {
+      parsed.max_run_count = parseNonNegativeInteger(argv[index + 1], "--max-run-count");
       index += 1;
       continue;
     }
@@ -135,6 +142,7 @@ function usage() {
     "  --run-root <path>               Override BROWSER_STRUCTURED_RUN_ROOT.",
     "  --max-age-days <days>           Delete runs older than this; 0 disables age cleanup.",
     "  --max-total-mb <mb>             Delete oldest runs until under this budget; 0 disables size cleanup.",
+    "  --max-run-count <count>         Delete oldest runs until at or below this count; 0 disables count cleanup.",
     "  --keep-latest <count>           Always keep the latest N runs.",
     "  --active-grace-minutes <count>  Keep running runs updated within this window.",
     "  --json                          Emit machine-readable JSON.",
@@ -374,6 +382,7 @@ function summarizeRetention(args = {}) {
     max_age_days: args.max_age_days,
     max_total_mb: args.max_total_mb,
     max_total_bytes: maxTotalBytes,
+    max_run_count: args.max_run_count,
     keep_latest: args.keep_latest,
     active_grace_minutes: args.active_grace_minutes,
   };
@@ -436,6 +445,24 @@ function planRuntimeArtifactCleanup(scan, args = {}, nowMs = Date.now()) {
     .filter((decision) => decision.action === "delete")
     .reduce((sum, decision) => sum + decision.run.bytes, 0);
   let remainingBytesAfterPlan = totalBytes - plannedDeleteBytes;
+  let remainingCountAfterPlan = scan.runs.length - Array.from(decisions.values())
+    .filter((decision) => decision.action === "delete").length;
+  if (retention.max_run_count > 0 && remainingCountAfterPlan > retention.max_run_count) {
+    const sortedOldest = [...scan.runs].sort((left, right) => (
+      left.updated_at_ms - right.updated_at_ms
+      || String(left.path).localeCompare(String(right.path))
+    ));
+    for (const run of sortedOldest) {
+      if (remainingCountAfterPlan <= retention.max_run_count) break;
+      const decision = decisions.get(run.path);
+      if (!decision || decision.action === "delete" || decision.protected_reasons.length > 0) continue;
+      decision.action = "delete";
+      decision.reasons.push("max_run_count");
+      plannedDeleteBytes += run.bytes;
+      remainingBytesAfterPlan -= run.bytes;
+      remainingCountAfterPlan -= 1;
+    }
+  }
   const budgetBytes = retention.max_total_bytes;
 
   if (budgetBytes > 0 && remainingBytesAfterPlan > budgetBytes) {
@@ -455,6 +482,7 @@ function planRuntimeArtifactCleanup(scan, args = {}, nowMs = Date.now()) {
       decision.reasons.push("max_total_mb");
       plannedDeleteBytes += run.bytes;
       remainingBytesAfterPlan -= run.bytes;
+      remainingCountAfterPlan -= 1;
     }
   }
 
@@ -468,7 +496,9 @@ function planRuntimeArtifactCleanup(scan, args = {}, nowMs = Date.now()) {
     planned_delete_count: planned.length,
     planned_delete_bytes: plannedDeleteBytes,
     remaining_bytes_after_plan: remainingBytesAfterPlan,
+    remaining_count_after_plan: remainingCountAfterPlan,
     budget_satisfied_after_plan: budgetBytes <= 0 || remainingBytesAfterPlan <= budgetBytes,
+    count_satisfied_after_plan: retention.max_run_count <= 0 || remainingCountAfterPlan <= retention.max_run_count,
     planned,
     kept,
   };
@@ -550,7 +580,9 @@ function buildPayload(root, scan, plan, result, args = {}) {
     planned_delete_bytes: plan.planned_delete_bytes,
     planned_delete_mb: Number((plan.planned_delete_bytes / BYTES_PER_MB).toFixed(2)),
     remaining_bytes_after_plan: plan.remaining_bytes_after_plan,
+    remaining_count_after_plan: plan.remaining_count_after_plan,
     budget_satisfied_after_plan: plan.budget_satisfied_after_plan,
+    count_satisfied_after_plan: plan.count_satisfied_after_plan,
     deleted_count: result.deleted_count,
     deleted_bytes: result.deleted_bytes,
     planned: planned.items,
@@ -579,18 +611,23 @@ function outputText(payload) {
     `bytes_to_delete=${formatMb(payload.planned_delete_bytes)}`,
     `total=${formatMb(payload.total_bytes)}`,
     `remaining_after_plan=${formatMb(payload.remaining_bytes_after_plan)}`,
+    `remaining_runs=${payload.remaining_count_after_plan}`,
   ].join(" "));
   process.stdout.write("\n");
   process.stdout.write([
     "retention",
     `max_age_days=${payload.retention.max_age_days}`,
     `max_total_mb=${payload.retention.max_total_mb}`,
+    `max_run_count=${payload.retention.max_run_count}`,
     `keep_latest=${payload.retention.keep_latest}`,
     `active_grace_minutes=${payload.retention.active_grace_minutes}`,
   ].join(" "));
   process.stdout.write("\n");
   if (!payload.budget_satisfied_after_plan) {
     process.stdout.write("warning=budget_not_satisfied_after_plan_due_to_protected_runs\n");
+  }
+  if (!payload.count_satisfied_after_plan) {
+    process.stdout.write("warning=count_not_satisfied_after_plan_due_to_protected_runs\n");
   }
   if (payload.dry_run && payload.planned_delete_count > 0) {
     process.stdout.write("apply_with=npm run runtime:cleanup -- --write\n");

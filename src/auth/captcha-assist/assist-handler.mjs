@@ -154,6 +154,7 @@ async function handleAssistCaptcha(args) {
     return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.PROTOCOL_SOLVER_APPLY_NOT_IMPLEMENTED, {
       escalation: "manual_user_handoff",
       captcha_router_route_id: selectedRoute.route_id,
+      protocol_solver_apply_supported: false,
       next_implementation_step: "add an allowlisted provider apply path with explicit response injection contract",
     });
   }

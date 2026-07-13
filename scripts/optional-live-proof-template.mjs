@@ -124,13 +124,22 @@ function createProofTemplate(requirement, now = new Date()) {
       actions: ["get_window_rect", "click", "drag"],
       checked_at: checkedAt,
       expires_at: expiresAtFrom(checkedAt),
-      command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+      command: requirement.matches.platform === "win32"
+        ? '$env:TMWD_NATIVE_LIVE_PHYSICAL="1"; $env:TMWD_NATIVE_LIVE_CONFIRM="1"; npm run proof:native-live -- --write'
+        : "TMWD_NATIVE_LIVE_PHYSICAL=1 TMWD_NATIVE_LIVE_CONFIRM=1 npm run proof:native-live -- --write",
       evidence: {
         fixture: "local browser67-owned managed tab",
         managed_tab_only: true,
         fullscreen_screenshot: false,
         secrets_redacted: true,
-        notes: "Replace ok=false with ok=true only after this proof was produced by a real approved live gate.",
+        window_rect_verified: false,
+        window_rect_dimensions_positive: false,
+        drag_completed: false,
+        click_completed: false,
+        visible_completion_verified: false,
+        browser_private_state_access: false,
+        finalized_managed_tabs_closed: false,
+        notes: "This template is intentionally not accepted. Run proof:native-live on the target GUI OS host to generate the passing proof automatically.",
       },
     };
   }

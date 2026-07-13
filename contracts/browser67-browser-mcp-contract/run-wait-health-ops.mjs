@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { firstJsonContent } from "./rpc-content.mjs";
@@ -11,11 +10,7 @@ function sleep(ms) {
   });
 }
 
-async function assertRunWaitHealthOpsContract({ rpc, timeoutMs }) {
-  const previousRunRoot = process.env.BROWSER_STRUCTURED_RUN_ROOT;
-  const runRoot = await mkdtemp(join(tmpdir(), "tmwd-run-ops-contract-"));
-  process.env.BROWSER_STRUCTURED_RUN_ROOT = runRoot;
-  try {
+async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
     const prepareCall = await rpc.call(
       "tools/call",
       {
@@ -163,9 +158,12 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs }) {
     );
     const jobStartPayload = firstJsonContent(jobStartCall.result);
     assert.equal(jobStartPayload?.ok, true);
-    assert.equal(jobStartPayload?.job?.schema_version, "tmwd.browser.job.v1");
-    assert.equal(jobStartPayload?.job?.durable, false);
+    assert.equal(jobStartPayload?.job?.schema_version, "tmwd.browser.job.v2");
+    assert.equal(jobStartPayload?.job?.durable, true);
+    assert.equal(jobStartPayload?.job?.durability_reason, "run_backed_checkpoint");
     assert.equal(jobStartPayload?.job?.abort_supported, false);
+    assert.equal(typeof jobStartPayload?.job?.checkpoint_at, "string");
+    assert.equal(typeof jobStartPayload?.job?.execution_deadline_at, "string");
     assert.equal(typeof jobStartPayload?.job?.job_id, "string");
 
     const jobId = jobStartPayload.job.job_id;
@@ -208,21 +206,24 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs }) {
     assert.equal(jobResultPayload?.job?.status, "failed");
     assert.equal(jobResultPayload?.job?.result?.status, "failed");
     assert.equal(typeof jobResultPayload?.job?.error, "string");
+    const jobStatePath = join(
+      runRoot,
+      "contract-workspace",
+      jobStartPayload.job.run_id,
+      "jobs",
+      `${jobId}.json`,
+    );
+    const persistedJob = JSON.parse(await readFile(jobStatePath, "utf8"));
+    assert.equal(persistedJob.schema_version, "tmwd.browser.job.v2");
+    assert.equal(persistedJob.status, "failed");
+    assert.equal(persistedJob.durable, true);
 
-    return {
-      run_id: runId,
-      run_root: runRoot,
-      transport_health_status: healthPayload.status,
-      job_id: jobId,
-    };
-  } finally {
-    if (previousRunRoot === undefined) {
-      delete process.env.BROWSER_STRUCTURED_RUN_ROOT;
-    } else {
-      process.env.BROWSER_STRUCTURED_RUN_ROOT = previousRunRoot;
-    }
-    await rm(runRoot, { recursive: true, force: true });
-  }
+  return {
+    run_id: runId,
+    run_root: runRoot,
+    transport_health_status: healthPayload.status,
+    job_id: jobId,
+  };
 }
 
 export {

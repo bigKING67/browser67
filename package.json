@@ -77,8 +77,9 @@
     "migrate:home": "node scripts/migrate-home.mjs",
     "plan:scoped-commits": "node scripts/plan-scoped-commits.mjs",
     "check:readiness": "node scripts/readiness-audit.mjs",
-    "check": "npm run check:mcp && npm run check:hub-control && npm run check:hub-relay && npm run check:doctor-schema && npm run check:js-reverse-mcp && npm run check:js-reverse-upstream && npm run check:js-reverse-upstream-audit && npm run check:js-reverse-absorption-matrix && npm run check:active-skill-sync && npm run check:skills-roots-audit && npm run check:browser67-naming && npm run check:runtime-home && npm run check:project-structure && npm run check:setup-extension && npm run check:extension-install-doctor && npm run check:performance-smoke && npm run check:runtime-cleanup && npm run check:task-templates && npm run check:regression-matrix && npm run check:upstream-audit && npm run check:upstream-review && npm run check:upstream-review-refresh-plan && npm run check:codex-host-finalizer && npm run check:tmwd-runtime-dispose && npm run check:extension && npm run check:release-readiness",
+    "check": "npm run check:mcp && npm run check:job-persistence && npm run check:hub-control && npm run check:hub-relay && npm run check:doctor-schema && npm run check:js-reverse-mcp && npm run check:js-reverse-upstream && npm run check:js-reverse-upstream-audit && npm run check:js-reverse-absorption-matrix && npm run check:active-skill-sync && npm run check:skills-roots-audit && npm run check:browser67-naming && npm run check:runtime-home && npm run check:project-structure && npm run check:setup-extension && npm run check:extension-install-doctor && npm run check:performance-smoke && npm run check:runtime-cleanup && npm run check:task-templates && npm run check:regression-matrix && npm run check:verification-manifest && npm run check:upstream-audit && npm run check:upstream-review && npm run check:upstream-review-refresh-plan && npm run check:codex-host-finalizer && npm run check:tmwd-runtime-dispose && npm run check:extension && npm run check:release-readiness",
     "check:mcp": "node contracts/browser67-browser-mcp-contract.mjs",
+    "check:job-persistence": "node contracts/browser-job-persistence-contract.mjs",
     "check:hub-control": "node contracts/browser67-hub-control-contract.mjs",
     "check:hub-relay": "node contracts/browser67-hub-relay-contract.mjs",
     "check:doctor-schema": "node contracts/browser-doctor-json-schema-contract.mjs",
@@ -100,6 +101,7 @@
     "check:upstream-review-refresh-plan": "node contracts/upstream-review-refresh-plan-contract.mjs",
     "check:performance-smoke": "node scripts/performance-smoke.mjs",
     "check:regression-matrix": "node scripts/regression-matrix.mjs --json",
+    "check:verification-manifest": "node scripts/verification-manifest.mjs --check",
     "check:task-templates": "node scripts/task-template.mjs check --json",
     "check:managed-tabs-clean": "node scripts/check-managed-tab-cleanup.mjs",
     "check:runtime-cleanup": "node contracts/runtime-artifact-cleanup-contract.mjs",
@@ -117,18 +119,26 @@
     "check:captcha-provider-jfbym-setup": "node contracts/browser-captcha-provider-jfbym-setup-contract.mjs",
     "check:captcha-provider-jfbym-coordinate": "node contracts/browser-captcha-provider-jfbym-coordinate-contract.mjs",
     "check:native-pointer": "node src/native-deps-setup/pointer-readiness.mjs",
+    "check:native-live": "node scripts/native-live-proof-gate.mjs",
     "check:ljqctrl": "node contracts/ljqctrl-doctor.mjs",
     "check:optional-live-proofs": "node scripts/optional-live-proof-audit.mjs",
     "check:release-readiness": "node scripts/release-readiness.mjs",
+    "coverage:contracts": "c8 --all --extension .mjs --src src --src scripts --reporter=text-summary --reporter=json-summary --reports-dir runtime/coverage npm run check",
     "plan:optional-live-proofs": "node scripts/optional-live-proof-plan.mjs",
     "proof:optional-live-status": "node scripts/optional-live-proof-status.mjs",
     "proof:optional-live-template": "node scripts/optional-live-proof-template.mjs",
     "proof:optional-live-record": "node scripts/optional-live-proof-record.mjs",
+    "proof:native-live": "node scripts/native-live-proof-gate.mjs --require-physical",
     "launchd:install": "node scripts/install-launchd.mjs",
     "launchd:uninstall": "node scripts/uninstall-launchd.mjs",
-    "release:ready": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced",
-    "release:ready:strict": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced --strict-optional-proofs",
+    "release:ready": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced --require-current-upstreams",
+    "release:ready:strict": "npm run verify && node scripts/release-readiness.mjs --require-clean --require-synced --require-current-upstreams --strict-optional-proofs",
+    "verify:ci": "npm run check && npm run skills:check && npm audit --audit-level=moderate",
     "verify:local": "npm run verify && npm run skills:active:check",
+    "verify:live": "npm run check:live && npm run check:js-reverse-live && npm run check:managed-tab-live && npm run check:auth-live && npm run check:captcha-assist-live && npm run check:screenshot-live",
+    "verify:platform": "npm run check:remote-cdp && npm run check:native-pointer && npm run check:native-live && npm run check:ljqctrl && npm run check:optional-live-proofs",
+    "verify:all": "npm run verify:local && npm run check:remote-cdp",
+    "verify:manifest": "node scripts/verification-manifest.mjs --json",
     "verify": "node scripts/verify.mjs",
     "list:files": "find . -path ./node_modules -prune -o -type f -print | sort"
   },
@@ -138,5 +148,8 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "c8": "^11.0.0"
+  }
 }

@@ -4,16 +4,16 @@
     "name": "lsdefine/GenericAgent",
     "remote": "https://github.com/lsdefine/GenericAgent.git",
     "reviewed_ref": "main",
-    "reviewed_commit": "7200d0e811cfff0f62b2cb42dc44a960233cf0cd",
-    "reviewed_at": "2026-07-08",
-    "release_context": "remote-main-review checkpoint after latest-temp audit"
+    "reviewed_commit": "db964659f3142e10d57246e6ff27294c5d3e828d",
+    "reviewed_at": "2026-07-13",
+    "release_context": "remote-main-review refresh plan"
   },
   "decision": {
     "extension_merge_mode": "manual_merge_preserve_local_bridge_features",
     "direct_sync_allowed": false,
     "local_extension_action": "keep_local_bridge_and_selectively_cherry_pick_future_useful_hunks",
     "lock_action": "keep_UPSTREAM.lock.json_at_extension_sync_baseline_until_intentional_extension_sync",
-    "reason": "Latest reviewed upstream main was checked with npm run upstream:audit:latest -- --json on 2026-07-08. Extension drift is still limited to background.js and a final-newline-only disable_dialogs.js difference. Upstream background.js still lacks local managed-tab and guarded tabId bridge features required by browser67 lifecycle and js-reverse isolation, so direct sync remains disabled and the local bridge stays authoritative."
+    "reason": "Latest upstream db964659f3142e10d57246e6ff27294c5d3e828d was checked with upstream:audit:latest. Extension drift changed_files=background.js,disable_dialogs.js; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
   },
   "extension_review": {
     "changed_files": [
@@ -21,15 +21,15 @@
       "disable_dialogs.js"
     ],
     "background_preserve_features": [
-      "handle_tabs_dispatch",
-      "tabs_get",
-      "tabs_close",
-      "include_unscriptable",
-      "unsupported_tabs_method",
       "batch_uses_handle_tabs",
-      "numeric_tab_id_validation",
-      "cookies_tabid_validation",
       "cdp_tabid_validation",
+      "cookies_tabid_validation",
+      "handle_tabs_dispatch",
+      "include_unscriptable",
+      "numeric_tab_id_validation",
+      "tabs_close",
+      "tabs_get",
+      "unsupported_tabs_method",
       "ws_exec_tabid_validation"
     ],
     "per_file_decision": [

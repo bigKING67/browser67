@@ -64,6 +64,9 @@ async function runToolCases(rpc, cli) {
   const unsupportedPayload = firstJsonContent(unsupportedCall.result);
   assertTextJsonContent(unsupportedCall.result, "js-reverse unsupported debugger result");
   assert.equal(unsupportedPayload?.status, "not_supported");
+  assert.equal(unsupportedPayload?.persistent_debugger_supported, false);
+  assert.equal(unsupportedPayload?.required_mode, "remote_cdp");
+  assert.equal(unsupportedPayload?.default_tmwd_hook_first, true);
   assert.equal(typeof unsupportedPayload?.fallback, "string");
 
   const evidenceCall = await rpc.call(

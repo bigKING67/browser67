@@ -82,6 +82,7 @@ function buildHybridCaptchaPolicy(args = {}, captchaKind = "unknown") {
     protocol_solver_requires_confirmation: true,
     protocol_solver_confirmed: protocolSolverConfirmed,
     protocol_solver_candidate: isProtocolCaptchaKind(normalizedKind),
+    protocol_solver_apply_supported: false,
     coordinate_solver_candidate: isCoordinateCaptchaKind(normalizedKind),
     fullscreen_screenshot_allowed: false,
     js_cdp_widget_click_allowed: false,

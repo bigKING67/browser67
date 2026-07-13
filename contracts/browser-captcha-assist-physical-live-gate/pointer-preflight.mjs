@@ -10,7 +10,8 @@ async function nativePointerPreflight(options = {}) {
   return buildNativePointerReadinessReport(capabilities, {
     platform: options.platform ?? process.platform,
     include_readiness_command: true,
-    missing_message: "Run npm run check:native-pointer to confirm native click/drag readiness before the physical CAPTCHA gate.",
+    missing_message: options.missing_message
+      ?? "Run npm run check:native-pointer to confirm native click/drag readiness before the physical CAPTCHA gate.",
   });
 }
 

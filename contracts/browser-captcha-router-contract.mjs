@@ -102,6 +102,7 @@ async function run() {
     assert.equal(defaultRoute.policy.strategy_id, "captcha_router_v2");
     assert.equal(defaultRoute.policy.policy_id, "hybrid_policy_v1");
     assert.equal(defaultRoute.policy.protocol_solver_default_enabled, false);
+    assert.equal(defaultRoute.policy.protocol_solver_apply_supported, false);
     assert.equal(defaultRoute.policy.coordinate_solver_enabled, true);
     assert.equal(defaultRoute.router.selected_route.route_type, "physical_coordinate");
     assert.equal(defaultRoute.router.protocol_block_reason, "protocol_solver_not_requested");
@@ -145,6 +146,7 @@ async function run() {
     assert.equal(protocolAllowed.router.selected_route.route_type, "protocol_solver");
     assert.equal(protocolAllowed.router.selected_route.solver_provider, "jfbym");
     assert.equal(protocolAllowed.router.selected_route.execution_allowed, false);
+    assert.equal(protocolAllowed.policy.protocol_solver_apply_supported, false);
     assert.equal(protocolAllowed.router.protocol_block_reason, "");
     assert.equal(JSON.stringify(protocolAllowed).includes(fakeToken), false);
 

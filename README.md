@@ -277,6 +277,12 @@ node scripts/task-template.mjs render --template js-reverse-task --task-id demo 
 
 The browser template uses `browser_run_ops`, `browser_transport_health`,
 `browser_wait`, `browser_job_ops`, and `browser_tab_lifecycle.finalize_task`.
+Run-backed jobs persist checkpoints under the run's `jobs/` directory. After an
+MCP restart, terminal jobs remain queryable and in-flight jobs recover as an
+explicit `interrupted` result instead of disappearing. `abort_supported:false`
+still means an already-running `Runtime.evaluate` call cannot be preempted;
+`cancel_outcome` distinguishes intent-only cancellation from a task prevented
+before execution.
 The JS reverse template uses `new_page`, `analyze_target`, `list_frames`,
 `record_reverse_evidence`, and `finalize_task`.
 
@@ -479,13 +485,23 @@ Keep `TMWD_CAPTCHA_PROVIDER_JFBYM_PROTOCOL_SOLVER=0` unless a target origin has
 an approved protocol-solver contract. The current `assist_captcha` executor
 does not inject provider protocol responses; it blocks such routes with
 `protocol_solver_apply_not_implemented` until an explicit apply contract is
-added.
+added. Capability discovery and CAPTCHA policy output therefore report
+`supports_protocol_solver_apply:false` /
+`protocol_solver_apply_supported:false`; callers must not interpret a planned
+protocol route as executable.
 
 ## Quality gates
 
 ```bash
 npm run verify
+npm run verify:manifest
+npm run coverage:contracts
+npm run verify:ci
+npm run verify:live
+npm run verify:platform
+npm run verify:all
 npm run check:syntax
+npm run check:job-persistence
 npm run check:project-structure
 npm run check:performance-smoke
 npm run check:task-templates
@@ -505,12 +521,14 @@ npm run check:captcha-provider-jfbym
 npm run check:captcha-provider-jfbym-setup
 npm run check:captcha-provider-jfbym-coordinate
 npm run check:native-pointer
+npm run check:native-live
 npm run check:ljqctrl
 npm run check:optional-live-proofs
 npm run plan:optional-live-proofs
 npm run proof:optional-live-status
 npm run proof:optional-live-template
 npm run proof:optional-live-record
+npm run proof:native-live
 npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
@@ -557,6 +575,24 @@ required permissions. On macOS, when `cliclick` is installed but Accessibility
 permission is missing, the report includes a `permission_recovery` plan with the
 System Settings path, a copyable `open` command, explicit verification command,
 and the physical CAPTCHA gate command to run only after pointer readiness passes.
+`check:native-live` is the no-input readiness entrypoint for Linux/Windows GUI
+proof hosts. On macOS and other non-target platforms it reports
+`not_applicable`; on Linux/Windows it reports whether the host is ready for the
+explicit physical run. The physical path requires both target-OS environment
+confirmations and `--write`, then creates only browser67-managed local fixture
+tabs, forces the `native-os` provider, verifies `get_window_rect`, drag, and
+click, finalizes its tabs, and records sanitized `native_live` JSON through the
+existing proof validator:
+
+```bash
+TMWD_NATIVE_LIVE_PHYSICAL=1 \
+TMWD_NATIVE_LIVE_CONFIRM=1 \
+npm run proof:native-live -- --write --json
+```
+
+Use PowerShell `$env:TMWD_NATIVE_LIVE_* = "1"` assignments on Windows. See
+`docs/native-live-linux.md` and `docs/native-live-windows.md` for complete VM,
+desktop-session, extension, hub, proof-transfer, and troubleshooting runbooks.
 `check:ljqctrl` is diagnostic-only by default: it probes the local Python
 `ljqCtrl` module and reports whether click/window-region capture would be
 available, but it does not activate windows, click, drag, capture screenshots,
@@ -665,9 +701,21 @@ proof status as a compact advisory. Add
 ids, proof directory, and status/plan commands in the text output. Use
 `npm run release:ready` after committing and pushing; it runs
 `npm run verify`, then requires the worktree to be clean and synced with
-`origin/main`. Use `npm run release:ready:strict` only when cross-OS native and
-approved external IdP optional live proofs are part of the release acceptance
-criteria. See `docs/release-governance.md`.
+`origin/main`, requires GenericAgent and JS reverse reference reviews to match
+their current remotes, and requires non-empty `Unreleased` notes when commits
+exist after the current package-version anchor. Use
+`npm run release:ready:strict` only when cross-OS native and approved external
+IdP optional live proofs are part of the release acceptance criteria. See
+`docs/release-governance.md`.
+
+`npm run verify:manifest` prints the machine-readable verification tier model.
+Use `coverage:contracts` to generate the current deterministic `src/`/`scripts/`
+coverage baseline under ignored `runtime/coverage/`; the initial baseline is
+observability, not a fabricated release threshold. Use `verify:ci` for deterministic cross-platform CI, `verify:live` for real TMWD
+browser behavior including screenshot live proof, `verify:platform` for
+isolated remote CDP/native diagnostics, `verify:local` for active-skill parity,
+and `verify:all` for the broadest current-host gate. Shared CI never receives a
+user browser profile; real-profile TMWD gates remain local or self-hosted.
 
 `npm run upstream:audit` is the safe entrypoint for GenericAgent absorption
 work. It compares `UPSTREAM.lock.json`, the local GenericAgent checkout, remote
@@ -752,8 +800,9 @@ npm run runtime:cleanup -- --write
 The dry-run mode is the default and prints the exact run directories that would
 be deleted. `--write` is required before any deletion happens. The default
 policy keeps the latest 50 runs, preserves recently updated `running` runs, and
-plans cleanup for runs older than 30 days or when the run root exceeds 1024 MB.
-Tune it with `--max-age-days`, `--max-total-mb`, and `--keep-latest`, or the
+plans cleanup for runs older than 30 days, when the run root exceeds 1024 MB,
+or when it exceeds 500 run directories. Tune it with `--max-age-days`,
+`--max-total-mb`, `--max-run-count`, and `--keep-latest`, or the
 matching `TMWD_RUNTIME_CLEANUP_*` environment variables. The helper refuses
 dangerous roots such as `/`, `$HOME`, repository paths, and non-`runs`-like
 directories, and it deletes only complete run directories under the run root.

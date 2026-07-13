@@ -139,6 +139,30 @@ async function assertSizeBudget(root) {
   );
 }
 
+async function assertCountBudget(root) {
+  for (let index = 0; index < 4; index += 1) {
+    await writeRun(root, "count", `count-${index}`, {
+      updated_at: isoDaysAgo(4 - index),
+      bytes: 32,
+    });
+  }
+  const countBudget = runCleanup([
+    "--run-root", root,
+    "--max-age-days", "0",
+    "--max-total-mb", "0",
+    "--max-run-count", "2",
+    "--keep-latest", "1",
+  ]);
+  assert.equal(countBudget.status, 0, countBudget.stderr || countBudget.stdout);
+  assert.equal(countBudget.payload?.planned_delete_count, 2);
+  assert.equal(countBudget.payload?.remaining_count_after_plan, 2);
+  assert.equal(countBudget.payload?.count_satisfied_after_plan, true);
+  assert.deepEqual(
+    countBudget.payload?.planned?.map((run) => run.run_id).sort(),
+    ["count-0", "count-1"],
+  );
+}
+
 async function assertUnsafeRootRefusal() {
   const refused = runCleanup([
     "--run-root", os.homedir(),
@@ -154,6 +178,7 @@ async function main() {
   try {
     await assertAgeDryRunAndWrite(path.join(tmpDir, "runs"));
     await assertSizeBudget(path.join(tmpDir, "budget-runs"));
+    await assertCountBudget(path.join(tmpDir, "count-runs"));
     await assertUnsafeRootRefusal();
     process.stdout.write(`${JSON.stringify({
       ok: true,

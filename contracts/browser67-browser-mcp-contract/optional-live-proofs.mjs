@@ -33,12 +33,21 @@ function validNativeProof(platform) {
     actions: ["get_window_rect", "click", "drag"],
     checked_at: "2026-06-17T00:00:00.000Z",
     expires_at: "2099-06-17T00:00:00.000Z",
-    command: "npm run check:captcha-assist-physical-live",
+    command: platform === "win32"
+      ? '$env:TMWD_NATIVE_LIVE_PHYSICAL="1"; $env:TMWD_NATIVE_LIVE_CONFIRM="1"; npm run proof:native-live -- --write'
+      : "TMWD_NATIVE_LIVE_PHYSICAL=1 TMWD_NATIVE_LIVE_CONFIRM=1 npm run proof:native-live -- --write",
     evidence: {
       fixture: "local browser67-owned managed tab",
       managed_tab_only: true,
       fullscreen_screenshot: false,
       secrets_redacted: true,
+      window_rect_verified: true,
+      window_rect_dimensions_positive: true,
+      drag_completed: true,
+      click_completed: true,
+      visible_completion_verified: true,
+      browser_private_state_access: false,
+      finalized_managed_tabs_closed: true,
     },
   };
 }
@@ -86,12 +95,20 @@ async function assertOptionalLiveProofContract() {
       managed_tab_only: false,
       fullscreen_screenshot: true,
       secrets_redacted: false,
+      window_rect_verified: false,
+      drag_completed: false,
+      click_completed: false,
+      browser_private_state_access: true,
     },
   }, nativeLinux);
   assert.equal(nativeUnsafeEvidence.ok, false);
   assert.ok(nativeUnsafeEvidence.errors.includes("native_managed_tab_only_must_be_true"));
-  assert.ok(nativeUnsafeEvidence.errors.includes("native_fullscreen_screenshot_must_be_false"));
-  assert.ok(nativeUnsafeEvidence.errors.includes("native_secrets_redacted_must_be_true"));
+    assert.ok(nativeUnsafeEvidence.errors.includes("native_fullscreen_screenshot_must_be_false"));
+    assert.ok(nativeUnsafeEvidence.errors.includes("native_secrets_redacted_must_be_true"));
+    assert.ok(nativeUnsafeEvidence.errors.includes("native_window_rect_verified_must_be_true"));
+    assert.ok(nativeUnsafeEvidence.errors.includes("native_drag_completed_must_be_true"));
+    assert.ok(nativeUnsafeEvidence.errors.includes("native_click_completed_must_be_true"));
+    assert.ok(nativeUnsafeEvidence.errors.includes("native_browser_private_state_access_must_be_false"));
 
   const idpOauth = requirement("idp-oauth-popup");
   const idpValid = validateProof(validIdpProof("oauth_popup"), idpOauth);
@@ -312,8 +329,12 @@ async function assertOptionalLiveProofContract() {
     const linuxPlan = plan.items.find((item) => item.id === "native-live-linux");
     assert.equal(linuxPlan?.collection_mode, "cross_os_native_physical_gate");
     assert.equal(linuxPlan?.target_platform, "linux");
-    assert.equal(linuxPlan?.next_command, "Run this plan on a linux host");
+    assert.equal(linuxPlan?.next_command, "Run this plan on a linux GUI host");
     assert.equal(linuxPlan?.commands.template, "npm run proof:optional-live-template -- --id native-live-linux --write");
+    assert.equal(linuxPlan?.commands.native_live_readiness, "npm run check:native-live");
+    assert.match(linuxPlan?.commands.live_gate ?? "", /npm run proof:native-live/);
+    assert.equal(linuxPlan?.evidence_requirements.includes("actions include get_window_rect"), true);
+    assert.equal(linuxPlan?.evidence_requirements.includes("evidence.window_rect_verified=true"), true);
     assert.equal(
       linuxPlan?.commands.record,
       "npm run proof:optional-live-record -- --id native-live-linux --from-json <sanitized.json>",

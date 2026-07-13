@@ -408,6 +408,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "check:captcha-provider-jfbym-setup",
     "check:captcha-provider-jfbym-coordinate",
     "check:native-pointer",
+    "check:native-live",
     "check:ljqctrl",
     "check:optional-live-proofs",
     "check:release-readiness",
@@ -437,6 +438,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     "proof:optional-live-status",
     "proof:optional-live-template",
     "proof:optional-live-record",
+    "proof:native-live",
     "verify:local",
     "verify",
   ];
@@ -475,6 +477,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:captcha-provider-jfbym-setup",
         "check:captcha-provider-jfbym-coordinate",
         "check:native-pointer",
+        "check:native-live",
         "check:ljqctrl",
         "check:optional-live-proofs",
         "check:release-readiness",
@@ -523,6 +526,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run check:captcha-provider-jfbym-setup",
         "npm run check:captcha-provider-jfbym-coordinate",
         "npm run check:native-pointer",
+        "npm run check:native-live",
         "npm run check:ljqctrl",
         "npm run check:release-readiness",
         "npm run extension:doctor",
@@ -546,6 +550,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "npm run plan:optional-live-proofs",
         "npm run proof:optional-live-status",
         "npm run proof:optional-live-record",
+        "npm run proof:native-live",
       ]),
       "README lists readiness, project-structure, change-set, scoped commit, captcha, native pointer, ljqctrl, upstream review schema, and optional proof planning/status/recording gates",
     ),
@@ -555,6 +560,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "plan_captcha_assist",
         "assist_captcha",
         "check:native-pointer",
+        "check:native-live",
         "check:captcha-assist-physical-live",
         "check:captcha-router",
         "check:captcha-provider-jfbym",
@@ -563,7 +569,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:ljqctrl",
         "Do not keep trying selectors",
       ]),
-      "browser67 skill preserves CAPTCHA planning, physical gate, ljqctrl, and handoff boundaries",
+      "browser67 skill preserves CAPTCHA planning, local/target-OS physical gates, ljqctrl, and handoff boundaries",
     ),
   ];
 }
@@ -611,7 +617,7 @@ async function buildOptionalGaps({ report }) {
       "portability",
       0.004,
       `current_platform=${process.platform} missing_proofs=${missingNativeProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}`,
-      "Run native provider live gates on Linux and Windows hosts, save sanitized proof JSON, then run npm run check:optional-live-proofs.",
+      "Run npm run check:native-live on each Linux/Windows GUI host, then explicitly run proof:native-live to generate sanitized target-OS proof JSON before validating it on the release host.",
       proofPlanDetails(optionalProofAudit, missingNativeProofs),
     ));
   }

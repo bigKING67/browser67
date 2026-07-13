@@ -150,6 +150,28 @@ function buildReason(audit, missingFeatures) {
   return `Latest upstream ${audit.remote_main?.commit ?? "unknown"} was checked with upstream:audit:latest; changed_files=${changedText} require selective cherry-pick review before any local bridge update.`;
 }
 
+function perFileDecision(file = {}) {
+  if (file.file === "background.js" && file.recommended_action === "manual_merge_preserve_local_bridge_features") {
+    return {
+      file: file.file,
+      action: "keep_local_bridge_features",
+      risk: "high_if_blind_synced",
+    };
+  }
+  if (file.diff_kind === "final_newline_only") {
+    return {
+      file: file.file,
+      action: "keep_local_no_behavior_change",
+      risk: "none_final_newline_only",
+    };
+  }
+  return {
+    file: file.file,
+    action: file.recommended_action,
+    risk: file.risk,
+  };
+}
+
 function buildProposedReview({ currentReview, audit, args }) {
   const mode = audit.extension_review?.recommended_merge_mode ?? "manual_merge_preserve_local_bridge_features";
   const changedFiles = sortedStrings(audit.extension_review?.files?.map((file) => file.file));
@@ -181,11 +203,7 @@ function buildProposedReview({ currentReview, audit, args }) {
     extension_review: {
       changed_files: changedFiles,
       background_preserve_features: preservedFeatures,
-      per_file_decision: (audit.extension_review?.files ?? []).map((file) => ({
-        file: file.file,
-        action: file.recommended_action,
-        risk: file.risk,
-      })),
+      per_file_decision: (audit.extension_review?.files ?? []).map(perFileDecision),
     },
     absorbed_reference: currentReview?.absorbed_reference ?? {
       paths: [

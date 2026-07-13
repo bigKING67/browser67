@@ -15,6 +15,7 @@ import {
 import { assertExecuteJsFallbackPolicy } from "./browser67-browser-mcp-contract/fallback-policy.mjs";
 import { assertNativeCapabilitySurface } from "./browser67-browser-mcp-contract/native-surface.mjs";
 import { assertNativeInputOpsContract } from "./browser67-browser-mcp-contract/native-input-ops.mjs";
+import { assertNativeLiveProofGateContract } from "./browser67-browser-mcp-contract/native-live-proof-gate.mjs";
 import { assertOptionalLiveProofContract } from "./browser67-browser-mcp-contract/optional-live-proofs.mjs";
 import { assertPhysicalLiveGateContract } from "./browser67-browser-mcp-contract/physical-live-gate.mjs";
 import { assertFileDownloadClipboardOpsContract } from "./browser67-browser-mcp-contract/file-download-clipboard-ops.mjs";
@@ -64,6 +65,7 @@ function parseArgs(argv) {
 async function run() {
   const cli = parseArgs(process.argv.slice(2));
   await assertNativeCapabilitySurface();
+  await assertNativeLiveProofGateContract();
   await assertOptionalLiveProofContract();
   await assertPhysicalLiveGateContract();
   await assertReadinessLjqCtrlProbeContract();
@@ -71,11 +73,13 @@ async function run() {
 
   const previousTabRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
   const previousLoginProfileDir = process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR;
+  const previousRunRoot = process.env.BROWSER_STRUCTURED_RUN_ROOT;
   const tmpTabRegistryPath = path.join(
     os.tmpdir(),
     `tmwd-tab-registry-contract-${process.pid}-${Date.now()}.json`,
   );
   const tmpLoginProfileDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-login-profiles-contract-"));
+  const tmpRunRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-run-ops-contract-"));
   let tmpTooManyLoginProfileDir;
   await fs.writeFile(
     path.join(tmpLoginProfileDir, "alpha-site.env"),
@@ -117,6 +121,7 @@ async function run() {
   )));
   process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = tmpTabRegistryPath;
   process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR = tmpLoginProfileDir;
+  process.env.BROWSER_STRUCTURED_RUN_ROOT = tmpRunRoot;
   const rpc = createRpcClient();
   let hangingTmwdLinkServer;
   let executeErrorTmwdLinkServer;
@@ -184,6 +189,7 @@ async function run() {
     const runWaitHealthSummary = await assertRunWaitHealthOpsContract({
       rpc,
       timeoutMs: cli.timeout_ms,
+      runRoot: tmpRunRoot,
     });
 
     const screenshotSummary = await assertScreenshotOpsContract({
@@ -255,6 +261,11 @@ async function run() {
     } else {
       process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR = previousLoginProfileDir;
     }
+    if (previousRunRoot === undefined) {
+      delete process.env.BROWSER_STRUCTURED_RUN_ROOT;
+    } else {
+      process.env.BROWSER_STRUCTURED_RUN_ROOT = previousRunRoot;
+    }
     if (hangingTmwdLinkServer && typeof hangingTmwdLinkServer.close === "function") {
       await hangingTmwdLinkServer.close();
     }
@@ -263,6 +274,7 @@ async function run() {
     }
     await fs.rm(tmpTabRegistryPath, { force: true });
     await fs.rm(tmpLoginProfileDir, { recursive: true, force: true });
+    await fs.rm(tmpRunRoot, { recursive: true, force: true });
     if (tmpTooManyLoginProfileDir) {
       await fs.rm(tmpTooManyLoginProfileDir, { recursive: true, force: true });
     }

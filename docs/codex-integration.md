@@ -139,10 +139,14 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   to `evidence.v1`. Runtime artifacts are not stored in the source tree; use
   `npm run runtime:cleanup:dry-run` to audit retained runs and
   `npm run runtime:cleanup -- --write` to apply the safe retention policy.
-- `browser_job_ops`: starts in-process background browser execution jobs backed
-  by `browser_execute_js`, then exposes `status`, `result`, `cancel`, and
-  `list`. Current jobs are intentionally `durable:false`; cancel is a
-  best-effort intent marker and does not preempt already-running page code.
+- `browser_job_ops`: starts background browser execution jobs backed by
+  `browser_execute_js`, then exposes `status`, `result`, `cancel`, and `list`.
+  Jobs with a valid run are `durable:true`: metadata/results are checkpointed
+  under the run's `jobs/` directory, terminal jobs survive MCP restart, and
+  unfinished jobs recover as `interrupted_after_restart`. Cancellation remains
+  non-preemptive for an already-running `Runtime.evaluate` call, so callers must
+  inspect `abort_supported:false` and `cancel_outcome` instead of assuming the
+  page code stopped.
 - `browser_screenshot_ops`: first-class PNG screenshot capture for real browser
   visual QA. Use after `browser_tab_lifecycle.select_or_create` and
   `browser_wait`; supported targets are `viewport`, `selector`, `clip`, and
@@ -305,7 +309,10 @@ non-fullscreen region artifact from `run_vision_correction:true`,
 returned. Provider protocol solving for
 hCaptcha/reCAPTCHA/Turnstile is default-off and only planned when the caller sets
 `captcha_solver_mode:"protocol_allowed"`, `confirm_protocol_solver:true`, and
-the provider config allowlists the current origin. If a challenge escalates into
+the provider config allowlists the current origin. Apply is not implemented;
+capability/policy output reports `supports_protocol_solver_apply:false` and
+`protocol_solver_apply_supported:false`, and `assist_captcha` returns
+`protocol_solver_apply_not_implemented` rather than injecting a response. If a challenge escalates into
 multi-round image/puzzle solving, stop and hand off to the user instead of
 rapidly retrying.
 
@@ -447,6 +454,7 @@ sites to use the generic profile directory above.
 - Run `npm run check:captcha-router`, `npm run check:captcha-provider-jfbym`, `npm run check:captcha-provider-jfbym-setup`, and `npm run check:captcha-provider-jfbym-coordinate` after CAPTCHA router/provider changes. These deterministic contracts validate default-off protocol routes, repo-external provider config redaction, setup permissions, origin/kind allowlists, coordinate response parsing, bounded artifact-to-screen conversion, slider target handling, and malformed/low-confidence blocking without a real provider token.
 - Run `npm run check:captcha-assist-physical-live` only for the optional local GUI gate. It is skipped by default and runs the physical slider drag plus checkbox click fixtures only when `TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set. Add `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when the local gate should fail instead of skip. Skipped/blocked paths explicitly report `physical_input_executed:false` and `pointer_moved:false` plus the exact `physical_gate_command`. The wrapper performs native pointer preflight before opening the GUI fixture or creating a managed tab; missing click/drag requirements return structured skipped/blocked output without foregrounding Chrome or attempting physical input. Native pointer actions must be genuinely available; run `npm run check:native-pointer` first for a no-input readiness check. On macOS, `cliclick` is treated as pointer-capable only when its diagnostic probe does not report missing Accessibility privileges for the current terminal/Codex host. A passing physical branch must report both the slider completion/visible movement (`slider_visual_offset` / `handle_transform`) and checkbox completion/inside-hotspot click before it writes a sanitized local CAPTCHA proof under `~/.browser67/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that write or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail if proof persistence fails.
 - Run `npm run check:native-pointer` after native provider or local OS permission changes. It is diagnostic-only by default, does not move the mouse, and reports whether the current provider supports `click` and `drag`; add `-- --require-pointer` only for a local hard gate. On macOS, when `cliclick` is installed but Accessibility permission is missing, its JSON/text output includes a `permission_recovery` plan with the System Settings path, a copyable `open` command, the verification command, and the explicit physical CAPTCHA gate command to run after readiness passes.
+- Run `npm run check:native-live` on Linux/Windows GUI proof hosts for a no-input readiness result. The physical path is separate and requires `TMWD_NATIVE_LIVE_PHYSICAL=1`, `TMWD_NATIVE_LIVE_CONFIRM=1`, and `npm run proof:native-live -- --write`; it refuses unsupported platforms, missing confirmation, missing pointer support, and unintended overwrite before creating a tab or moving the pointer. A passing run forces the `native-os` provider, uses only browser67-owned local fixture tabs, verifies native `get_window_rect`, visible drag, and inside-hotspot click, finalizes its tabs, and records sanitized `native_live` JSON through the optional-proof validator. See `docs/native-live-linux.md` and `docs/native-live-windows.md`.
 - Run `npm run check:ljqctrl` after `ljq-ctrl` provider changes. It is a diagnostic-only default gate and exits successfully when the local driver is not configured; use `TMWD_LJQCTRL_REQUIRE=1`, `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` for machine-local hard gates.
 - GenericAgent's newer macOS `macljqCtrl` / AX implementation is imported only as reference material under `docs/upstream/genericagent/`. On macOS, `check:ljqctrl -- --json` reports a `macljqctrl` informational diagnostic for `Quartz`, `AppKit`, `ApplicationServices`, `PIL`, `cv2`, and `numpy`, plus the physical-pixel `CropToScreen` coordinate model. This does not promote AX, screenshots, clicks, or window activation into the default path; `native-os` remains the default macOS provider unless a future guarded provider is explicitly enabled.
 - Run `npm run check:readiness` for the near-100 governance score. Its `ljqCtrl` row is platform-aware and uses the same diagnostic-only Python capability probe as `check:ljqctrl`; it distinguishes non-Windows not-applicable defaults, Windows/default not-configured, invalid configured interpreter, importable-but-execution-gated, and execution-bridge-available states without clicking, dragging, activating windows, capturing screenshots, reading cookies, or touching clipboard. It also reports an informational native pointer row when the OS provider lacks click/drag capability or required permissions, and the local CAPTCHA physical-proof row separately distinguishes native pointer blocked, not executed, and proof-missing states. When macOS Accessibility blocks `cliclick`, the affected readiness JSON gaps include the same structured `permission_recovery` plan as `check:native-pointer`, so callers can show the Settings path and copyable recovery commands directly. Optional proof gaps also include a compact `proof_plan` with the plan command, proof directory, and missing proof ids.
@@ -517,8 +525,9 @@ The bundled `js-reverse` MCP focuses on observe-first, hook-preferred workflows:
   report export, and minimal Node rebuild bundle export.
 - intentionally not full debugger yet: persistent `Debugger.pause`, callframe
   stepping, and breakpoint state currently return `not_supported` with hook-based
-  fallbacks. Use a dedicated remote CDP debug browser only when callframe-level
-  debugging is required.
+  fallbacks plus `persistent_debugger_supported:false` and
+  `required_mode:"remote_cdp"`. Use a dedicated remote CDP debug browser only
+  when callframe-level debugging is required.
 
 ## Failure policy
 

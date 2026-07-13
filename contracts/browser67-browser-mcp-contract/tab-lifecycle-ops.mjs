@@ -262,6 +262,12 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabListManagedPayload?.status, "success");
   assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
   assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v4");
+  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 3);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_durable_jobs, true);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_job_restart_recovery, true);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_job_abort, false);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_persistent_debugger, false);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_protocol_solver_apply, false);
   assert.equal(tabListManagedPayload?.capabilities?.supports_finalize_hint, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_close_verification, true);
   assert.equal(Array.isArray(tabListManagedPayload?.live_sessions), true);

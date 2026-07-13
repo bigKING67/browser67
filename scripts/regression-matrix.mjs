@@ -12,6 +12,12 @@ const MATRIX = [
     covers: ["tool-surface", "run-lifecycle", "browser-job", "wait-surface", "transport-health", "native-fallback"],
   },
   {
+    id: "browser-job-persistence",
+    command: "npm run check:job-persistence",
+    tier: "required",
+    covers: ["run-backed-job-checkpoints", "restart-interruption-recovery", "accurate-cancel-capabilities"],
+  },
+  {
     id: "js-reverse-contracts",
     command: "npm run check:js-reverse-mcp",
     tier: "required",
@@ -78,6 +84,12 @@ const MATRIX = [
     covers: ["browser-task-template", "js-reverse-task-template"],
   },
   {
+    id: "verification-manifest",
+    command: "npm run check:verification-manifest",
+    tier: "required",
+    covers: ["ci-tier", "live-tier", "platform-tier", "release-tier"],
+  },
+  {
     id: "upstream-audit",
     command: "npm run check:upstream-audit",
     tier: "required",
@@ -100,6 +112,24 @@ const MATRIX = [
     command: "npm run check:js-reverse-live",
     tier: "live",
     covers: ["real-browser-js-reverse", "managed-tabs", "runtime-hooks"],
+  },
+  {
+    id: "screenshot-live",
+    command: "npm run check:screenshot-live",
+    tier: "live",
+    covers: ["viewport-artifact", "responsive-override", "selector-fallback", "full-page-bounds"],
+  },
+  {
+    id: "remote-cdp",
+    command: "npm run check:remote-cdp",
+    tier: "platform",
+    covers: ["isolated-debug-chrome", "explicit-cdp-mode", "fixture-live"],
+  },
+  {
+    id: "native-live-proof-readiness",
+    command: "npm run check:native-live",
+    tier: "platform",
+    covers: ["target-os-readiness", "explicit-physical-opt-in", "sanitized-native-proof-recording"],
   },
 ];
 

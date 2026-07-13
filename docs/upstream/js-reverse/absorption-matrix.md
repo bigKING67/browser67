@@ -20,12 +20,12 @@ skills, tools, contracts, or runtime code.
 ### `zhaoxuya520/reverse-skill`
 
 - **Reference**: `zhaoxuya520/reverse-skill`
-- **Reviewed commit**: `9ec60377bfdcafa0b317ed3612acc6c46270be78`
+- **Reviewed commit**: `d34421c9491f1192ba801aa55d6917932041e006`
 - **Direct import allowed**: `false`
 - **Priority**: `P1`
 - **Absorbable pattern**: Task-router taxonomy for reverse, security, CTF, mobile, binary, and web investigation modes.
 - **Current browser67 coverage**: `skills/js-reverse/SKILL.md` already defines browser67-backed web/API/signature workflows, evidence capture, frame-aware discovery, storage boundaries, and local rebuild bundles.
-- **Gap**: The current skill has workflow depth but no per-mode promotion ledger that maps non-web reverse domains to browser67-owned target docs or rejects them explicitly.
+- **Gap**: The 2026-07-13 refresh only restored UTF-8 documentation encoding and did not add a browser67 runtime pattern. The current skill still has workflow depth but no per-mode promotion ledger that maps non-web reverse domains to browser67-owned target docs or rejects them explicitly.
 - **Target layer**: `skills/js-reverse/SKILL.md`, `docs/js-reverse/`, and `templates/tasks/js-reverse-task-template.json`.
 - **Promotion requirement**: Translate only durable routing vocabulary into browser67-specific guidance; reject auto-execution, bulk precedent loading, and external tool-install semantics.
 - **Verification**: `npm run check:js-reverse-mcp`; `npm run check:js-reverse-upstream`; `npm run check:js-reverse-absorption-matrix`.
@@ -46,12 +46,12 @@ skills, tools, contracts, or runtime code.
 ### `zhizhuodemao/js-reverse-mcp`
 
 - **Reference**: `zhizhuodemao/js-reverse-mcp`
-- **Reviewed commit**: `0e19693f496b4600dbc9381e76293d7afa96c001`
+- **Reviewed commit**: `a850f3e6b81a5c566c06f41155f3607785445b90`
 - **Direct import allowed**: `false`
 - **Priority**: `P2`
-- **Absorbable pattern**: Lightweight MCP ergonomics for page observation, hook setup, script lookup, and reverse-task reporting.
+- **Absorbable pattern**: Lightweight MCP ergonomics for page observation, hook setup, script lookup, reverse-task reporting, serialized tool execution, structured tool errors, routing evaluations, and explicit debugger-session lifecycle.
 - **Current browser67 coverage**: browser67 already exposes the richer real-browser path through `tmwd_browser`, js-reverse MCP contracts, bounded evidence artifacts, and canonical skill guidance.
-- **Gap**: Candidate ergonomic shortcuts need case-by-case review so they do not bypass browser67 tab ownership, storage minimization, or evidence normalization.
-- **Target layer**: `skills/js-reverse/SKILL.md`, `docs/js-reverse/`, and `contracts/js-reverse-mcp-contract/`.
-- **Promotion requirement**: Accept only small UX/API clarity improvements that preserve browser67 ownership, repo-local contracts, and `direct_import_allowed=false`.
+- **Gap**: The v4.0.1 review identified useful single-flight/tool-runner, routing-eval, structured-error, and persistent-debugger patterns. browser67 already owns the real-profile and hook-first path, but still needs an explicit remote-CDP-only debugger session boundary and deterministic routing/error evaluations before any of those patterns are promoted.
+- **Target layer**: `src/js-reverse-server/`, `contracts/js-reverse-mcp-contract/`, `contracts/js-reverse-mcp-live-gate/`, `scripts/`, `docs/js-reverse/`, and `skills/js-reverse/SKILL.md`.
+- **Promotion requirement**: Reimplement selected routing, error, single-flight, or debugger-session semantics inside browser67; keep the default TMWD user-browser path hook-first, bind any persistent debugger to an explicit managed `remote_cdp` workspace, and preserve `direct_import_allowed=false`.
 - **Verification**: `npm run check:js-reverse-mcp`; `npm run check:js-reverse-upstream-audit`; `npm run check:js-reverse-absorption-matrix`.

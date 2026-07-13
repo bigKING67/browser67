@@ -116,6 +116,7 @@ function captchaAssistPolicy(captchaKind = "") {
       protocol_solver_default_enabled: false,
       protocol_solver_requires_allowlist: true,
       protocol_solver_requires_confirmation: true,
+      protocol_solver_apply_supported: false,
       provider_config_repo_external_only: true,
       js_cdp_widget_click_allowed: false,
       token_cookie_extraction_allowed: false,

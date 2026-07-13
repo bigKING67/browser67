@@ -184,6 +184,7 @@ function physicalAttemptOptionsFromEnv() {
     retryClickOffsetY: clampNumber(envNumber("TMWD_CAPTCHA_ASSIST_CLICK_RETRY_OFFSET_Y", 0), 0, -120, 120),
     explicitCoordinates: explicitCoordinatesFromEnv(),
     explicitClickCoordinates: explicitClickCoordinatesFromEnv(),
+    physicalInputProvider: envEnabled("TMWD_NATIVE_LIVE_PROOF") ? "native-os" : undefined,
   };
 }
 
@@ -316,6 +317,7 @@ function buildPhysicalAssistAttemptPlan(attemptIndex, previousAssist, options = 
     drag_steps: dragSteps,
     pre_input_settle_ms: options.preInputSettleMs,
     wait_after_ms: 5_000,
+    physical_input_provider: options.physicalInputProvider,
   };
   if (coordinates?.from && coordinates?.to) {
     args.screen_x = coordinates.from.x;
@@ -353,6 +355,7 @@ function buildCheckboxPhysicalAssistAttemptPlan(attemptIndex, previousAssist, pr
     confirm_physical_input: true,
     pre_input_settle_ms: options.preInputSettleMs,
     wait_after_ms: 5_000,
+    physical_input_provider: options.physicalInputProvider,
   };
   if (coordinates?.point) {
     args.screen_x = coordinates.point.x;
@@ -718,6 +721,7 @@ async function runPhysicalAssistIfEnabled({
 }
 
 export {
+  buildCheckboxPhysicalAssistAttemptPlan,
   buildPhysicalAssistAttemptPlan,
   compactPhysicalAssist,
   physicalDiagnostics,

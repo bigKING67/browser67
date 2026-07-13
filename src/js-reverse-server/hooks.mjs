@@ -173,6 +173,9 @@ function unsupportedDebugger(tool) {
     ok: false,
     status: "not_supported",
     tool,
+    persistent_debugger_supported: false,
+    required_mode: "remote_cdp",
+    default_tmwd_hook_first: true,
     reason: "This browser67-backed js-reverse MCP favors non-blocking hooks. Persistent Debugger pause/callframe state needs a dedicated remote CDP debug browser or a future persistent debugger bridge.",
     fallback: "Use create_hook/inject_hook/get_hook_data, break_on_xhr, or inject_preload_script.",
   };

@@ -55,7 +55,7 @@ Default arguments:
   `clip`, and bounded `full_page`, writes PNGs outside the repo, and returns
   artifact metadata rather than base64. Use `npm run runtime:cleanup:dry-run`
   to audit retained run/screenshot artifacts before applying `--write`.
-- `browser_job_ops` is intentionally in-process (`durable:false`); `cancel` records intent but does not preempt page-side JS.
+- Run-backed `browser_job_ops` jobs persist checkpoints and recover unfinished work as `interrupted` after MCP restart; `abort_supported:false` still means `cancel` records intent but does not preempt already-running page-side JS.
 - `record_reverse_evidence` is normalized to `evidence.v1`; include source/confidence/request/script/artifact links whenever known.
 - `list_frames` lists same-origin descendants recursively and degrades cross-origin frames to element metadata. Do not infer inner DOM for inaccessible frames.
 - Persistent `Debugger.pause`, callframe stepping, and breakpoint state are intentionally explicit remote CDP/debug-browser work. If remote CDP opens a separate profile, do not assume it has the user's logged-in cookies. First sample with TMWD, then decide whether to log in to debug Chrome or port non-sensitive evidence.

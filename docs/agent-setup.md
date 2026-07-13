@@ -335,6 +335,14 @@ no-input readiness check. On macOS, missing Accessibility permission keeps
 `cliclick` click/drag capability disabled. A successful physical run writes a
 sanitized repo-external local CAPTCHA proof by default; set
 TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0 to disable that persistence.
+For the separate Linux/Windows portability proofs, run
+`npm run check:native-live` on the matching target GUI host, then explicitly set
+`TMWD_NATIVE_LIVE_PHYSICAL=1` and `TMWD_NATIVE_LIVE_CONFIRM=1` and run
+`npm run proof:native-live -- --write`. This dedicated gate forces `native-os`,
+verifies `get_window_rect` plus physical drag/click on managed local fixtures,
+finalizes its tabs, and records sanitized `native_live` JSON automatically.
+Follow `docs/native-live-linux.md` or `docs/native-live-windows.md`; headless
+hosts and locked/disconnected desktop sessions do not qualify.
 For near-100 external coverage, run `npm run check:optional-live-proofs` after
 collecting sanitized local CAPTCHA physical, Linux/Windows native-input, or
 approved OAuth/SSO/MFA proof JSON under

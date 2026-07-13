@@ -30,6 +30,19 @@ npm run release:ready
 - change-set grouping to cover all changed paths.
 - the worktree to be clean.
 - the checkout to be synced with `origin/main`.
+- the GenericAgent review ledger to match current remote `main`.
+- every JS reverse external reference to match its manually reviewed commit.
+- a non-empty `CHANGELOG.md` `Unreleased` section when commits exist after the
+  current package version was introduced.
+
+The strict freshness portion is equivalent to:
+
+```bash
+node scripts/release-readiness.mjs --require-current-upstreams
+```
+
+Normal `npm run check:release-readiness` stays network-light. Release
+declaration is the boundary that turns moved upstreams into blockers.
 
 Use the strict optional-proof gate only when a local release policy explicitly
 requires every optional live proof:
@@ -48,6 +61,26 @@ In non-strict release readiness, missing optional live proofs are reported as
 advisories rather than warnings, because they require external target hosts or
 approved IdP tenants and are not local-release blockers.
 
+## Verification tiers
+
+The machine-readable tier map is available through:
+
+```bash
+npm run verify:manifest
+```
+
+- `npm run verify:ci`: deterministic contracts, docs/skills, dependency, and release metadata gates.
+- `npm run coverage:contracts`: deterministic source/script coverage baseline and JSON summary.
+- `npm run verify:live`: real TMWD browser, auth, managed-tab, JS reverse, and screenshot gates.
+- `npm run verify:platform`: isolated remote CDP and native/platform diagnostics.
+- `npm run verify:local`: default full verification plus active skill drift.
+- `npm run verify:all`: local verification plus isolated remote CDP.
+
+Repository CI runs deterministic contracts on Linux, Windows, and macOS, plus
+an isolated Ubuntu remote-CDP job and a separate coverage-summary job.
+Real-profile TMWD live gates remain local or self-hosted because shared CI must
+not access a user's browser profile.
+
 ## Optional live proofs
 
 Optional live proofs are not faked or downgraded into required local checks;
@@ -59,12 +92,24 @@ They require the real target environment:
 - Windows GUI host for `native-live-win32`.
 - Approved external IdP tenants for OAuth popup, cross-domain SSO, and MFA.
 
+The Linux/Windows hosts may be physical machines or desktop VMs, but they must
+have an unlocked interactive GUI session, a visible Chrome/Edge window, the
+browser67 extension and hub, and real system pointer input. Headless CI, SSH-only
+Linux, containers without a desktop, and locked/disconnected Windows sessions do
+not satisfy these proofs.
+
 Use:
 
 ```bash
 npm run plan:optional-live-proofs
 npm run proof:optional-live-status
+npm run check:native-live
 ```
+
+On each matching Linux/Windows GUI host, run the no-input readiness command
+first, then explicitly opt into `npm run proof:native-live -- --write`. The gate
+records canonical sanitized `native-live-*.json` proof automatically. See
+`docs/native-live-linux.md` and `docs/native-live-windows.md`.
 
 Collected proofs must be sanitized JSON and stored under the active browser67
 home, not the repository:

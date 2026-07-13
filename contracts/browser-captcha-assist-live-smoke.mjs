@@ -379,6 +379,29 @@ async function run() {
       workspaceKey,
     });
 
+    let nativeLiveWindowRect;
+    if (envEnabled("TMWD_NATIVE_LIVE_PROOF")) {
+      assert.equal(
+        envEnabled("TMWD_CAPTCHA_ASSIST_PHYSICAL"),
+        true,
+        "native live proof requires the physical fixture gate",
+      );
+      const windowRect = await callTool("browser_native_input", {
+        ...toolArgs,
+        action: "get_window_rect",
+      });
+      assert.equal(windowRect?.status, "success", "native get_window_rect should succeed");
+      assert.equal(Number(windowRect?.width) > 0, true, "native window width should be positive");
+      assert.equal(Number(windowRect?.height) > 0, true, "native window height should be positive");
+      nativeLiveWindowRect = {
+        status: windowRect.status,
+        platform: windowRect.platform,
+        driver: windowRect.driver,
+        width: windowRect.width,
+        height: windowRect.height,
+      };
+    }
+
     const finalize = await callTool("browser_tab_lifecycle", {
       ...toolArgs,
       action: "finalize_task",
@@ -430,6 +453,7 @@ async function run() {
       checkbox_physical_attempt_count: checkboxPhysicalAttempts.length,
       checkbox_physical_attempts: checkboxPhysicalAttempts,
       checkbox_physical_completion: checkboxPhysicalCompletion?.js_return ?? checkboxPhysicalCompletion,
+      native_live_window_rect: nativeLiveWindowRect,
       finalized_closed: finalize.close_unkept.closed.length,
     };
   } finally {
