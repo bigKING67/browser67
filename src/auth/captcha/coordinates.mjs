@@ -162,12 +162,15 @@ function estimateViewportOriginScreen(viewport = {}) {
 }
 
 function nativeWindowCoordinateCalibration(viewport = {}, nativeWindowRect = {}) {
-  const left = finiteNumber(nativeWindowRect.left);
-  const top = finiteNumber(nativeWindowRect.top);
-  const explicitWidth = finiteNumber(nativeWindowRect.width);
-  const explicitHeight = finiteNumber(nativeWindowRect.height);
-  const right = finiteNumber(nativeWindowRect.right);
-  const bottom = finiteNumber(nativeWindowRect.bottom);
+  const rect = nativeWindowRect && typeof nativeWindowRect === "object"
+    ? nativeWindowRect
+    : {};
+  const left = finiteNumber(rect.left);
+  const top = finiteNumber(rect.top);
+  const explicitWidth = finiteNumber(rect.width);
+  const explicitHeight = finiteNumber(rect.height);
+  const right = finiteNumber(rect.right);
+  const bottom = finiteNumber(rect.bottom);
   const width = explicitWidth ?? (
     left !== null && right !== null ? right - left : null
   );

@@ -100,6 +100,19 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(highDpiPoint?.coordinate_system, "physical_screen_pixels");
   assert.equal(highDpiPoint?.calibration?.browser_window_scale?.x, 2);
   assert.equal(highDpiPoint?.calibration?.content_scale?.x, 2);
+  assert.equal(
+    clientPointToNativeWindowScreen(
+      { x: 75, y: 100 },
+      {
+        inner_height: 735,
+        inner_width: 1_440,
+        outer_height: 912,
+        outer_width: 1_440,
+      },
+      null,
+    ),
+    null,
+  );
 
   assert.deepEqual(
     clampRectToViewport({
