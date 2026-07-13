@@ -12,6 +12,8 @@ function compactPhysicalAssist(physicalAssist = {}) {
         status: physicalAssist.activation.status,
         provider_selection: physicalAssist.activation.provider_selection,
         provider: physicalAssist.activation.provider,
+        os_foreground_verified: physicalAssist.activation.os_foreground_verified,
+        native_window_activation: physicalAssist.activation.native_window_activation,
       }
       : undefined,
     provider: physicalAssist.physical_input_provider

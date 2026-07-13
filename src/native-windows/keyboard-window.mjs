@@ -11,23 +11,35 @@ import {
   toWindowsSendKeys,
 } from "./powershell.mjs";
 
-async function activateWindow(args, timeoutMs) {
-  const selector = parseWindowSelector(args);
-  if (!selector.title && !selector.pid) {
-    throw createToolError("WINDOW_NOT_FOUND", "window not found: window_title or window_pid is required");
-  }
+function buildWindowsActivateScript(selector) {
   const prelude = buildWindowsNativePrelude();
-  const script = [
+  return [
     prelude,
     buildWindowsTargetLookup(selector),
     "if (-not $target) {",
     "  @{ ok = $false; error_code = 'WINDOW_NOT_FOUND'; error = 'window not found' } | ConvertTo-Json -Compress",
     "  exit 7",
     "}",
-    "[NativeBridge]::ShowWindowAsync($target.MainWindowHandle, 9) | Out-Null",
-    "$focus = [NativeBridge]::SetForegroundWindow($target.MainWindowHandle)",
-    "@{ ok = $true; pid = $target.Id; title = $target.MainWindowTitle; hwnd = [Int64]$target.MainWindowHandle; focused = [bool]$focus } | ConvertTo-Json -Compress",
+    "$targetHwnd = $target.MainWindowHandle",
+    "$focusRequested = [NativeBridge]::ForceForegroundWindow($targetHwnd)",
+    "Start-Sleep -Milliseconds 150",
+    "$foregroundHwnd = [NativeBridge]::GetForegroundWindow()",
+    "$foregrounded = $foregroundHwnd -eq $targetHwnd",
+    "$windowSnapshot = Get-NativeWindowSnapshot $targetHwnd",
+    "if (-not $foregrounded) {",
+    "  @{ ok = $false; error_code = 'NATIVE_INPUT_EXECUTION_FAILED'; error = 'SetForegroundWindow did not activate target window'; pid = $windowSnapshot.pid; process_name = $windowSnapshot.process_name; title = $windowSnapshot.title; hwnd = $windowSnapshot.hwnd; focus_requested = [bool]$focusRequested; foregrounded = [bool]$foregrounded; foreground_hwnd = [Int64]$foregroundHwnd } | ConvertTo-Json -Compress",
+    "  exit 9",
+    "}",
+    "@{ ok = $true; pid = $windowSnapshot.pid; process_name = $windowSnapshot.process_name; title = $windowSnapshot.title; hwnd = $windowSnapshot.hwnd; focus_requested = [bool]$focusRequested; foregrounded = [bool]$foregrounded; foreground_hwnd = [Int64]$foregroundHwnd } | ConvertTo-Json -Compress",
   ].join("\n");
+}
+
+async function activateWindow(args, timeoutMs) {
+  const selector = parseWindowSelector(args);
+  if (!selector.title && !selector.pid) {
+    throw createToolError("WINDOW_NOT_FOUND", "window not found: window_title or window_pid is required");
+  }
+  const script = buildWindowsActivateScript(selector);
   const response = await runWindowsPowerShellScript(script, timeoutMs);
   const parsed = parsePowerShellNativeResult(response, "activate_window");
   return {
@@ -122,6 +134,7 @@ async function getWindowRect(args, timeoutMs) {
 
 export {
   activateWindow,
+  buildWindowsActivateScript,
   getWindowRect,
   pasteText,
   pressKey,

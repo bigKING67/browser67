@@ -9,9 +9,14 @@ import {
   clientPointToNativeWindowScreen,
 } from "../../src/auth/captcha/coordinates.mjs";
 import {
+  isSupportedWindowsBrowserProcess,
+  resolveManagedTabNativeWindowTitle,
+} from "../../src/auth/captcha-assist/context.mjs";
+import {
   buildWindowsClickScript,
   buildWindowsDragScript,
 } from "../../src/native-windows/pointer.mjs";
+import { buildWindowsActivateScript } from "../../src/native-windows/keyboard-window.mjs";
 import { buildWindowsNativePrelude } from "../../src/native-windows/powershell.mjs";
 
 function assertNotCalled(label) {
@@ -81,6 +86,34 @@ async function assertPhysicalLiveGateContract() {
   assert.match(windowsDpiPrelude, /GetCursorPos/);
   assert.match(windowsDpiPrelude, /SendInput/);
   assert.match(windowsDpiPrelude, /GetWindowThreadProcessId/);
+  assert.match(windowsDpiPrelude, /AttachThreadInput/);
+  assert.match(windowsDpiPrelude, /BringWindowToTop/);
+  assert.match(windowsDpiPrelude, /ForceForegroundWindow/);
+
+  assert.equal(
+    resolveManagedTabNativeWindowTitle(
+      { title: "fixture slider captcha login" },
+      { tab: { title: "stale tab title" } },
+      { title: "managed record title" },
+    ),
+    "fixture slider captcha login",
+  );
+  assert.equal(
+    resolveManagedTabNativeWindowTitle({}, { tab: { data: { title: "bridge tab title" } } }, {}),
+    "bridge tab title",
+  );
+  assert.equal(isSupportedWindowsBrowserProcess("chrome"), true);
+  assert.equal(isSupportedWindowsBrowserProcess("msedge"), true);
+  assert.equal(isSupportedWindowsBrowserProcess("WindowsTerminal"), false);
+
+  const windowsActivateScript = buildWindowsActivateScript({
+    title: "fixture slider captcha login",
+    pid: null,
+  });
+  assert.match(windowsActivateScript, /ForceForegroundWindow/);
+  assert.match(windowsActivateScript, /GetForegroundWindow/);
+  assert.match(windowsActivateScript, /foregrounded/);
+  assert.match(windowsActivateScript, /process_name/);
 
   const windowsDragScript = buildWindowsDragScript({
     button: "left",

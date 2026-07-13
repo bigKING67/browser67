@@ -12,6 +12,7 @@
 - Add a default 500-run retention ceiling alongside age and total-size cleanup budgets.
 - Add dedicated Linux/Windows GUI native-live proof gates that verify native window geometry plus physical drag/click and automatically record sanitized target-OS proof JSON.
 - Harden Windows physical pointer execution with foreground HWND verification, `SendInput`, cursor-position readback, and bounded drag/click telemetry.
+- Resolve managed Chrome windows by the active tab title and verify the Win32 foreground HWND before Windows physical CAPTCHA input.
 
 ## 0.2.0 - 2026-07-01
 

@@ -12,6 +12,8 @@ import { CAPTCHA_ASSIST_REASONS } from "../captcha/reasons.mjs";
 import {
   activateManagedTabForPhysicalInput,
   getManagedTabContext,
+  isSupportedWindowsBrowserProcess,
+  resolveManagedTabNativeWindowTitle,
   sleep,
 } from "./context.mjs";
 import { handlePlanCaptchaAssist } from "./plan-handler.mjs";
@@ -157,9 +159,18 @@ function selectScreenCoordinates(args, plan, {
   };
 }
 
-async function getForegroundNativeWindowRect(args) {
+async function getForegroundNativeWindowRect(args, activation = {}) {
+  const explicitWindowPid = finiteNumber(args?.window_pid);
+  const explicitWindowTitle = String(args?.window_title ?? "").trim();
+  const managedActivation = activation.native_window_activation ?? {};
+  const managedWindowPid = finiteNumber(managedActivation.pid);
+  const managedWindowTitle = String(managedActivation.window_title ?? managedActivation.title ?? "").trim();
+  const windowPid = explicitWindowPid ?? managedWindowPid;
+  const windowTitle = explicitWindowTitle || (windowPid === null ? managedWindowTitle : "");
   try {
     const physicalInput = await runPhysicalInputAction("get_window_rect", {
+      window_pid: windowPid ?? undefined,
+      window_title: windowTitle || undefined,
       timeout_ms: args?.timeout_ms,
     }, {
       preferred_provider: args?.physical_input_provider,
@@ -174,6 +185,11 @@ async function getForegroundNativeWindowRect(args) {
     }
     return {
       ...physicalInput.result,
+      selector_source: explicitWindowPid !== null || explicitWindowTitle
+        ? "caller_window_selector"
+        : (managedWindowPid !== null || managedWindowTitle
+          ? "native_managed_window_activation"
+          : "foreground_window"),
       provider: physicalInput.provider,
       provider_selection: physicalInput.provider_selection,
     };
@@ -356,6 +372,77 @@ async function handleAssistCaptcha(args) {
     }
   }
 
+  if (
+    activation.method === "tmwd_tabs_switch"
+    && planned.native_input_capabilities?.platform === "win32"
+  ) {
+    const nativeWindowTitle = resolveManagedTabNativeWindowTitle(planned, activation, managedTab.managed_tab);
+    if (!nativeWindowTitle) {
+      return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.MANAGED_TAB_ACTIVATION_FAILED, {
+        activation: {
+          ...activation,
+          native_window_activation: {
+            status: "blocked",
+            reason: "managed_tab_window_title_unavailable",
+          },
+        },
+        required_one_of: [
+          "managed tab page title",
+          "window_title",
+          "window_pid",
+        ],
+      });
+    }
+    try {
+      const nativeActivation = await runPhysicalInputAction("activate_window", {
+        window_title: nativeWindowTitle,
+        timeout_ms: args?.timeout_ms,
+      }, {
+        preferred_provider: "native-os",
+      });
+      const browserProcessVerified = isSupportedWindowsBrowserProcess(
+        nativeActivation.result?.process_name,
+      );
+      const nativeActivationSucceeded = nativeActivation.result?.status === "success"
+        && nativeActivation.result?.foregrounded === true
+        && browserProcessVerified;
+      activation = {
+        ...activation,
+        status: nativeActivationSucceeded ? "foregrounded" : "activation_failed",
+        os_foreground_verified: nativeActivationSucceeded,
+        native_window_activation: {
+          window_title: nativeWindowTitle,
+          provider_selection: nativeActivation.provider_selection,
+          provider: nativeActivation.provider,
+          ...nativeActivation.result,
+          browser_process_verified: browserProcessVerified,
+        },
+      };
+      if (!nativeActivationSucceeded) {
+        return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.MANAGED_TAB_ACTIVATION_FAILED, {
+          activation,
+          activation_error: browserProcessVerified
+            ? "native browser window activation did not reach the OS foreground"
+            : `native window title resolved to unsupported process=${String(nativeActivation.result?.process_name ?? "unknown")}`,
+        });
+      }
+    } catch (error) {
+      return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.MANAGED_TAB_ACTIVATION_FAILED, {
+        activation: {
+          ...activation,
+          status: "activation_failed",
+          os_foreground_verified: false,
+          native_window_activation: {
+            status: "failed",
+            window_title: nativeWindowTitle,
+            error: String(error?.message ?? error),
+          },
+        },
+        activation_error: String(error?.message ?? error),
+      });
+    }
+  }
+
   const preInputSettleMs = normalizePreInputSettleMs(args?.pre_input_settle_ms);
   if (preInputSettleMs > 0) {
     await sleep(preInputSettleMs);
@@ -413,7 +500,7 @@ async function handleAssistCaptcha(args) {
     });
   }
   const nativeWindowRect = autoScreenCoordinates || useCorrectedCoordinates
-    ? await getForegroundNativeWindowRect(args)
+    ? await getForegroundNativeWindowRect(args, activation)
     : {
       status: "skipped",
       reason: "caller_supplied_or_provider_coordinates",

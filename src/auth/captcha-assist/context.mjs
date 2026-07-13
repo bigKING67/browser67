@@ -31,6 +31,27 @@ function inferPhysicalAction(pageState = {}, args = {}) {
   return effective === "slider" ? "drag" : "click";
 }
 
+function resolveManagedTabNativeWindowTitle(plan = {}, activation = {}, managedTab = {}) {
+  const candidates = [
+    plan.title,
+    activation.tab?.title,
+    activation.tab?.data?.title,
+    managedTab.title,
+  ];
+  for (const candidate of candidates) {
+    const title = String(candidate ?? "").trim();
+    if (title) {
+      return title;
+    }
+  }
+  return "";
+}
+
+function isSupportedWindowsBrowserProcess(raw) {
+  const processName = String(raw ?? "").trim().toLowerCase();
+  return processName === "chrome" || processName === "msedge";
+}
+
 async function inspectCaptchaAssistPage(args) {
   const result = await executeBrowserScript(args, buildCaptchaAssistInspectorJs(MANUAL_CHALLENGE_DETECTOR_JS));
   return {
@@ -79,7 +100,9 @@ export {
   activateManagedTabForPhysicalInput,
   getManagedTabContext,
   inferPhysicalAction,
+  isSupportedWindowsBrowserProcess,
   inspectCaptchaAssistPage,
   normalizeExplicitTabId,
+  resolveManagedTabNativeWindowTitle,
   sleep,
 };
