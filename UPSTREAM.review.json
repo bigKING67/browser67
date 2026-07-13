@@ -4,7 +4,7 @@
     "name": "lsdefine/GenericAgent",
     "remote": "https://github.com/lsdefine/GenericAgent.git",
     "reviewed_ref": "main",
-    "reviewed_commit": "db964659f3142e10d57246e6ff27294c5d3e828d",
+    "reviewed_commit": "78a5964068cdcf50c661fb0055c8e7d7cc0c75e2",
     "reviewed_at": "2026-07-13",
     "release_context": "remote-main-review refresh plan"
   },
@@ -13,7 +13,7 @@
     "direct_sync_allowed": false,
     "local_extension_action": "keep_local_bridge_and_selectively_cherry_pick_future_useful_hunks",
     "lock_action": "keep_UPSTREAM.lock.json_at_extension_sync_baseline_until_intentional_extension_sync",
-    "reason": "Latest upstream db964659f3142e10d57246e6ff27294c5d3e828d was checked with upstream:audit:latest. Extension drift changed_files=background.js,disable_dialogs.js; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
+    "reason": "Latest upstream 78a5964068cdcf50c661fb0055c8e7d7cc0c75e2 was checked with upstream:audit:latest. Extension drift changed_files=background.js,disable_dialogs.js; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
   },
   "extension_review": {
     "changed_files": [
