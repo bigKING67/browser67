@@ -1,5 +1,6 @@
 import { runPhysicalInputAction } from "../../physical-input/index.mjs";
 import {
+  clientPointToNativeWindowScreen,
   finiteNumber,
   normalizeDragDurationMs,
   normalizeDragSteps,
@@ -67,41 +68,122 @@ function visionCorrectionBlock(plan) {
 
 function selectScreenCoordinates(args, plan, {
   autoScreenCoordinates = false,
+  nativeWindowRect = null,
   useCorrectedCoordinates = false,
 } = {}) {
   const estimatedClick = plan.coordinate_transform?.screen_estimate?.click;
   const estimatedDrag = plan.coordinate_transform?.screen_estimate?.drag;
   const correctedClick = plan.coordinate_transform?.vision_correction?.screen_estimate?.click;
   const correctedDrag = plan.coordinate_transform?.vision_correction?.screen_estimate?.drag;
-  const screenX = finiteNumber(args?.screen_x)
+  const correctedClientClick = plan.coordinate_transform?.vision_correction?.corrected_coordinates?.click;
+  const correctedClientDrag = plan.coordinate_transform?.vision_correction?.corrected_coordinates?.drag;
+  const estimatedClientClick = plan.checkbox_click_hint?.click_client ?? plan.target?.center_client;
+  const estimatedClientDrag = plan.slider_drag_hint;
+  const nativeCorrectedClick = correctedClientClick
+    ? clientPointToNativeWindowScreen(correctedClientClick, plan.viewport, nativeWindowRect)
+    : null;
+  const nativeCorrectedDragFrom = correctedClientDrag?.from
+    ? clientPointToNativeWindowScreen(correctedClientDrag.from, plan.viewport, nativeWindowRect)
+    : null;
+  const nativeCorrectedDragTo = correctedClientDrag?.to
+    ? clientPointToNativeWindowScreen(correctedClientDrag.to, plan.viewport, nativeWindowRect)
+    : null;
+  const nativeEstimatedClick = estimatedClientClick
+    ? clientPointToNativeWindowScreen(estimatedClientClick, plan.viewport, nativeWindowRect)
+    : null;
+  const nativeEstimatedDragFrom = estimatedClientDrag?.from_client
+    ? clientPointToNativeWindowScreen(estimatedClientDrag.from_client, plan.viewport, nativeWindowRect)
+    : null;
+  const nativeEstimatedDragTo = estimatedClientDrag?.to_client
+    ? clientPointToNativeWindowScreen(estimatedClientDrag.to_client, plan.viewport, nativeWindowRect)
+    : null;
+  const explicitScreenX = finiteNumber(args?.screen_x);
+  const explicitScreenY = finiteNumber(args?.screen_y);
+  const explicitScreenToX = finiteNumber(args?.screen_to_x);
+  const explicitScreenToY = finiteNumber(args?.screen_to_y);
+  const screenX = explicitScreenX
+    ?? (useCorrectedCoordinates ? finiteNumber(
+      plan.assist_target === "slider" ? nativeCorrectedDragFrom?.x : nativeCorrectedClick?.x,
+    ) : null)
     ?? (useCorrectedCoordinates ? finiteNumber(
       plan.assist_target === "slider" ? correctedDrag?.from?.x : correctedClick?.x,
     ) : null)
     ?? (autoScreenCoordinates ? finiteNumber(
+      plan.assist_target === "slider" ? nativeEstimatedDragFrom?.x : nativeEstimatedClick?.x,
+    ) : null)
+    ?? (autoScreenCoordinates ? finiteNumber(
       plan.assist_target === "slider" ? estimatedDrag?.from?.x : estimatedClick?.x,
     ) : null);
-  const screenY = finiteNumber(args?.screen_y)
+  const screenY = explicitScreenY
+    ?? (useCorrectedCoordinates ? finiteNumber(
+      plan.assist_target === "slider" ? nativeCorrectedDragFrom?.y : nativeCorrectedClick?.y,
+    ) : null)
     ?? (useCorrectedCoordinates ? finiteNumber(
       plan.assist_target === "slider" ? correctedDrag?.from?.y : correctedClick?.y,
     ) : null)
     ?? (autoScreenCoordinates ? finiteNumber(
+      plan.assist_target === "slider" ? nativeEstimatedDragFrom?.y : nativeEstimatedClick?.y,
+    ) : null)
+    ?? (autoScreenCoordinates ? finiteNumber(
       plan.assist_target === "slider" ? estimatedDrag?.from?.y : estimatedClick?.y,
     ) : null);
-  const screenToX = finiteNumber(args?.screen_to_x)
+  const screenToX = explicitScreenToX
+    ?? (useCorrectedCoordinates ? finiteNumber(nativeCorrectedDragTo?.x) : null)
     ?? (useCorrectedCoordinates ? finiteNumber(correctedDrag?.to?.x) : null)
+    ?? (autoScreenCoordinates ? finiteNumber(nativeEstimatedDragTo?.x) : null)
     ?? (autoScreenCoordinates ? finiteNumber(estimatedDrag?.to?.x) : null);
-  const screenToY = finiteNumber(args?.screen_to_y)
+  const screenToY = explicitScreenToY
+    ?? (useCorrectedCoordinates ? finiteNumber(nativeCorrectedDragTo?.y) : null)
     ?? (useCorrectedCoordinates ? finiteNumber(correctedDrag?.to?.y) : null)
+    ?? (autoScreenCoordinates ? finiteNumber(nativeEstimatedDragTo?.y) : null)
     ?? (autoScreenCoordinates ? finiteNumber(estimatedDrag?.to?.y) : null);
+  const explicitCoordinates = explicitScreenX !== null || explicitScreenY !== null;
+  const nativeCoordinates = plan.assist_target === "slider"
+    ? (useCorrectedCoordinates ? nativeCorrectedDragFrom : nativeEstimatedDragFrom)
+    : (useCorrectedCoordinates ? nativeCorrectedClick : nativeEstimatedClick);
   return {
     screenX,
     screenY,
     screenToX,
     screenToY,
-    source: useCorrectedCoordinates
-      ? "vision_corrected_region_capture"
-      : (autoScreenCoordinates ? "coordinate_transform_estimate" : "caller_supplied"),
+    source: explicitCoordinates
+      ? "caller_supplied"
+      : useCorrectedCoordinates
+        ? (nativeCoordinates ? "vision_corrected_native_window_rect" : "vision_corrected_region_capture")
+        : autoScreenCoordinates
+          ? (nativeCoordinates ? "coordinate_transform_native_window_rect" : "coordinate_transform_estimate")
+          : "caller_supplied",
+    coordinate_calibration: explicitCoordinates ? undefined : nativeCoordinates?.calibration,
   };
+}
+
+async function getForegroundNativeWindowRect(args) {
+  try {
+    const physicalInput = await runPhysicalInputAction("get_window_rect", {
+      timeout_ms: args?.timeout_ms,
+    }, {
+      preferred_provider: args?.physical_input_provider,
+    });
+    if (physicalInput.result?.status !== "success") {
+      return {
+        status: "unavailable",
+        reason: physicalInput.result?.reason ?? "native_window_rect_failed",
+        provider: physicalInput.provider,
+        provider_selection: physicalInput.provider_selection,
+      };
+    }
+    return {
+      ...physicalInput.result,
+      provider: physicalInput.provider,
+      provider_selection: physicalInput.provider_selection,
+    };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      reason: "native_window_rect_failed",
+      error: String(error?.message ?? error),
+    };
+  }
 }
 
 function coordinateBlock(plan, coordinates, autoScreenCoordinates) {
@@ -330,11 +412,21 @@ async function handleAssistCaptcha(args) {
       ],
     });
   }
+  const nativeWindowRect = autoScreenCoordinates || useCorrectedCoordinates
+    ? await getForegroundNativeWindowRect(args)
+    : {
+      status: "skipped",
+      reason: "caller_supplied_or_provider_coordinates",
+    };
+  if (coordinateRefresh.performed === true) {
+    coordinateRefresh.native_window_rect = nativeWindowRect;
+  }
   let providerCoordinateResult = null;
   const selectedCoordinates = useProviderCoordinates
     ? null
     : selectScreenCoordinates(args, planForInput, {
       autoScreenCoordinates,
+      nativeWindowRect: nativeWindowRect.status === "success" ? nativeWindowRect : null,
       useCorrectedCoordinates,
     });
   if (useProviderCoordinates) {
@@ -451,6 +543,8 @@ async function handleAssistCaptcha(args) {
       coordinate_system: "screen_pixels",
       source: inputCoordinates.source,
     },
+    coordinate_calibration: inputCoordinates.coordinate_calibration,
+    native_window_rect: nativeWindowRect,
     waited_ms: waitAfterMs,
     next_step: "browser_auth_ops.ensure_login",
     secrets_redacted: true,

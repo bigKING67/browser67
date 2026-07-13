@@ -153,6 +153,114 @@ function estimateViewportOriginScreen(viewport = {}) {
   };
 }
 
+function nativeWindowCoordinateCalibration(viewport = {}, nativeWindowRect = {}) {
+  const left = finiteNumber(nativeWindowRect.left);
+  const top = finiteNumber(nativeWindowRect.top);
+  const explicitWidth = finiteNumber(nativeWindowRect.width);
+  const explicitHeight = finiteNumber(nativeWindowRect.height);
+  const right = finiteNumber(nativeWindowRect.right);
+  const bottom = finiteNumber(nativeWindowRect.bottom);
+  const width = explicitWidth ?? (
+    left !== null && right !== null ? right - left : null
+  );
+  const height = explicitHeight ?? (
+    top !== null && bottom !== null ? bottom - top : null
+  );
+  const innerWidth = finiteNumber(viewport.inner_width);
+  const innerHeight = finiteNumber(viewport.inner_height);
+  const outerWidth = finiteNumber(viewport.outer_width);
+  const outerHeight = finiteNumber(viewport.outer_height);
+  if (
+    left === null
+    || top === null
+    || width === null
+    || height === null
+    || width <= 0
+    || height <= 0
+    || innerWidth === null
+    || innerHeight === null
+    || outerWidth === null
+    || outerHeight === null
+    || outerWidth <= 0
+    || outerHeight <= 0
+  ) {
+    return null;
+  }
+  const browserScaleX = width / outerWidth;
+  const browserScaleY = height / outerHeight;
+  if (
+    !Number.isFinite(browserScaleX)
+    || !Number.isFinite(browserScaleY)
+    || browserScaleX <= 0
+    || browserScaleY <= 0
+  ) {
+    return null;
+  }
+  const devicePixelRatio = finiteNumber(viewport.device_pixel_ratio);
+  const contentScale = devicePixelRatio !== null && devicePixelRatio > 0
+    ? devicePixelRatio
+    : (browserScaleX + browserScaleY) / 2;
+  const chromeWidth = Math.max(0, outerWidth - innerWidth);
+  const chromeHeight = Math.max(0, outerHeight - innerHeight);
+  const sideInset = chromeWidth > 0 ? chromeWidth / 2 : 0;
+  const topInset = chromeHeight > 0 ? Math.max(0, chromeHeight - sideInset) : 0;
+  return {
+    method: "native_window_rect_with_browser_metrics",
+    native_window_rect: {
+      left: roundCoordinate(left),
+      top: roundCoordinate(top),
+      width: roundCoordinate(width),
+      height: roundCoordinate(height),
+    },
+    browser_window_scale: {
+      x: roundCoordinate(browserScaleX),
+      y: roundCoordinate(browserScaleY),
+      source: "native_window_rect_divided_by_browser_outer_css_size",
+    },
+    content_scale: {
+      x: roundCoordinate(contentScale),
+      y: roundCoordinate(contentScale),
+      source: devicePixelRatio !== null && devicePixelRatio > 0
+        ? "window_device_pixel_ratio"
+        : "native_window_rect_scale_fallback",
+    },
+    viewport_origin_screen: {
+      x: roundCoordinate(left + (sideInset * browserScaleX)),
+      y: roundCoordinate(top + (topInset * browserScaleY)),
+      coordinate_system: "physical_screen_pixels",
+    },
+  };
+}
+
+function clientPointToNativeWindowScreen(point, viewport = {}, nativeWindowRect = {}) {
+  const calibration = nativeWindowCoordinateCalibration(viewport, nativeWindowRect);
+  const x = finiteNumber(point?.x);
+  const y = finiteNumber(point?.y);
+  if (!calibration || x === null || y === null) {
+    return null;
+  }
+  const visual = viewport.visual_viewport && typeof viewport.visual_viewport === "object"
+    ? viewport.visual_viewport
+    : {};
+  const offsetLeft = finiteNumber(visual.offset_left) ?? 0;
+  const offsetTop = finiteNumber(visual.offset_top) ?? 0;
+  const visualScale = finiteNumber(visual.scale) ?? 1;
+  return {
+    x: roundCoordinate(
+      calibration.viewport_origin_screen.x
+      + ((x - offsetLeft) * calibration.content_scale.x * visualScale),
+    ),
+    y: roundCoordinate(
+      calibration.viewport_origin_screen.y
+      + ((y - offsetTop) * calibration.content_scale.y * visualScale),
+    ),
+    coordinate_system: "physical_screen_pixels",
+    confidence: "high",
+    method: calibration.method,
+    calibration,
+  };
+}
+
 function clientPointToScreenEstimate(point, viewport = {}) {
   const origin = estimateViewportOriginScreen(viewport);
   const x = finiteNumber(point?.x);
@@ -248,10 +356,12 @@ export {
   buildCoordinateTransformPlan,
   buildSliderDragHint,
   buildVisionCorrectionPlan,
+  clientPointToNativeWindowScreen,
   clientPointToScreenEstimate,
   clampRectToViewport,
   estimateViewportOriginScreen,
   finiteNumber,
+  nativeWindowCoordinateCalibration,
   normalizeDragDurationMs,
   normalizeDragSteps,
   normalizePreInputSettleMs,

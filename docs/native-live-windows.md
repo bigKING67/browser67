@@ -75,6 +75,12 @@ Reload the extension if `extension:doctor` reports
 npm run check:live:doctor
 ```
 
+The physical gate calibrates browser CSS coordinates against the foreground
+native window rectangle before moving the pointer. This is required on Windows
+hosts using display scaling above 100% (for example `devicePixelRatio=2`). Keep
+the display scale, resolution, browser window size, and monitor placement stable
+for the duration of the proof run.
+
 ## 3. Run no-input readiness checks
 
 These commands do not move the mouse or create a browser tab:

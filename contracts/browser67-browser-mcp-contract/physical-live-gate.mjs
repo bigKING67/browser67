@@ -4,6 +4,8 @@ import { buildPhysicalAssistAttemptPlan } from "../browser-captcha-assist-live-s
 import { parseLastJsonLine } from "../browser-captcha-assist-physical-live-gate/child-runner.mjs";
 import { buildPhysicalProof } from "../browser-captcha-assist-physical-live-gate/proof.mjs";
 import { runPhysicalLiveGate } from "../browser-captcha-assist-physical-live-gate/runner.mjs";
+import { clientPointToNativeWindowScreen } from "../../src/auth/captcha/coordinates.mjs";
+import { buildWindowsNativePrelude } from "../../src/native-windows/powershell.mjs";
 
 function assertNotCalled(label) {
   return () => {
@@ -65,6 +67,37 @@ function successfulChildPayload(overrides = {}) {
 }
 
 async function assertPhysicalLiveGateContract() {
+  const windowsDpiPrelude = buildWindowsNativePrelude();
+  assert.match(windowsDpiPrelude, /SetProcessDpiAwarenessContext/);
+  assert.match(windowsDpiPrelude, /SetProcessDPIAware/);
+
+  const highDpiPoint = clientPointToNativeWindowScreen(
+    { x: 75, y: 100 },
+    {
+      device_pixel_ratio: 2,
+      inner_height: 735,
+      inner_width: 1_440,
+      outer_height: 912,
+      outer_width: 1_440,
+      visual_viewport: {
+        offset_left: 0,
+        offset_top: 0,
+        scale: 1,
+      },
+    },
+    {
+      left: 0,
+      top: 0,
+      width: 2_880,
+      height: 1_824,
+    },
+  );
+  assert.equal(highDpiPoint?.x, 150);
+  assert.equal(highDpiPoint?.y, 554);
+  assert.equal(highDpiPoint?.coordinate_system, "physical_screen_pixels");
+  assert.equal(highDpiPoint?.calibration?.browser_window_scale?.x, 2);
+  assert.equal(highDpiPoint?.calibration?.content_scale?.x, 2);
+
   const disabled = await runPhysicalLiveGate({
     env: {},
     nativePointerPreflight: assertNotCalled("native pointer preflight"),

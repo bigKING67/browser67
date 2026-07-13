@@ -52,6 +52,8 @@ function compactPhysicalAssist(physicalAssist = {}) {
         refreshed_coordinate_transform: physicalAssist.coordinate_refresh.refreshed_coordinate_transform,
       }
       : undefined,
+    coordinate_calibration: physicalAssist.coordinate_calibration,
+    native_window_rect: physicalAssist.native_window_rect,
     waited_ms: physicalAssist.waited_ms,
     target: physicalAssist.target
       ? {

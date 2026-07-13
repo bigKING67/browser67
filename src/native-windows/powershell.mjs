@@ -104,8 +104,6 @@ async function runWindowsPowerShellScript(script, timeoutMs) {
 
 function buildWindowsNativePrelude() {
   return [
-    "Add-Type -AssemblyName System.Windows.Forms",
-    "Add-Type -AssemblyName System.Drawing",
     "Add-Type @\"",
     "using System;",
     "using System.Runtime.InteropServices;",
@@ -117,8 +115,15 @@ function buildWindowsNativePrelude() {
     "  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();",
     "  [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);",
     "  [DllImport(\"user32.dll\")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);",
+    "  [DllImport(\"user32.dll\")] public static extern bool SetProcessDPIAware();",
+    "  [DllImport(\"user32.dll\")] public static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);",
     "}",
     "\"@",
+    "$dpiAware = $false",
+    "try { $dpiAware = [NativeBridge]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch { $dpiAware = $false }",
+    "if (-not $dpiAware) { try { [NativeBridge]::SetProcessDPIAware() | Out-Null } catch {} }",
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "Add-Type -AssemblyName System.Drawing",
   ].join("\n");
 }
 
