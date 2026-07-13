@@ -81,6 +81,11 @@ hosts using display scaling above 100% (for example `devicePixelRatio=2`). Keep
 the display scale, resolution, browser window size, and monitor placement stable
 for the duration of the proof run.
 
+The native proof wrapper also raises the physical child RPC timeout to 60
+seconds by default. A caller can still override it with `--timeout-ms` for an
+unusually slow graphical host. Transient zero-sized viewport metrics no longer
+collapse a valid target rectangle into a `1x1` screenshot clip.
+
 ## 3. Run no-input readiness checks
 
 These commands do not move the mouse or create a browser tab:

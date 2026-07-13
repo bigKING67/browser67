@@ -4,7 +4,10 @@ import { buildPhysicalAssistAttemptPlan } from "../browser-captcha-assist-live-s
 import { parseLastJsonLine } from "../browser-captcha-assist-physical-live-gate/child-runner.mjs";
 import { buildPhysicalProof } from "../browser-captcha-assist-physical-live-gate/proof.mjs";
 import { runPhysicalLiveGate } from "../browser-captcha-assist-physical-live-gate/runner.mjs";
-import { clientPointToNativeWindowScreen } from "../../src/auth/captcha/coordinates.mjs";
+import {
+  clampRectToViewport,
+  clientPointToNativeWindowScreen,
+} from "../../src/auth/captcha/coordinates.mjs";
 import { buildWindowsNativePrelude } from "../../src/native-windows/powershell.mjs";
 
 function assertNotCalled(label) {
@@ -97,6 +100,30 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(highDpiPoint?.coordinate_system, "physical_screen_pixels");
   assert.equal(highDpiPoint?.calibration?.browser_window_scale?.x, 2);
   assert.equal(highDpiPoint?.calibration?.content_scale?.x, 2);
+
+  assert.deepEqual(
+    clampRectToViewport({
+      left: 48,
+      top: 144,
+      right: 370,
+      bottom: 198,
+    }, {
+      inner_width: 0,
+      inner_height: 0,
+      visual_viewport: {
+        width: 0,
+        height: 0,
+      },
+    }),
+    {
+      x: 36,
+      y: 132,
+      width: 346,
+      height: 78,
+      scale: 1,
+      coordinate_system: "viewport_css_pixels",
+    },
+  );
 
   const disabled = await runPhysicalLiveGate({
     env: {},

@@ -9,8 +9,10 @@ import {
   physicalAttemptOptionsFromEnv,
 } from "../browser-captcha-assist-live-smoke/physical-gate.mjs";
 import {
+  DEFAULT_PHYSICAL_CHILD_TIMEOUT_MS,
   buildNativeLiveProof,
   nativeLiveCommand,
+  physicalChildArgs,
   proofIdForPlatform,
   runNativeLiveProofGate,
 } from "../../scripts/native-live-proof-gate.mjs";
@@ -107,6 +109,14 @@ async function assertNativeLiveProofGateContract() {
   assert.equal(proofIdForPlatform("darwin"), undefined);
   assert.match(nativeLiveCommand("linux"), /TMWD_NATIVE_LIVE_PHYSICAL=1/);
   assert.match(nativeLiveCommand("win32"), /\$env:TMWD_NATIVE_LIVE_PHYSICAL=/);
+  assert.deepEqual(physicalChildArgs([]), [
+    "--timeout-ms",
+    String(DEFAULT_PHYSICAL_CHILD_TIMEOUT_MS),
+  ]);
+  assert.deepEqual(
+    physicalChildArgs(["--timeout-ms", "90000", "--tmwd-mode", "tmwd"]),
+    ["--timeout-ms", "90000", "--tmwd-mode", "tmwd"],
+  );
 
   const linuxProof = buildNativeLiveProof(successfulPhysicalPayload("linux"), {
     platform: "linux",

@@ -13,6 +13,7 @@ import {
 import { buildOptionalLiveProofRecord } from "./optional-live-proof-record.mjs";
 
 const CHECK_ID = "native-live-proof-gate";
+const DEFAULT_PHYSICAL_CHILD_TIMEOUT_MS = 60_000;
 const SUPPORTED_PROOF_IDS = new Map([
   ["linux", "native-live-linux"],
   ["win32", "native-live-win32"],
@@ -100,6 +101,13 @@ function nativeLiveCommand(platform) {
     return '$env:TMWD_NATIVE_LIVE_PHYSICAL="1"; $env:TMWD_NATIVE_LIVE_CONFIRM="1"; npm run proof:native-live -- --write';
   }
   return "TMWD_NATIVE_LIVE_PHYSICAL=1 TMWD_NATIVE_LIVE_CONFIRM=1 npm run proof:native-live -- --write";
+}
+
+function physicalChildArgs(childArgs = []) {
+  if (childArgs.includes("--timeout-ms")) {
+    return [...childArgs];
+  }
+  return ["--timeout-ms", String(DEFAULT_PHYSICAL_CHILD_TIMEOUT_MS), ...childArgs];
 }
 
 function expiresAtFrom(checkedAt) {
@@ -355,7 +363,7 @@ async function runNativeLiveProofGate(options = {}) {
     TMWD_NATIVE_LIVE_PROOF: "1",
   };
   const physicalResult = await physicalRunner({
-    argv: args.child_args,
+    argv: physicalChildArgs(args.child_args),
     cwd: options.cwd ?? process.cwd(),
     env: physicalEnv,
     platform,
@@ -451,9 +459,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
 
 export {
   CHECK_ID,
+  DEFAULT_PHYSICAL_CHILD_TIMEOUT_MS,
   buildNativeLiveProof,
   nativeLiveCommand,
   parseArgs,
+  physicalChildArgs,
   proofIdForPlatform,
   recordNativeLiveProof,
   runCommand,

@@ -100,8 +100,16 @@ function clampRectToViewport(rect, viewport = {}, margin = 12) {
   if (!rect) {
     return undefined;
   }
-  const innerWidth = finiteNumber(viewport.inner_width);
-  const innerHeight = finiteNumber(viewport.inner_height);
+  const rawInnerWidth = finiteNumber(viewport.inner_width);
+  const rawInnerHeight = finiteNumber(viewport.inner_height);
+  const visualWidth = finiteNumber(viewport.visual_viewport?.width);
+  const visualHeight = finiteNumber(viewport.visual_viewport?.height);
+  const innerWidth = rawInnerWidth !== null && rawInnerWidth > 0
+    ? rawInnerWidth
+    : (visualWidth !== null && visualWidth > 0 ? visualWidth : null);
+  const innerHeight = rawInnerHeight !== null && rawInnerHeight > 0
+    ? rawInnerHeight
+    : (visualHeight !== null && visualHeight > 0 ? visualHeight : null);
   const left = Math.max(0, Number(rect.left ?? 0) - margin);
   const top = Math.max(0, Number(rect.top ?? 0) - margin);
   const rightLimit = innerWidth === null ? Number(rect.right ?? 0) + margin : innerWidth;
