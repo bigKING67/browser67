@@ -8,6 +8,10 @@ import {
   clampRectToViewport,
   clientPointToNativeWindowScreen,
 } from "../../src/auth/captcha/coordinates.mjs";
+import {
+  buildWindowsClickScript,
+  buildWindowsDragScript,
+} from "../../src/native-windows/pointer.mjs";
 import { buildWindowsNativePrelude } from "../../src/native-windows/powershell.mjs";
 
 function assertNotCalled(label) {
@@ -73,6 +77,48 @@ async function assertPhysicalLiveGateContract() {
   const windowsDpiPrelude = buildWindowsNativePrelude();
   assert.match(windowsDpiPrelude, /SetProcessDpiAwarenessContext/);
   assert.match(windowsDpiPrelude, /SetProcessDPIAware/);
+  assert.match(windowsDpiPrelude, /SetCursorPos/);
+  assert.match(windowsDpiPrelude, /GetCursorPos/);
+  assert.match(windowsDpiPrelude, /SendInput/);
+  assert.match(windowsDpiPrelude, /GetWindowThreadProcessId/);
+
+  const windowsDragScript = buildWindowsDragScript({
+    button: "left",
+    delayMs: 30,
+    downFlag: "0x0002",
+    durationMs: 900,
+    expectedWindowHwnd: 12345,
+    fromX: 137,
+    fromY: 546,
+    steps: 24,
+    toX: 657,
+    toY: 546,
+    upFlag: "0x0004",
+    virtualKey: "0x01",
+  });
+  assert.match(windowsDragScript, /actual_from/);
+  assert.match(windowsDragScript, /actual_to/);
+  assert.match(windowsDragScript, /button_down_observed/);
+  assert.match(windowsDragScript, /foreground_window/);
+  assert.match(windowsDragScript, /foreground_window_verified/);
+  assert.match(windowsDragScript, /SetForegroundWindow/);
+  assert.match(windowsDragScript, /Start-Sleep -Milliseconds \$preDownSettleMs/);
+  assert.match(windowsDragScript, /SendMouseInput/);
+
+  const windowsClickScript = buildWindowsClickScript({
+    button: "left",
+    count: 1,
+    downFlag: "0x0002",
+    expectedWindowHwnd: 12345,
+    upFlag: "0x0004",
+    virtualKey: "0x01",
+    x: 154,
+    y: 742,
+  });
+  assert.match(windowsClickScript, /actual_point/);
+  assert.match(windowsClickScript, /position_verified/);
+  assert.match(windowsClickScript, /foreground_window_verified/);
+  assert.match(windowsClickScript, /SendMouseInput/);
 
   const highDpiPoint = clientPointToNativeWindowScreen(
     { x: 75, y: 100 },

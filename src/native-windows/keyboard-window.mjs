@@ -109,7 +109,8 @@ async function getWindowRect(args, timeoutMs) {
     "}",
     "$width = $rect.Right - $rect.Left",
     "$height = $rect.Bottom - $rect.Top",
-    "@{ ok = $true; left = $rect.Left; top = $rect.Top; right = $rect.Right; bottom = $rect.Bottom; width = $width; height = $height; hwnd = [Int64]$hwnd } | ConvertTo-Json -Compress",
+    "$windowSnapshot = Get-NativeWindowSnapshot $hwnd",
+    "@{ ok = $true; left = $rect.Left; top = $rect.Top; right = $rect.Right; bottom = $rect.Bottom; width = $width; height = $height; hwnd = [Int64]$hwnd; pid = $windowSnapshot.pid; process_name = $windowSnapshot.process_name; title = $windowSnapshot.title } | ConvertTo-Json -Compress",
   ].join("\n");
   const response = await runWindowsPowerShellScript(script, timeoutMs);
   const parsed = parsePowerShellNativeResult(response, "get_window_rect");

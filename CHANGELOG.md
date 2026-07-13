@@ -11,6 +11,7 @@
 - Add p95/p99 run-event latency observations to the deterministic performance smoke gate.
 - Add a default 500-run retention ceiling alongside age and total-size cleanup budgets.
 - Add dedicated Linux/Windows GUI native-live proof gates that verify native window geometry plus physical drag/click and automatically record sanitized target-OS proof JSON.
+- Harden Windows physical pointer execution with foreground HWND verification, `SendInput`, cursor-position readback, and bounded drag/click telemetry.
 
 ## 0.2.0 - 2026-07-01
 

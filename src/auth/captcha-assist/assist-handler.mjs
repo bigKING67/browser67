@@ -490,6 +490,7 @@ async function handleAssistCaptcha(args) {
       button: "left",
       duration_ms: normalizeDragDurationMs(args?.drag_duration_ms),
       steps: normalizeDragSteps(args?.drag_steps),
+      expected_window_hwnd: nativeWindowRect.status === "success" ? nativeWindowRect.hwnd : undefined,
       timeout_ms: args?.timeout_ms,
     }, {
       preferred_provider: args?.physical_input_provider,
@@ -498,6 +499,7 @@ async function handleAssistCaptcha(args) {
       x: inputCoordinates.screenX,
       y: inputCoordinates.screenY,
       button: "left",
+      expected_window_hwnd: nativeWindowRect.status === "success" ? nativeWindowRect.hwnd : undefined,
       timeout_ms: args?.timeout_ms,
     }, {
       preferred_provider: args?.physical_input_provider,
