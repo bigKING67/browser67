@@ -127,7 +127,11 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 - `browser_execute_js`: direct browser67/CDP JavaScript execution. Use
   `output_mode:"compact"` plus `max_return_chars` for large DOM/network payloads
-  so tool results stay bounded and context-safe.
+  so tool results stay bounded and context-safe. Scripts that contain likely
+  click/popup interactions get a bounded 1.5s new-target poll; callers can set
+  `new_tab_wait_ms` explicitly (`0..5000`), while `no_monitor:true` disables
+  polling. This allows delayed OAuth popup targets to appear in `newTabs`
+  without adding latency to ordinary read-only JavaScript.
 - `browser_wait`: first-class selector/text/function/DOM-stable/network-idle
   wait helper. Prefer it over ad-hoc sleeps when a page needs readiness gating.
 - `browser_transport_health`: probes browser67 `ws` and/or `link` transports and
@@ -247,6 +251,11 @@ Known-site operational pattern:
    not continue guessing. OAuth popup flows keep the compatible
    `manual_required_sso` reason and use `manual_context.kind:"oauth_popup"` for
    the more specific handoff type.
+   Provider controls may be native links/buttons or `[role="button"]`. Same-tab
+   existing-account, authorization, and consent continuations remain
+   `manual_context.kind:"sso"`; generic OAuth wording alone does not imply a
+   popup. Explicit authenticated markers suppress stale provider-button noise
+   only when no password/MFA/login surface or auth-continuation path is present.
 7. Finish with `browser_tab_lifecycle.finalize_task` for the same `workspace_key`.
 
 Visual QA pattern:

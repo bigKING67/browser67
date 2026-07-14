@@ -1,6 +1,9 @@
 import { normalizeTimeoutMs } from "../common.mjs";
 import { executeBrowserScript } from "./login-detect.mjs";
-import { MANUAL_CHALLENGE_DETECTOR_JS } from "./manual-challenge.mjs";
+import {
+  MANUAL_CHALLENGE_DETECTOR_JS,
+  SSO_CHALLENGE_DETECTOR_JS,
+} from "./manual-challenge.mjs";
 
 const DEFAULT_LOGIN_TIMEOUT_MS = 12_000;
 
@@ -35,29 +38,20 @@ async function submitLoginForm(args, profile) {
       const bodyText = String(document.body?.innerText || "");
       ${MANUAL_CHALLENGE_DETECTOR_JS}
       const challenge = detectManualChallenge();
+      ${SSO_CHALLENGE_DETECTOR_JS}
+      const ssoChallenge = detectSsoChallenge();
       const mfaInputs = Array.from(document.querySelectorAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]'));
-      const ssoElements = Array.from(document.querySelectorAll('a, button')).filter((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
-      const ssoDetected = ssoElements.length > 0;
-      const oauthPopupDetected = ssoElements.some((el) => {
-        const haystack = [
-          el.textContent,
-          el.getAttribute("href"),
-          el.getAttribute("target"),
-          el.getAttribute("data-oauth-popup"),
-          el.getAttribute("aria-label")
-        ].filter(Boolean).join(" ");
-        return /oauth|popup|_blank/i.test(haystack);
-      });
       const mfaDetected = mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText);
       return {
         ...challenge,
+        ...ssoChallenge,
         mfa_detected: mfaDetected,
         mfa_input_count: mfaInputs.length,
-        sso_detected: ssoDetected,
-        oauth_popup_detected: oauthPopupDetected,
         manual_required_reason: challenge.captcha_detected
           ? "manual_required_captcha"
-          : (mfaDetected ? "manual_required_mfa" : (ssoDetected && !document.querySelector('input[type="password"]') ? "manual_required_sso" : ""))
+          : (mfaDetected
+            ? "manual_required_mfa"
+            : (ssoChallenge.sso_detected && !document.querySelector('input[type="password"]') ? "manual_required_sso" : ""))
       };
     };
     let successTextMatched = profile.success_text ? String(document.body?.innerText || "").includes(profile.success_text) : true;

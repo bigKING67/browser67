@@ -23,6 +23,7 @@ async function run() {
       mfaTabId: manual.mfaTabId,
       oauthTabId: manual.oauthTabId,
       ssoTabId: manual.ssoTabId,
+      additionalTabIds: manual.additionalTabIds,
     });
 
     return {
@@ -54,6 +55,10 @@ async function run() {
       oauth_popup_resume_success: manual.oauthResume.status === "success"
         && manual.oauthResume.already_authenticated === true
         && manual.oauthResume.submitted === false,
+      role_button_sso_detected: manual.roleButtonBlocked.sso_detected === true,
+      authenticated_sso_noise_ignored: manual.authenticatedNoise.authenticated_surface_detected === true
+        && manual.authenticatedNoise.sso_detected === false,
+      delayed_popup_detected: manual.delayedPopupDetected.newTabs?.length > 0,
       login_submissions: context.fixture.state.login_submissions,
       successful_logins: context.fixture.state.successful_logins,
       unknown_origin_blocked: unknown.unknownDryRun.status === "blocked",

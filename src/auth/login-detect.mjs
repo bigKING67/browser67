@@ -3,6 +3,7 @@ import { createToolError } from "../errors.mjs";
 import { executeTmwdJsWithFallback, resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
 import {
   MANUAL_CHALLENGE_DETECTOR_JS,
+  SSO_CHALLENGE_DETECTOR_JS,
   manualCaptchaContextFields,
   publicChallengeFields,
 } from "./manual-challenge.mjs";
@@ -77,10 +78,26 @@ function manualRequirementFromPageState(pageState) {
   if (pageState?.mfa_detected === true || Number(pageState?.mfa_input_count ?? 0) > 0) {
     return "manual_required_mfa";
   }
+  if (
+    pageState?.authenticated_surface_detected === true
+    && pageState?.auth_continuation_detected !== true
+    && Number(pageState?.password_input_count ?? 0) === 0
+  ) {
+    return "";
+  }
   if (pageState?.sso_detected === true && Number(pageState?.password_input_count ?? 0) === 0) {
     return "manual_required_sso";
   }
   return "";
+}
+
+function publicAuthSurfaceFields(pageState = {}) {
+  return {
+    authenticated_surface_detected: pageState?.authenticated_surface_detected === true,
+    auth_continuation_detected: pageState?.auth_continuation_detected === true,
+    sso_detected: pageState?.sso_detected === true,
+    oauth_popup_detected: pageState?.oauth_popup_detected === true,
+  };
 }
 
 function manualContextKind(reason, pageState = {}) {
@@ -196,18 +213,8 @@ async function inspectCurrentPage(args, profile = null) {
     const mfaInputs = Array.from(document.querySelectorAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]'));
     ${MANUAL_CHALLENGE_DETECTOR_JS}
     const challenge = detectManualChallenge();
-    const ssoElements = Array.from(document.querySelectorAll('a, button')).filter((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
-    const ssoDetected = ssoElements.length > 0;
-    const oauthPopupDetected = ssoElements.some((el) => {
-      const haystack = [
-        el.textContent,
-        el.getAttribute("href"),
-        el.getAttribute("target"),
-        el.getAttribute("data-oauth-popup"),
-        el.getAttribute("aria-label")
-      ].filter(Boolean).join(" ");
-      return /oauth|popup|_blank/i.test(haystack);
-    });
+    ${SSO_CHALLENGE_DETECTOR_JS}
+    const ssoChallenge = detectSsoChallenge();
     const bodyText = String(document.body?.innerText || "");
     return {
       url: location.href,
@@ -219,8 +226,7 @@ async function inspectCurrentPage(args, profile = null) {
       username_like_input_count: usernameLikeInputs.length,
       mfa_input_count: mfaInputs.length,
       ...challenge,
-      sso_detected: ssoDetected,
-      oauth_popup_detected: oauthPopupDetected,
+      ...ssoChallenge,
       mfa_detected: mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText),
       profile_selectors: {
         username: hasSelector(profile.username_selector),
@@ -310,20 +316,10 @@ async function suggestProfileFromCurrentPage(args) {
     const submitSelector = selectorFor(submitButton, ['button[type="submit"]', 'input[type="submit"]', 'button']);
     ${MANUAL_CHALLENGE_DETECTOR_JS}
     const challenge = detectManualChallenge();
+    ${SSO_CHALLENGE_DETECTOR_JS}
+    const ssoChallenge = detectSsoChallenge();
     const mfaInputs = queryAll('input[name*="otp" i], input[name*="totp" i], input[name*="mfa" i], input[name*="code" i], input[autocomplete="one-time-code"]');
     const bodyText = String(document.body?.innerText || "");
-    const ssoElements = queryAll('a, button').filter((el) => /sso|single sign|google|github|microsoft|okta|saml|oauth/i.test(String(el.textContent || "")));
-    const ssoDetected = ssoElements.length > 0;
-    const oauthPopupDetected = ssoElements.some((el) => {
-      const haystack = [
-        el.textContent,
-        el.getAttribute("href"),
-        el.getAttribute("target"),
-        el.getAttribute("data-oauth-popup"),
-        el.getAttribute("aria-label")
-      ].filter(Boolean).join(" ");
-      return /oauth|popup|_blank/i.test(haystack);
-    });
     return {
       url: location.href,
       origin: location.origin,
@@ -339,8 +335,7 @@ async function suggestProfileFromCurrentPage(args) {
       ...challenge,
       mfa_detected: mfaInputs.length > 0 || /\\b(otp|totp|mfa|two[- ]?factor|verification code|authenticator)\\b/i.test(bodyText),
       mfa_input_count: mfaInputs.length,
-      sso_detected: ssoDetected,
-      oauth_popup_detected: oauthPopupDetected
+      ...ssoChallenge
     };
   `);
   return {
@@ -390,6 +385,7 @@ export {
   manualRequirementFields,
   manualRequirementFromPageState,
   parseUrlState,
+  publicAuthSurfaceFields,
   publicChallengeFields,
   suggestProfileFromCurrentPage,
 };

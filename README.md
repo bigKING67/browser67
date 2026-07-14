@@ -368,7 +368,12 @@ CAPTCHA, MFA, SSO-only, and OAuth popup flows are reported as
 `manual_required_*` and block automatic submission/continuation. These blocked
 states include a non-secret `manual_context` with the manual flow kind and
 `resume_action:"ensure_login"`; it is a handoff hint, not a credential/session
-container. CAPTCHA contexts may include a `captcha_kind`, `captcha_assist`
+container. Provider controls include native links/buttons and `[role="button"]`;
+same-tab existing-account/authorization/consent pages remain SSO handoffs, while
+popup classification requires explicit `_blank`, `window.open`, popup text, or
+`data-oauth-popup` evidence. Authenticated-page markers suppress stale SSO
+button noise only when no password/MFA surface or auth continuation is active.
+CAPTCHA contexts may include a `captcha_kind`, `captcha_assist`
 policy, and `captcha_router` plan. The default route is still human/manual or
 native physical input for visible UI challenges, but the policy is now hybrid:
 bounded DOM/vision/provider coordinate planning can be used for checkbox,

@@ -27,6 +27,7 @@ const EXECUTE_ARG_KEYS = [
   "tmwd_ws_endpoint",
   "tmwd_link_endpoint",
   "no_monitor",
+  "new_tab_wait_ms",
   "native_auto_fallback",
   "native_auto_fallback_policy",
   "native_auto_execute",

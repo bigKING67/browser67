@@ -13,6 +13,7 @@ import {
   manualRequirementFields,
   manualRequirementFromPageState,
   parseUrlState,
+  publicAuthSurfaceFields,
   publicChallengeFields,
 } from "../login-detect.mjs";
 import { submitLoginForm } from "../login-submit.mjs";
@@ -57,7 +58,8 @@ async function handleEnsureLogin(args) {
 
   const firstState = await inspectCurrentPage(args, null);
   const genericDetection = detectLoginPage(firstState, null);
-  if (!genericDetection.login_detected) {
+  const firstManualRequiredReason = manualRequirementFromPageState(firstState);
+  if (!genericDetection.login_detected && !firstManualRequiredReason) {
     const optionalResolved = resolveProfileForOrigin(loaded.profiles, args, firstState.origin);
     const optionalProfile = optionalResolved.blocked_reason ? null : optionalResolved.profile;
     const lifecycle = optionalProfile
@@ -85,12 +87,12 @@ async function handleEnsureLogin(args) {
       page: firstState.page,
       profile: optionalProfile ? redactProfile({ ...optionalProfile, lifecycle: { ...optionalProfile.lifecycle, ...lifecycle } }) : undefined,
       ...genericDetection,
+      ...publicAuthSurfaceFields(firstState),
       metadata_updated: lifecycleMetadataWasUpdated(lifecycle),
       secrets_redacted: true,
     };
   }
 
-  const firstManualRequiredReason = manualRequirementFromPageState(firstState);
   if (firstManualRequiredReason) {
     return {
       status: "blocked",
@@ -108,8 +110,7 @@ async function handleEnsureLogin(args) {
       ...publicChallengeFields(firstState),
       mfa_detected: firstState.mfa_detected === true,
       mfa_input_count: firstState.mfa_input_count,
-      sso_detected: firstState.sso_detected === true,
-      oauth_popup_detected: firstState.oauth_popup_detected === true,
+      ...publicAuthSurfaceFields(firstState),
       ...manualRequirementFields(firstManualRequiredReason, pageStateWithPage(firstState, firstState.page), args),
       secrets_redacted: true,
     };
@@ -154,7 +155,8 @@ async function handleEnsureLogin(args) {
 
   const pageState = await inspectCurrentPage(args, profile);
   const detection = detectLoginPage(pageState, profile);
-  if (!detection.login_detected) {
+  const manualRequiredReason = manualRequirementFromPageState(pageState);
+  if (!detection.login_detected && !manualRequiredReason) {
     const lifecycle = await recordProfileAuthLifecycle(profile, {
       last_used_at: new Date().toISOString(),
       last_validated_at: new Date().toISOString(),
@@ -177,13 +179,13 @@ async function handleEnsureLogin(args) {
       page: pageState.page,
       profile: redactProfile({ ...profile, lifecycle: { ...profile.lifecycle, ...lifecycle } }),
       ...detection,
+      ...publicAuthSurfaceFields(pageState),
       reason: "already_authenticated",
       metadata_updated: lifecycleMetadataWasUpdated(lifecycle),
       secrets_redacted: true,
     };
   }
 
-  const manualRequiredReason = manualRequirementFromPageState(pageState);
   if (manualRequiredReason) {
     return {
       status: "blocked",
@@ -202,8 +204,7 @@ async function handleEnsureLogin(args) {
       ...publicChallengeFields(pageState),
       mfa_detected: pageState.mfa_detected === true,
       mfa_input_count: pageState.mfa_input_count,
-      sso_detected: pageState.sso_detected === true,
-      oauth_popup_detected: pageState.oauth_popup_detected === true,
+      ...publicAuthSurfaceFields(pageState),
       ...manualRequirementFields(manualRequiredReason, pageStateWithPage(pageState, pageState.page), args),
       secrets_redacted: true,
     };
@@ -282,8 +283,7 @@ async function handleEnsureLogin(args) {
     ...publicChallengeFields(payload),
     mfa_detected: payload.mfa_detected === true,
     mfa_input_count: payload.mfa_input_count,
-    sso_detected: payload.sso_detected === true,
-    oauth_popup_detected: payload.oauth_popup_detected === true,
+    ...publicAuthSurfaceFields(payload),
     metadata_updated: lifecycleMetadataWasUpdated(lifecycle),
     missing_selectors: Array.isArray(payload.missing_selectors) ? payload.missing_selectors : [],
     ...manualRequirementFields(reason, pageStateWithPage(payload, submitted.page), args),

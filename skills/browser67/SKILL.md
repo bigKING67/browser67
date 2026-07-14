@@ -45,6 +45,11 @@ two paired MCP surfaces:
    as a fallback. Use logical screen-point window bounds, prefer a detected
    slider track over the handle-only rect, and keep CAPTCHA screenshots
    region-bounded.
+8. Treat provider `[role="button"]` controls and same-tab existing-account,
+   authorize, or consent pages as SSO handoffs. Require explicit popup evidence
+   before using `manual_context.kind:"oauth_popup"`. For JS clicks that may open
+   a delayed provider window, rely on the bounded default new-target poll or set
+   `new_tab_wait_ms`; `no_monitor:true` intentionally disables that poll.
 
 ## Quality bar
 

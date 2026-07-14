@@ -25,7 +25,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
     },
   },
   browser_execute_js: {
-    description: "GA-style web_execute_js via TMWD bridge commands (cmd=tabs/cookies/cdp/batch) or plain JS. Direct MCP default is auto; core web_execute_js defaults to TMWD user browser.",
+    description: "GA-style web_execute_js via TMWD bridge commands (cmd=tabs/cookies/cdp/batch) or plain JS. Likely click/popup scripts use bounded new-target polling unless no_monitor=true. Direct MCP default is auto; core web_execute_js defaults to TMWD user browser.",
     inputSchema: {
       type: "object",
       properties: {
@@ -40,6 +40,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
         tmwd_ws_endpoint: { type: "string" },
         tmwd_link_endpoint: { type: "string" },
         no_monitor: { type: "boolean", default: false },
+        new_tab_wait_ms: { type: "number", minimum: 0, maximum: 5_000 },
         native_auto_fallback: { type: "boolean", default: false },
         native_auto_fallback_policy: {
           type: "string",
@@ -145,7 +146,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
     },
   },
   browser_job_ops: {
-    description: "Start, inspect, fetch, persist, and recover run-backed browser execution jobs. Cancellation is explicit intent-only once Runtime.evaluate is in flight.",
+    description: "Start, inspect, fetch, persist, and recover run-backed browser execution jobs. Set no_monitor=false to enable bounded new-target polling. Cancellation is explicit intent-only once Runtime.evaluate is in flight.",
     inputSchema: {
       type: "object",
       properties: {
@@ -172,6 +173,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
         tmwd_ws_endpoint: { type: "string" },
         tmwd_link_endpoint: { type: "string" },
         no_monitor: { type: "boolean", default: true },
+        new_tab_wait_ms: { type: "number", minimum: 0, maximum: 5_000 },
         native_auto_fallback: { type: "boolean", default: false },
         native_auto_fallback_policy: {
           type: "string",

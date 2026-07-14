@@ -10,7 +10,14 @@ async function runManualRequiredCases(context) {
   const mfa = await runMfaCase(context);
   const sso = await runSsoCase(context);
   const oauth = await runOauthPopupCase(context);
+  const detection = await runAuthDetectionCoverage(context);
+  const delayedPopup = await runDelayedPopupCase(context);
   return {
+    additionalTabIds: [...detection.tabIds, delayedPopup.parentTabId],
+    authenticatedNoise: detection.authenticatedNoise,
+    continuationBlocked: detection.continuationBlocked,
+    delayedPopupDetected: delayedPopup.detected,
+    roleButtonBlocked: detection.roleButtonBlocked,
     mfaBlocked: mfa.mfaBlocked,
     mfaResume: mfa.mfaResume,
     mfaTabId: mfa.mfaTabId,
@@ -20,6 +27,166 @@ async function runManualRequiredCases(context) {
     ssoBlocked: sso.ssoBlocked,
     ssoResume: sso.ssoResume,
     ssoTabId: sso.ssoTabId,
+  };
+}
+
+async function createManagedTab({ callTool, cli, fixture, workspaceKey }, path) {
+  const managed = await callTool("browser_tab_lifecycle", {
+    ...commonArgs(cli),
+    action: "select_or_create",
+    url: `${fixture.origin}${path}`,
+    workspace_key: workspaceKey,
+    fresh: true,
+    active: false,
+    wait_until: "listed",
+    wait_timeout_ms: 5_000,
+    wait_poll_ms: 100,
+  });
+  const tabId = String(managed?.managed_tab?.tab_id ?? "");
+  assert.ok(tabId, `${path} managed tab did not return tab id`);
+  return tabId;
+}
+
+async function runAuthDetectionCoverage(context) {
+  const { callTool, cli, workspaceKey } = context;
+  const tabIds = [];
+
+  const roleButtonTabId = await createManagedTab(context, "/sso-role-button");
+  tabIds.push(roleButtonTabId);
+  const roleButtonBlocked = await callTool("browser_auth_ops", {
+    ...commonArgs(cli),
+    action: "ensure_login",
+    tab_id: roleButtonTabId,
+    workspace_key: workspaceKey,
+  });
+  assert.equal(roleButtonBlocked.reason, "manual_required_sso");
+  assert.equal(roleButtonBlocked.sso_detected, true);
+  assert.equal(roleButtonBlocked.oauth_popup_detected, false);
+  assert.equal(roleButtonBlocked.manual_context?.kind, "sso");
+
+  const continuationTabId = await createManagedTab(context, "/confirm-existing-account");
+  tabIds.push(continuationTabId);
+  const continuationBlocked = await callTool("browser_auth_ops", {
+    ...commonArgs(cli),
+    action: "ensure_login",
+    tab_id: continuationTabId,
+    workspace_key: workspaceKey,
+  });
+  assert.equal(continuationBlocked.status, "blocked");
+  assert.equal(continuationBlocked.reason, "manual_required_sso");
+  assert.equal(continuationBlocked.auth_continuation_detected, true);
+  assert.equal(continuationBlocked.sso_detected, true);
+  assert.equal(continuationBlocked.oauth_popup_detected, false);
+  assert.equal(continuationBlocked.manual_context?.kind, "sso");
+
+  const authorizationTabId = await createManagedTab(context, "/i/oauth2/authorize");
+  tabIds.push(authorizationTabId);
+  const authorizationBlocked = await callTool("browser_auth_ops", {
+    ...commonArgs(cli),
+    action: "ensure_login",
+    tab_id: authorizationTabId,
+    workspace_key: workspaceKey,
+  });
+  assert.equal(authorizationBlocked.status, "blocked");
+  assert.equal(authorizationBlocked.reason, "manual_required_sso");
+  assert.equal(authorizationBlocked.auth_continuation_detected, true);
+  assert.equal(authorizationBlocked.oauth_popup_detected, false);
+  assert.equal(authorizationBlocked.manual_context?.kind, "sso");
+
+  const authenticatedTabId = await createManagedTab(context, "/authenticated-sso-noise");
+  tabIds.push(authenticatedTabId);
+  const authenticatedInspection = await callTool("browser_auth_ops", {
+    ...commonArgs(cli),
+    action: "inspect_login_page",
+    tab_id: authenticatedTabId,
+    workspace_key: workspaceKey,
+  });
+  assert.equal(authenticatedInspection.authenticated_surface_detected, true);
+  assert.equal(authenticatedInspection.auth_continuation_detected, false);
+  assert.equal(authenticatedInspection.sso_detected, false);
+  assert.equal(authenticatedInspection.oauth_popup_detected, false);
+  assert.equal(authenticatedInspection.manual_required, undefined);
+  assert.equal(authenticatedInspection.manual_required_reason, undefined);
+
+  const authenticatedNoise = await callTool("browser_auth_ops", {
+    ...commonArgs(cli),
+    action: "ensure_login",
+    tab_id: authenticatedTabId,
+    workspace_key: workspaceKey,
+  });
+  assert.equal(authenticatedNoise.status, "success");
+  assert.equal(authenticatedNoise.already_authenticated, true);
+  assert.equal(authenticatedNoise.authenticated_surface_detected, true);
+  assert.equal(authenticatedNoise.sso_detected, false);
+  assertNoSecretLeak(authenticatedNoise, "authenticated sso-noise result");
+
+  return {
+    authenticatedNoise,
+    continuationBlocked,
+    roleButtonBlocked,
+    tabIds,
+  };
+}
+
+async function runDelayedPopupCase(context) {
+  const { callTool, cli, fixture, workspaceKey } = context;
+  const parentTabId = await createManagedTab(context, "/delayed-popup-parent");
+  await callTool("browser_auth_ops", {
+    ...commonArgs(cli),
+    action: "inspect_login_page",
+    tab_id: parentTabId,
+    workspace_key: workspaceKey,
+  });
+  const delayedCreate = (async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return callTool("browser_execute_js", {
+      ...commonArgs(cli),
+      tab_id: parentTabId,
+      no_monitor: true,
+      script: JSON.stringify({
+        cmd: "tabs",
+        method: "create",
+        url: `${fixture.origin}/delayed-popup-child`,
+        active: false,
+      }),
+    });
+  })();
+  const [detected, created] = await Promise.all([
+    callTool("browser_execute_js", {
+      ...commonArgs(cli),
+      tab_id: parentTabId,
+      script: `return await (async () => {
+        document.querySelector("#popup-trigger").click();
+        return { monitoring: true };
+      })();`,
+    }),
+    delayedCreate,
+  ]);
+  assert.equal(created.status, "success");
+  assert.equal(created.new_tab_wait_ms, 0, "no_monitor should disable new-target polling");
+  assert.equal(detected.status, "success");
+  assert.equal(detected.js_return?.monitoring, true);
+  const popup = detected.newTabs?.find((tab) => String(tab?.url ?? "").includes("/delayed-popup-child"));
+  assert.ok(popup?.id, `delayed popup was not detected: ${JSON.stringify(detected.newTabs)}`);
+  assert.equal(detected.new_tab_wait_ms, 1_500);
+  assert.ok(Number(detected.new_tab_waited_ms) > 0, "delayed popup detection should poll for the new target");
+
+  const closed = await callTool("browser_execute_js", {
+    ...commonArgs(cli),
+    tab_id: parentTabId,
+    no_monitor: true,
+    script: JSON.stringify({
+      cmd: "tabs",
+      method: "close",
+      tabId: String(popup.id),
+    }),
+  });
+  assert.equal(closed.status, "success");
+  assert.equal(closed.js_return?.closed, true, "delayed popup tab should be closed after the contract probe");
+
+  return {
+    detected,
+    parentTabId,
   };
 }
 

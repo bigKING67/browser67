@@ -24,6 +24,9 @@ async function runFinalizerCase(context, tabIds) {
   assertClosed(finalize, tabIds.mfaTabId, "mfa");
   assertClosed(finalize, tabIds.ssoTabId, "sso");
   assertClosed(finalize, tabIds.oauthTabId, "oauth");
+  for (const [index, tabId] of (tabIds.additionalTabIds ?? []).entries()) {
+    assertClosed(finalize, tabId, `additional auth ${String(index + 1)}`);
+  }
   return finalize;
 }
 

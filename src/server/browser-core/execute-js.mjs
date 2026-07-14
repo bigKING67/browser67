@@ -36,6 +36,75 @@ import {
   resolveTmwdContext,
 } from "../../tmwd-runtime.mjs";
 
+const DEFAULT_INTERACTION_NEW_TAB_WAIT_MS = 1_500;
+const MAX_NEW_TAB_WAIT_MS = 5_000;
+const NEW_TAB_POLL_MS = 125;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeNewTab(item) {
+  const id = normalizeIdToken(item?.id ?? item?.tabId ?? item?.tab_id);
+  if (!id) return null;
+  return {
+    id,
+    url: String(item?.url ?? ""),
+    title: String(item?.title ?? ""),
+  };
+}
+
+function mergeNewTabs(...groups) {
+  const merged = new Map();
+  for (const item of groups.flat()) {
+    const normalized = normalizeNewTab(item);
+    if (!normalized) continue;
+    const prior = merged.get(normalized.id);
+    merged.set(normalized.id, {
+      id: normalized.id,
+      url: normalized.url || prior?.url || "",
+      title: normalized.title || prior?.title || "",
+    });
+  }
+  return [...merged.values()];
+}
+
+function targetDiff(beforeTargets, afterTargets) {
+  const beforeIds = new Set(
+    (Array.isArray(beforeTargets) ? beforeTargets : [])
+      .map((item) => normalizeIdToken(item?.id))
+      .filter(Boolean),
+  );
+  return (Array.isArray(afterTargets) ? afterTargets : [])
+    .filter((item) => {
+      const id = normalizeIdToken(item?.id);
+      return id && !beforeIds.has(id);
+    });
+}
+
+function newTabWaitBudget(args, scriptInput) {
+  if (args?.no_monitor === true) return 0;
+  if (Object.prototype.hasOwnProperty.call(args ?? {}, "new_tab_wait_ms")) {
+    const explicit = Number(args?.new_tab_wait_ms);
+    return Number.isFinite(explicit)
+      ? Math.max(0, Math.min(MAX_NEW_TAB_WAIT_MS, Math.round(explicit)))
+      : 0;
+  }
+  const value = scriptInput?.value;
+  const source = typeof value === "string"
+    ? value
+    : (() => {
+      try {
+        return JSON.stringify(value ?? "");
+      } catch {
+        return String(value ?? "");
+      }
+    })();
+  return /\.click\s*\(|Input\.dispatchMouseEvent|window\.open\s*\(/i.test(source)
+    ? DEFAULT_INTERACTION_NEW_TAB_WAIT_MS
+    : 0;
+}
+
 function compactJsReturn(value, maxChars) {
   const type = Array.isArray(value) ? "array" : typeof value;
   if (value === null || value === undefined) {
@@ -153,6 +222,8 @@ async function handleBrowserExecuteJs(args) {
   const beforeTargets = preferred.context.targets;
   let afterTargets = preferred.context.targets;
   let newTabs = [];
+  const newTabWaitMs = newTabWaitBudget(args ?? {}, scriptInput);
+  let newTabWaitedMs = 0;
   try {
     if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
       const codePayload = command ?? String(scriptInput.value ?? "");
@@ -171,7 +242,7 @@ async function handleBrowserExecuteJs(args) {
         ? tmwdExecution.transport_attempts
         : [];
       jsReturn = executed.value;
-      newTabs = executed.newTabs;
+      newTabs = mergeNewTabs(executed.newTabs);
       selection = tmwdExecution.context.selection ?? selection;
       if (executed.raw && typeof executed.raw === "object") {
         if (executed.raw.ok === false) {
@@ -181,16 +252,8 @@ async function handleBrowserExecuteJs(args) {
           tabId = executed.raw.tab_id.trim();
         }
       }
-      if (Array.isArray(newTabs) && newTabs.length > 0) {
-        const normalizedNewTabs = newTabs.map((item) => ({
-          id: normalizeIdToken(item?.id ?? item?.tabId),
-          url: String(item?.url ?? ""),
-          title: String(item?.title ?? ""),
-          active: false,
-        })).filter((item) => item.id.length > 0);
-        if (normalizedNewTabs.length > 0) {
-          syncSessionRegistry(normalizedNewTabs);
-        }
+      if (newTabs.length > 0) {
+        syncSessionRegistry(newTabs.map((item) => ({ ...item, active: false })));
       }
       try {
         const refreshed = await resolveTmwdContext(
@@ -256,11 +319,34 @@ async function handleBrowserExecuteJs(args) {
   if (tabId) {
     markSessionSelected(tabId, { make_default: false });
   }
-  if (preferred.transport === "cdp") {
-    const beforeIds = new Set(beforeTargets.map((item) => item.id));
-    newTabs = afterTargets
-      .filter((item) => !beforeIds.has(item.id))
-      .map((item) => ({ id: item.id, url: item.url, title: item.title }));
+  newTabs = mergeNewTabs(newTabs, targetDiff(beforeTargets, afterTargets));
+  if (!error && newTabs.length === 0 && newTabWaitMs > 0) {
+    const waitStarted = Date.now();
+    while (Date.now() - waitStarted < newTabWaitMs && newTabs.length === 0) {
+      const remaining = newTabWaitMs - (Date.now() - waitStarted);
+      await sleep(Math.min(NEW_TAB_POLL_MS, Math.max(1, remaining)));
+      try {
+        if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
+          const refreshed = await resolveTmwdContext(
+            {
+              ...args,
+              tmwd_transport: preferred.context.tmwd_transport,
+              session_id: tabId,
+            },
+            { probe: false },
+          );
+          afterTargets = refreshed.targets;
+          selection = refreshed.selection;
+        } else {
+          afterTargets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
+          syncSessionRegistry(afterTargets);
+        }
+      } catch {
+        // A target refresh can race navigation; retry within the bounded window.
+      }
+      newTabs = mergeNewTabs(newTabs, targetDiff(beforeTargets, afterTargets));
+    }
+    newTabWaitedMs = Date.now() - waitStarted;
   }
   const noMonitor = args?.no_monitor === true;
   const transients = noMonitor || preferred.transport !== "cdp" ? [] : await getTransientTexts(args);
@@ -301,6 +387,8 @@ async function handleBrowserExecuteJs(args) {
     selection_source: selection?.selected_by ?? null,
     selection_warning: selection?.warning ?? undefined,
     newTabs,
+    new_tab_wait_ms: newTabWaitMs,
+    new_tab_waited_ms: newTabWaitedMs,
     reloaded: false,
     transients,
     diff,

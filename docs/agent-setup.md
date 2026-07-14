@@ -195,7 +195,11 @@ ensure_login returns blocked with manual_required_* and must not keep guessing.
 OAuth popup flows keep the compatible manual_required_sso reason and use
 manual_context.kind=oauth_popup. manual_context is a non-secret handoff hint
 only; it must not contain credentials, cookies, tokens, browser session data, or
-page content. After the user completes the manual step, call ensure_login again
+page content. Provider controls can use `[role="button"]`; same-tab existing
+account, authorization, and consent pages remain SSO handoffs rather than popup
+flows. Explicit authenticated markers suppress stale provider-button noise only
+when no password/MFA surface or auth continuation is active. After the user
+completes the manual step, call ensure_login again
 on the same managed tab/workspace to validate the resumed authenticated state.
 CAPTCHA handoff may include captcha_kind, captcha_assist, and captcha_router
 metadata. Treat the default visible-UI path as a physical/manual flow: bring the

@@ -100,6 +100,86 @@ const detectManualChallenge = () => {
 };
 `;
 
+const SSO_CHALLENGE_DETECTOR_JS = String.raw`
+const detectSsoChallenge = () => {
+  const queryAll = (selector) => {
+    try {
+      return Array.from(document.querySelectorAll(selector));
+    } catch {
+      return [];
+    }
+  };
+  const attributeText = (el) => [
+    el?.textContent,
+    el?.getAttribute?.("aria-label"),
+    el?.getAttribute?.("title"),
+    el?.getAttribute?.("href"),
+  ].filter(Boolean).join(" ");
+  const pathname = String(location.pathname || "");
+  const bodyText = String(document.body?.innerText || "");
+  const continuationPathDetected = /(?:^|\/)(?:confirm-existing-account|(?:i\/)?oauth2?\/authorize|oauth\/authorize|authorize|consent)(?:\/|$)/i.test(pathname);
+  const continuationTextDetected = /existing account|found an existing account|use (?:your )?original sign-in method|authorize (?:this )?(?:app|application)|找到现有账户|使用\s*x\s*登录|授权应用/i.test(bodyText);
+  const authContinuationDetected = continuationPathDetected || continuationTextDetected;
+  const providerPattern = /\b(?:sso|single sign(?:-|\s)?on|google|github|microsoft|okta|saml|oauth|apple)\b|continue with x|sign in with x|使用\s*x\s*登录/i;
+  const ssoElements = queryAll('a, button, [role="button"]').filter((el) => providerPattern.test(attributeText(el)));
+  const authenticatedIndicators = [];
+  const addAuthenticatedIndicator = (indicator) => {
+    if (!authenticatedIndicators.includes(indicator)) {
+      authenticatedIndicators.push(indicator);
+    }
+  };
+  const bodyClasses = Array.from(document.body?.classList || []);
+  if (bodyClasses.some((name) => /^(?:logged[-_]?in|authenticated|is[-_]?authenticated)$/i.test(String(name)))) {
+    addAuthenticatedIndicator("body_authenticated_class");
+  }
+  const userLoginMeta = document.querySelector('meta[name="user-login" i]');
+  if (String(userLoginMeta?.getAttribute("content") || "").trim()) {
+    addAuthenticatedIndicator("user_login_meta");
+  }
+  if (document.querySelector('form[action*="/logout" i], a[href*="/logout" i], a[href*="/signout" i], [data-testid*="logout" i]')) {
+    addAuthenticatedIndicator("logout_control");
+  }
+  if (document.querySelector('[aria-label*="account menu" i], [aria-label*="profile menu" i], [data-testid*="account-menu" i], [data-testid*="profile-menu" i]')) {
+    addAuthenticatedIndicator("account_navigation");
+  }
+  const passwordInputCount = queryAll('input[type="password"]').length;
+  const authenticatedSurfaceDetected = authenticatedIndicators.length > 0
+    && passwordInputCount === 0
+    && !authContinuationDetected;
+  const oauthPopupDetected = !authenticatedSurfaceDetected && ssoElements.some((el) => {
+    const dataPopup = String(el.getAttribute("data-oauth-popup") || "").trim().toLowerCase();
+    const target = String(el.getAttribute("target") || "").trim().toLowerCase();
+    const explicitText = [
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ");
+    const openingCode = [
+      el.getAttribute("onclick"),
+      el.getAttribute("href"),
+    ].filter(Boolean).join(" ");
+    return ["true", "1", "yes"].includes(dataPopup)
+      || target === "_blank"
+      || /(?:oauth\s+)?popup|opens? in (?:a )?new (?:window|tab)/i.test(explicitText)
+      || /window\.open\s*\(/i.test(openingCode);
+  });
+  const ssoDetected = !authenticatedSurfaceDetected
+    && (ssoElements.length > 0 || authContinuationDetected);
+  return {
+    sso_detected: ssoDetected,
+    oauth_popup_detected: oauthPopupDetected,
+    authenticated_surface_detected: authenticatedSurfaceDetected,
+    auth_continuation_detected: authContinuationDetected,
+    sso_indicators: [
+      ...(ssoElements.length > 0 ? ["provider_control"] : []),
+      ...(continuationPathDetected ? ["continuation_path"] : []),
+      ...(continuationTextDetected ? ["continuation_text"] : []),
+    ],
+    authenticated_indicators: authenticatedIndicators.slice(0, 8),
+  };
+};
+`;
+
 function captchaAssistPolicy(captchaKind = "") {
   return {
     captcha_kind: String(captchaKind || "unknown"),
@@ -172,6 +252,7 @@ export {
   CAPTCHA_ASSIST_SOP_REFS,
   CAPTCHA_ASSIST_STRATEGY_ID,
   MANUAL_CHALLENGE_DETECTOR_JS,
+  SSO_CHALLENGE_DETECTOR_JS,
   captchaAssistPolicy,
   manualCaptchaContextFields,
   publicChallengeFields,

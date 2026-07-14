@@ -29,6 +29,8 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   const nativeInputTool = tools.find((entry) => entry?.name === "browser_native_input");
   assert.equal(executeJsTool?.inputSchema?.properties?.output_mode?.enum?.includes("compact"), true);
   assert.equal(executeJsTool?.inputSchema?.properties?.max_return_chars?.maximum, 300_000);
+  assert.equal(executeJsTool?.inputSchema?.properties?.new_tab_wait_ms?.minimum, 0);
+  assert.equal(executeJsTool?.inputSchema?.properties?.new_tab_wait_ms?.maximum, 5_000);
 
   const waitTool = tools.find((entry) => entry?.name === "browser_wait");
   assert.equal(waitTool?.inputSchema?.properties?.type?.enum?.includes("selector"), true);
@@ -48,6 +50,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("result"), true);
   assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("cancel"), true);
   assert.equal(jobOpsTool?.inputSchema?.properties?.output_mode?.default, "compact");
+  assert.equal(jobOpsTool?.inputSchema?.properties?.new_tab_wait_ms?.maximum, 5_000);
 
   assert.equal(
     executeJsTool?.inputSchema?.properties?.native_auto_fallback?.type,

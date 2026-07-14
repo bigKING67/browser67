@@ -270,6 +270,74 @@ export async function startAuthFixture() {
 </html>`);
       return;
     }
+    if (requestUrl.pathname === "/sso-role-button") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture role button sso</title></head>
+<body><main><div role="button" tabindex="0">Google</div></main></body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/confirm-existing-account") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture existing account continuation</title></head>
+<body><main><h1>找到现有账户</h1><button type="button">使用 X 登录</button></main></body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/i/oauth2/authorize") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture oauth authorization</title></head>
+<body><main><button type="button">授权应用</button><button type="button">取消</button></main></body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/authenticated-sso-noise") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="user-login" content="fixture"><title>fixture authenticated</title></head>
+<body class="logged-in"><nav aria-label="Account menu"><a href="/logout">Sign out</a></nav><button type="button">Continue with Google</button></body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/delayed-popup-parent") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>fixture delayed popup parent</title></head>
+<body><main>delayed popup target monitor <button id="popup-trigger" type="button">Open provider</button></main></body>
+</html>`);
+      return;
+    }
+    if (requestUrl.pathname === "/delayed-popup-child") {
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end("<!doctype html><title>fixture delayed popup child</title><p>popup ready</p>");
+      return;
+    }
     if (requestUrl.pathname === "/oauth-login") {
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
