@@ -240,7 +240,10 @@ For normal
 browser67-owned tabs it uses the TMWD transport `tabs.switch` to foreground the target before
 physical provider input, waits for pre_input_settle_ms, and refreshes
 planner/vision coordinates against the active window before the native click or
-drag. This avoids stale Chrome toolbar/content inset estimates. Explicit
+drag. This avoids stale Chrome toolbar/content inset estimates. On macOS the
+native path matches the managed Chrome/Edge tab id first and uses its redacted URL
+only as a fallback, foregrounds the exact window, reads logical screen-point
+bounds, and reselects that same tab immediately before `cliclick`. Explicit
 window_title/window_pid/window_active_confirmed are fallbacks.
 physical_input_provider=auto currently executes through native-os
 unless the guarded ljq-ctrl bridge is explicitly enabled and reports the
@@ -253,6 +256,11 @@ TMWD_LJQCTRL_EXECUTE=1 is required before the guarded bridge may call
 ljqCtrl.Click or clipped window-region capture artifact creation. Slider
 challenges additionally require screen destination coordinates (explicit or
 estimated) and physical drag capability, otherwise they remain manual handoff.
+When a compact slider handle sits inside a wider DOM track, planning now records
+the track rect, captures the full bounded track region, and adds a conservative
+right-edge overshoot instead of treating the handle's own width as the entire
+drag range. General assist waits 3s after input by default (minimum 1s); retry
+attempts must still respect the separate 5s CAPTCHA retry policy.
 On macOS, native-os drag capability requires `cliclick` and Accessibility
 permission for the current terminal/Codex host. The optional local physical
 proof gate remains opt-in and supports bounded local-fixture retry/tuning via

@@ -24,6 +24,7 @@ async function runSliderMatrixCase({
   });
   const matrixTabId = String(managed?.managed_tab?.tab_id ?? "");
   assert.ok(matrixTabId, `${testCase.name} did not return managed tab id`);
+  const sliderSelector = String(testCase.slider_selector ?? "#slider-captcha");
   const ready = await waitFor(async () => {
     try {
       const inspected = await callTool("browser_execute_js", {
@@ -31,13 +32,14 @@ async function runSliderMatrixCase({
         tab_id: matrixTabId,
         script: `
           const frame = document.querySelector("#captcha-frame");
+          const sliderSelector = ${JSON.stringify(sliderSelector)};
           let frameHasSlider = false;
           try {
-            frameHasSlider = Boolean(frame?.contentDocument?.querySelector("#slider-captcha"));
+            frameHasSlider = Boolean(frame?.contentDocument?.querySelector(sliderSelector));
           } catch {}
           return {
             path: location.pathname,
-            has_slider: Boolean(document.querySelector("#slider-captcha")) || frameHasSlider,
+            has_slider: Boolean(document.querySelector(sliderSelector)) || frameHasSlider,
             title: document.title
           };
         `,
@@ -71,6 +73,22 @@ async function runSliderMatrixCase({
   });
   assert.equal(matrixPlan.status, "planned", `${testCase.name} should produce a plan`);
   assert.equal(matrixPlan.target?.role, "slider", `${testCase.name} should target slider`);
+  if (testCase.expect_track_rect) {
+    assert.equal(typeof matrixPlan.target?.track_rect?.width, "number", `${testCase.name} should expose slider track rect`);
+    assert.equal(
+      matrixPlan.target.track_rect.width > matrixPlan.target.rect.width,
+      true,
+      `${testCase.name} track should be wider than the handle`,
+    );
+    assert.equal(matrixPlan.slider_drag_hint?.method, "track_rect_with_completion_overshoot");
+    assert.equal(matrixPlan.coordinate_transform?.screenshot_clip_source, "slider_track_rect");
+    assert.equal(
+      matrixPlan.coordinate_transform.vision_correction_plan.screenshot_clip.width
+        > matrixPlan.target.rect.width,
+      true,
+      `${testCase.name} vision clip should include the full track`,
+    );
+  }
   assert.equal(
     matrixPlan.coordinate_transform?.vision_correction_plan?.correction_status,
     "success",

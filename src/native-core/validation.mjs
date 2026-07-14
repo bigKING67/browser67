@@ -12,14 +12,25 @@ function validateNativeInputArguments(action, args) {
   if (action === "capabilities") {
     return {};
   }
+  const rawWindowTabId = input.window_tab_id;
+  const windowTabId = rawWindowTabId === undefined || rawWindowTabId === null || rawWindowTabId === ""
+    ? null
+    : Number(rawWindowTabId);
+  if (windowTabId !== null && (!Number.isSafeInteger(windowTabId) || windowTabId <= 0)) {
+    throw createToolError("WINDOW_NOT_FOUND", "window not found: window_tab_id must be a positive safe integer");
+  }
   if (action === "activate_window") {
     const selector = parseWindowSelector(input);
-    if (!selector.title && !selector.pid) {
-      throw createToolError("WINDOW_NOT_FOUND", "window not found: window_title or window_pid is required");
+    const windowUrl = String(input.window_url ?? "").trim();
+    if (!selector.title && !selector.pid && !windowUrl && windowTabId === null) {
+      throw createToolError("WINDOW_NOT_FOUND", "window not found: window_title, window_pid, window_tab_id, or window_url is required");
     }
     return {
       window_title: selector.title || undefined,
       window_pid: selector.pid ?? undefined,
+      window_tab_id: windowTabId ?? undefined,
+      window_url: windowUrl || undefined,
+      window_application: String(input.window_application ?? "").trim() || undefined,
     };
   }
   if (action === "move") {
@@ -37,6 +48,9 @@ function validateNativeInputArguments(action, args) {
       button: normalizeMouseButton(input.button),
       duration_ms: normalizeDragDurationMs(input.duration_ms),
       steps: normalizeDragSteps(input.steps),
+      window_tab_id: windowTabId ?? undefined,
+      window_url: String(input.window_url ?? "").trim() || undefined,
+      window_application: String(input.window_application ?? "").trim() || undefined,
     };
   }
   if (action === "click" || action === "double_click") {
@@ -52,6 +66,9 @@ function validateNativeInputArguments(action, args) {
       normalized.x = normalizeCoordinate(input.x, "x");
       normalized.y = normalizeCoordinate(input.y, "y");
     }
+    normalized.window_tab_id = windowTabId ?? undefined;
+    normalized.window_url = String(input.window_url ?? "").trim() || undefined;
+    normalized.window_application = String(input.window_application ?? "").trim() || undefined;
     return normalized;
   }
   if (action === "press") {
@@ -104,6 +121,9 @@ function validateNativeInputArguments(action, args) {
     return {
       window_title: selector.title || undefined,
       window_pid: selector.pid ?? undefined,
+      window_tab_id: windowTabId ?? undefined,
+      window_url: String(input.window_url ?? "").trim() || undefined,
+      window_application: String(input.window_application ?? "").trim() || undefined,
     };
   }
   throw createToolError("ACTION_NOT_SUPPORTED", `action not supported: ${action}`);

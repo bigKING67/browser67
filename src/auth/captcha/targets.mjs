@@ -33,6 +33,68 @@ function buildCaptchaAssistInspectorJs(manualChallengeDetectorJs) {
         }
       };
     };
+    const describeSliderTrack = (el, handleRect, context = {}) => {
+      if (!el || !handleRect) {
+        return null;
+      }
+      const possibleTracks = [];
+      let ancestor = el.parentElement;
+      for (let depth = 1; ancestor && depth <= 4; depth += 1) {
+        possibleTracks.push({ el: ancestor, depth, relation: "ancestor" });
+        ancestor = ancestor.parentElement;
+      }
+      const parent = el.parentElement;
+      if (parent) {
+        for (const sibling of Array.from(parent.children || [])) {
+          if (sibling !== el) {
+            possibleTracks.push({ el: sibling, depth: 1, relation: "sibling" });
+          }
+        }
+      }
+      let best = null;
+      for (const item of possibleTracks) {
+        const trackRect = describeRect(item.el, context.offset);
+        if (!trackRect || trackRect.width < handleRect.width * 1.8) {
+          continue;
+        }
+        const overlap = Math.max(0, Math.min(trackRect.bottom, handleRect.bottom) - Math.max(trackRect.top, handleRect.top));
+        if (overlap < Math.min(trackRect.height, handleRect.height) * 0.45) {
+          continue;
+        }
+        if (trackRect.height > Math.max(160, handleRect.height * 4)) {
+          continue;
+        }
+        const marker = [
+          item.el.id || "",
+          String(item.el.className || ""),
+          String(item.el.getAttribute("role") || "")
+        ].join(" ");
+        const markerMatched = /track|rail|bar|body|wrapper|container|slide|slider|captcha/i.test(marker);
+        if (!markerMatched) {
+          continue;
+        }
+        const markerScore = 6;
+        const widthScore = Math.min(8, trackRect.width / Math.max(1, handleRect.width));
+        const heightScore = Math.max(0, 3 - Math.abs(trackRect.height - handleRect.height) / Math.max(1, handleRect.height));
+        const relationScore = item.relation === "ancestor" ? Math.max(0, 3 - item.depth * 0.5) : 0;
+        const score = markerScore + widthScore + heightScore + relationScore;
+        if (!best || score > best.score || (score === best.score && trackRect.width > best.rect.width)) {
+          best = {
+            rect: trackRect,
+            score,
+            source: item.relation,
+            source_id: item.el.id || undefined,
+            source_class_name: String(item.el.className || "").slice(0, 160) || undefined
+          };
+        }
+      }
+      return best ? {
+        ...best.rect,
+        source: best.source,
+        source_id: best.source_id,
+        source_class_name: best.source_class_name
+      } : null;
+    };
     const seen = new Set();
     const candidates = [];
     const candidateByElement = new Map();
@@ -84,6 +146,7 @@ function buildCaptchaAssistInspectorJs(manualChallengeDetectorJs) {
         iframe_src: tag === "iframe" ? String(el.getAttribute("src") || "").slice(0, 220) || undefined : undefined,
         text_hint: text || undefined,
         rect,
+        track_rect: role === "slider" ? describeSliderTrack(el, rect, context) || undefined : undefined,
         center_client: rect.center_client,
         frame_path: context.frame_path || "top",
         same_origin_frame_depth: context.depth || 0,

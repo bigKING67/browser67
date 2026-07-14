@@ -201,9 +201,9 @@ const AUTH_TOOL_SCHEMAS = {
         },
         wait_after_ms: {
           type: "number",
-          minimum: 5_000,
+          minimum: 1_000,
           maximum: 30_000,
-          description: "Minimum wait after native CAPTCHA assist input before resume; defaults to 5000ms.",
+          description: "Wait after native CAPTCHA assist input before resume; defaults to 3000ms. CAPTCHA retry policy remains 5000ms, so callers must not use this as a rapid-retry interval.",
         },
         tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "tmwd" },
         tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },

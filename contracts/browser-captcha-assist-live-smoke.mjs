@@ -331,6 +331,20 @@ async function run() {
       fixture,
       matrixResults,
       testCase: {
+        name: "handle_target_track",
+        path: "/slider-login-handle-target",
+        slider_selector: "#aliyunCaptcha-sliding-body",
+        expect_track_rect: true,
+        expect_device_pixel_ratio: true,
+      },
+      toolArgs,
+      workspaceKey,
+    });
+    await runSliderMatrixCase({
+      callTool,
+      fixture,
+      matrixResults,
+      testCase: {
         name: "canvas",
         path: "/slider-login-canvas",
         expect_device_pixel_ratio: true,

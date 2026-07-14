@@ -29,6 +29,11 @@ async function assertNativeInputOpsContract({ rpc, timeoutMs }) {
     "du",
     "macOS cliclick drag should release at the destination",
   );
+  assert.equal(
+    macosDragPlan.easing,
+    2,
+    "macOS cliclick drag should use the easing mode required for browser drag events",
+  );
 
   const macosClickPlan = buildCliclickClickCommands({
     action: "click",
@@ -118,6 +123,27 @@ async function assertNativeInputOpsContract({ rpc, timeoutMs }) {
   assert.equal(nativeDragDryRunPayload?.validated_args?.from_x, 120);
   assert.equal(nativeDragDryRunPayload?.validated_args?.to_x, 260);
 
+  const nativeWindowUrlDryRunCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_native_input",
+      arguments: {
+        action: "activate_window",
+        window_tab_id: 123456,
+        window_url: "https://example.invalid/app/#/workbench/index",
+        window_application: "Google Chrome",
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(nativeWindowUrlDryRunCall?.result?.isError, undefined);
+  const nativeWindowUrlDryRunPayload = firstJsonContent(nativeWindowUrlDryRunCall.result);
+  assert.equal(nativeWindowUrlDryRunPayload?.status, "success");
+  assert.equal(nativeWindowUrlDryRunPayload?.validated_args?.window_tab_id, 123456);
+  assert.equal(nativeWindowUrlDryRunPayload?.validated_args?.window_url, "https://example.invalid/app/#/workbench/index");
+  assert.equal(nativeWindowUrlDryRunPayload?.validated_args?.window_application, "Google Chrome");
+
   const nativeUnsupportedCall = await rpc.call(
     "tools/call",
     {
@@ -137,6 +163,7 @@ async function assertNativeInputOpsContract({ rpc, timeoutMs }) {
     nativeCapabilitiesPayload,
     nativeDragDryRunPayload,
     nativeDryRunPayload,
+    nativeWindowUrlDryRunPayload,
     nativeUnsupportedPayload,
   };
 }

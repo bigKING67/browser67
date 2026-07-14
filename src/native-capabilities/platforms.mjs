@@ -30,6 +30,7 @@ async function detectWindowsCapabilities(actions) {
   return {
     platform: "win32",
     driver: "windows-powershell",
+    coordinate_system: "physical_screen_pixels",
     checks: {
       powershell: hasPowerShell,
     },
@@ -91,6 +92,7 @@ async function detectDarwinCapabilities(actions) {
   return {
     platform: "darwin",
     driver: "macos-osascript-cliclick",
+    coordinate_system: "screen_points",
     checks: {
       osascript: hasOsaScript,
       cliclick: hasCliclick,
@@ -131,6 +133,7 @@ async function detectLinuxCapabilities(actions) {
   return {
     platform: "linux",
     driver: "linux-xdotool",
+    coordinate_system: "screen_pixels",
     checks: {
       display: hasDisplay,
       wayland_only: hasWaylandOnly,
@@ -150,6 +153,7 @@ function detectUnsupportedCapabilities(platform, actions) {
   return {
     platform,
     driver: "unsupported",
+    coordinate_system: "screen_pixels",
     checks: {},
     supported_actions: [],
     unsupported_actions: [...actions],

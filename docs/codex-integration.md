@@ -364,7 +364,13 @@ browser67-owned tabs, it foregrounds the target with browser67 `tabs.switch` bef
 physical provider input, waits for `pre_input_settle_ms`, then refreshes the
 planner/vision coordinates against the now-active window before sending native
 input. This post-activation refresh avoids stale Chrome toolbar/content inset
-estimates. `window_title`, `window_pid`, and
+estimates. On macOS, physical assist additionally resolves the managed tab's
+numeric Chrome/Edge tab id first, with its query/hash-redacted URL as a fallback,
+then foregrounds that exact window and tab with Chromium AppleScript plus AppKit,
+reads logical screen-point bounds, and reselects the same tab immediately before
+`cliclick` input. This keeps the
+TMWD control session, visible browser tab, and OS foreground window aligned even
+when several Chrome windows are open. `window_title`, `window_pid`, and
 `window_active_confirmed:true` are fallbacks for unusual window-manager cases.
 `physical_input_provider:"auto"` currently executes through `native-os` unless
 the guarded `ljq-ctrl` bridge is explicitly enabled and reports the needed
@@ -380,14 +386,21 @@ Set `TMWD_LJQCTRL_PYTHON=/path/to/python` for one explicit interpreter, or
 is required before the guarded bridge may call `ljqCtrl.Click` or clipped
 window-region capture artifact creation. It does not use JS/CDP to click a CAPTCHA widget and does not read
 CAPTCHA tokens/cookies. Slider CAPTCHA planning returns a viewport-space drag
-hint and estimated screen start/end coordinates; execution requires physical `drag` support
+hint and estimated screen start/end coordinates. When the DOM exposes a compact
+handle inside a wider track, the planner records `target.track_rect`, expands
+the bounded vision clip to the full track, starts at the handle center, and adds
+a conservative right-edge completion overshoot. It falls back to the legacy
+target-rect inset heuristic when no reliable track is available. Execution requires physical `drag` support
 plus explicit or estimated `screen_x`/`screen_y` and
 `screen_to_x`/`screen_to_y`. If those are missing, it returns a manual handoff
 instead of guessing. The optional `check:captcha-assist-physical-live` local
 fixture gate may use up to three bounded attempts when explicitly enabled:
 attempt 1 uses vision-corrected coordinates, retry attempts use prior
 diagnostics plus conservative overshoot/settle timing, and all attempts retain
-the 5s post-input wait. Tune only that local proof path with
+the explicit 5s post-input wait used by that fixture gate. General
+`assist_captcha` calls default to a 3s post-input observation wait (minimum 1s),
+while the separate CAPTCHA retry policy remains 5s to prevent rapid retries.
+Tune only that local proof path with
 `TMWD_CAPTCHA_ASSIST_MAX_ATTEMPTS`, `TMWD_CAPTCHA_ASSIST_PRE_INPUT_SETTLE_MS`,
 `TMWD_CAPTCHA_ASSIST_DRAG_OVERSHOOT_X`, `TMWD_CAPTCHA_ASSIST_DRAG_*_OFFSET_*`,
 or exact `TMWD_CAPTCHA_ASSIST_DRAG_FROM_X/Y` and

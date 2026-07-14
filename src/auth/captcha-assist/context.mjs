@@ -47,6 +47,28 @@ function resolveManagedTabNativeWindowTitle(plan = {}, activation = {}, managedT
   return "";
 }
 
+function resolveManagedTabNativeWindowUrl(plan = {}, activation = {}, managedTab = {}) {
+  const candidates = [
+    plan.url,
+    activation.tab?.url,
+    activation.tab?.data?.url,
+    managedTab.url,
+  ];
+  for (const candidate of candidates) {
+    const raw = String(candidate ?? "").trim();
+    if (!raw) {
+      continue;
+    }
+    try {
+      const parsed = new URL(raw);
+      return `${parsed.origin}${parsed.pathname}`;
+    } catch {
+      // Ignore non-URL bridge metadata.
+    }
+  }
+  return "";
+}
+
 function isSupportedWindowsBrowserProcess(raw) {
   const processName = String(raw ?? "").trim().toLowerCase();
   return processName === "chrome" || processName === "msedge";
@@ -104,5 +126,6 @@ export {
   inspectCaptchaAssistPage,
   normalizeExplicitTabId,
   resolveManagedTabNativeWindowTitle,
+  resolveManagedTabNativeWindowUrl,
   sleep,
 };

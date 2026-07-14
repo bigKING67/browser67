@@ -1,4 +1,5 @@
-import { CAPTCHA_ASSIST_RETRY_AFTER_MS } from "../manual-challenge.mjs";
+const CAPTCHA_ASSIST_POST_INPUT_WAIT_MS = 3_000;
+const CAPTCHA_ASSIST_MIN_POST_INPUT_WAIT_MS = 1_000;
 
 function finiteNumber(raw) {
   const value = Number(raw);
@@ -13,9 +14,9 @@ function roundCoordinate(raw) {
 function normalizeWaitAfterMs(raw) {
   const parsed = finiteNumber(raw);
   if (parsed === null) {
-    return CAPTCHA_ASSIST_RETRY_AFTER_MS;
+    return CAPTCHA_ASSIST_POST_INPUT_WAIT_MS;
   }
-  return Math.max(CAPTCHA_ASSIST_RETRY_AFTER_MS, Math.min(30_000, Math.round(parsed)));
+  return Math.max(CAPTCHA_ASSIST_MIN_POST_INPUT_WAIT_MS, Math.min(30_000, Math.round(parsed)));
 }
 
 function normalizeDragDurationMs(raw) {
@@ -47,11 +48,52 @@ function buildSliderDragHint(target) {
   if (!rect || target?.role !== "slider") {
     return undefined;
   }
+  const trackRect = target?.track_rect;
+  const handleWidth = finiteNumber(rect.width);
+  const handleHeight = finiteNumber(rect.height);
+  const handleLeft = finiteNumber(rect.left);
+  const handleTop = finiteNumber(rect.top);
+  const trackLeft = finiteNumber(trackRect?.left);
+  const trackRight = finiteNumber(trackRect?.right);
+  const trackWidth = finiteNumber(trackRect?.width);
+  if (
+    handleWidth !== null
+    && handleHeight !== null
+    && handleLeft !== null
+    && handleTop !== null
+    && trackLeft !== null
+    && trackRight !== null
+    && trackWidth !== null
+    && handleWidth > 0
+    && handleHeight > 0
+    && trackWidth >= handleWidth * 1.8
+  ) {
+    const overshoot = Math.max(12, Math.min(30, handleWidth * 0.75));
+    const centerY = handleTop + handleHeight / 2;
+    return {
+      coordinate_system: "viewport_css_pixels",
+      confidence: target.confidence === "high" ? "high" : "medium",
+      method: "track_rect_with_completion_overshoot",
+      from_client: {
+        x: roundCoordinate(handleLeft + handleWidth / 2),
+        y: roundCoordinate(centerY),
+      },
+      to_client: {
+        x: roundCoordinate(trackRight - handleWidth / 2 + overshoot),
+        y: roundCoordinate(centerY),
+      },
+      completion_overshoot_css_px: roundCoordinate(overshoot),
+      estimated_travel_css_px: roundCoordinate(trackWidth - handleWidth),
+      track_rect: trackRect,
+      note: "Track-aware slider plan. Start at the handle center and release slightly beyond the theoretical right-edge threshold; physical execution still requires confirmation.",
+    };
+  }
   const inset = Math.max(6, Math.min(rect.width * 0.18, rect.height * 0.65, 42));
   const centerY = rect.top + rect.height / 2;
   return {
     coordinate_system: "viewport_css_pixels",
     confidence: target.confidence === "high" ? "medium" : "low",
+    method: "target_rect_inset_fallback",
     from_client: {
       x: Math.round((rect.left + inset) * 100) / 100,
       y: Math.round(centerY * 100) / 100,
@@ -208,11 +250,19 @@ function nativeWindowCoordinateCalibration(viewport = {}, nativeWindowRect = {})
     return null;
   }
   const devicePixelRatio = finiteNumber(viewport.device_pixel_ratio);
-  const contentScale = devicePixelRatio !== null && devicePixelRatio > 0
-    ? devicePixelRatio
-    : (browserScaleX + browserScaleY) / 2;
-  const chromeWidth = Math.max(0, outerWidth - innerWidth);
-  const chromeHeight = Math.max(0, outerHeight - innerHeight);
+  const nativeCoordinateSystem = String(rect.coordinate_system ?? "physical_screen_pixels").trim();
+  const nativeReferenceFrame = String(rect.reference_frame ?? "browser_window").trim();
+  const nativeRectIsViewportOrigin = nativeReferenceFrame === "viewport";
+  const logicalScreenCoordinates = nativeCoordinateSystem === "screen_points"
+    || nativeCoordinateSystem === "logical_screen_points";
+  const contentScaleX = logicalScreenCoordinates
+    ? browserScaleX
+    : (devicePixelRatio !== null && devicePixelRatio > 0 ? devicePixelRatio : browserScaleX);
+  const contentScaleY = logicalScreenCoordinates
+    ? browserScaleY
+    : (devicePixelRatio !== null && devicePixelRatio > 0 ? devicePixelRatio : browserScaleY);
+  const chromeWidth = nativeRectIsViewportOrigin ? 0 : Math.max(0, outerWidth - innerWidth);
+  const chromeHeight = nativeRectIsViewportOrigin ? 0 : Math.max(0, outerHeight - innerHeight);
   const sideInset = chromeWidth > 0 ? chromeWidth / 2 : 0;
   const topInset = chromeHeight > 0 ? Math.max(0, chromeHeight - sideInset) : 0;
   return {
@@ -222,6 +272,8 @@ function nativeWindowCoordinateCalibration(viewport = {}, nativeWindowRect = {})
       top: roundCoordinate(top),
       width: roundCoordinate(width),
       height: roundCoordinate(height),
+      coordinate_system: nativeCoordinateSystem,
+      reference_frame: nativeReferenceFrame,
     },
     browser_window_scale: {
       x: roundCoordinate(browserScaleX),
@@ -229,17 +281,21 @@ function nativeWindowCoordinateCalibration(viewport = {}, nativeWindowRect = {})
       source: "native_window_rect_divided_by_browser_outer_css_size",
     },
     content_scale: {
-      x: roundCoordinate(contentScale),
-      y: roundCoordinate(contentScale),
-      source: devicePixelRatio !== null && devicePixelRatio > 0
-        ? "window_device_pixel_ratio"
-        : "native_window_rect_scale_fallback",
+      x: roundCoordinate(contentScaleX),
+      y: roundCoordinate(contentScaleY),
+      source: logicalScreenCoordinates
+        ? "native_window_rect_logical_scale"
+        : (devicePixelRatio !== null && devicePixelRatio > 0
+          ? "window_device_pixel_ratio"
+          : "native_window_rect_scale_fallback"),
     },
     viewport_origin_screen: {
       x: roundCoordinate(left + (sideInset * browserScaleX)),
       y: roundCoordinate(top + (topInset * browserScaleY)),
-      coordinate_system: "physical_screen_pixels",
+      coordinate_system: nativeCoordinateSystem,
     },
+    target_coordinate_system: nativeCoordinateSystem,
+    native_reference_frame: nativeReferenceFrame,
   };
 }
 
@@ -265,7 +321,7 @@ function clientPointToNativeWindowScreen(point, viewport = {}, nativeWindowRect 
       calibration.viewport_origin_screen.y
       + ((y - offsetTop) * calibration.content_scale.y * visualScale),
     ),
-    coordinate_system: "physical_screen_pixels",
+    coordinate_system: calibration.target_coordinate_system,
     confidence: "high",
     method: calibration.method,
     calibration,
@@ -319,7 +375,9 @@ function buildVisionCorrectionPlan(screenshotClip, physicalInput = {}) {
 
 function buildCoordinateTransformPlan(pageState = {}, target = null, sliderDragHint = undefined, physicalInput = {}) {
   const viewport = pageState.viewport ?? {};
-  const screenshotClip = clampRectToViewport(target?.rect, viewport);
+  const sliderTrackRect = target?.role === "slider" ? target?.track_rect : null;
+  const screenshotRect = sliderTrackRect ?? target?.rect;
+  const screenshotClip = clampRectToViewport(screenshotRect, viewport);
   const checkboxClickHint = buildCheckboxClickHint(target);
   const clickClient = checkboxClickHint?.click_client ?? target?.center_client;
   const clickScreen = clickClient
@@ -355,6 +413,7 @@ function buildCoordinateTransformPlan(pageState = {}, target = null, sliderDragH
         : undefined,
     },
     vision_correction_plan: buildVisionCorrectionPlan(screenshotClip, physicalInput),
+    screenshot_clip_source: sliderTrackRect ? "slider_track_rect" : "target_rect",
     caveats: [
       "Browser chrome/toolbars, iframe nesting, DPR, OS scaling, and multi-monitor layout can shift final physical pixels.",
       "Physical execution still requires managed tab ownership, foreground window confirmation, and explicit user/operator confirmation.",

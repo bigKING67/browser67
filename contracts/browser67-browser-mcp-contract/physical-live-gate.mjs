@@ -5,13 +5,20 @@ import { parseLastJsonLine } from "../browser-captcha-assist-physical-live-gate/
 import { buildPhysicalProof } from "../browser-captcha-assist-physical-live-gate/proof.mjs";
 import { runPhysicalLiveGate } from "../browser-captcha-assist-physical-live-gate/runner.mjs";
 import {
+  buildCoordinateTransformPlan,
+  buildSliderDragHint,
   clampRectToViewport,
   clientPointToNativeWindowScreen,
 } from "../../src/auth/captcha/coordinates.mjs";
 import {
   isSupportedWindowsBrowserProcess,
   resolveManagedTabNativeWindowTitle,
+  resolveManagedTabNativeWindowUrl,
 } from "../../src/auth/captcha-assist/context.mjs";
+import {
+  buildChromiumTabWindowScript,
+  parseChromiumTabWindowOutput,
+} from "../../src/native-macos/chromium-window.mjs";
 import {
   buildWindowsClickScript,
   buildWindowsDragScript,
@@ -102,6 +109,14 @@ async function assertPhysicalLiveGateContract() {
     resolveManagedTabNativeWindowTitle({}, { tab: { data: { title: "bridge tab title" } } }, {}),
     "bridge tab title",
   );
+  assert.equal(
+    resolveManagedTabNativeWindowUrl(
+      { url: "https://dy.feigua.cn/app/?secret=redacted#/workbench/index" },
+      {},
+      {},
+    ),
+    "https://dy.feigua.cn/app/",
+  );
   assert.equal(isSupportedWindowsBrowserProcess("chrome"), true);
   assert.equal(isSupportedWindowsBrowserProcess("msedge"), true);
   assert.equal(isSupportedWindowsBrowserProcess("WindowsTerminal"), false);
@@ -179,6 +194,169 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(highDpiPoint?.coordinate_system, "physical_screen_pixels");
   assert.equal(highDpiPoint?.calibration?.browser_window_scale?.x, 2);
   assert.equal(highDpiPoint?.calibration?.content_scale?.x, 2);
+
+  const macLogicalPoint = clientPointToNativeWindowScreen(
+    { x: 606, y: 371 },
+    {
+      device_pixel_ratio: 2,
+      inner_height: 823,
+      inner_width: 1_512,
+      outer_height: 823,
+      outer_width: 1_512,
+      visual_viewport: {
+        offset_left: 0,
+        offset_top: 0,
+        scale: 1,
+      },
+    },
+    {
+      left: 0,
+      top: 159,
+      width: 1_512,
+      height: 823,
+      coordinate_system: "screen_points",
+    },
+  );
+  assert.equal(macLogicalPoint?.x, 606);
+  assert.equal(macLogicalPoint?.y, 530);
+  assert.equal(macLogicalPoint?.coordinate_system, "screen_points");
+  assert.equal(macLogicalPoint?.calibration?.content_scale?.x, 1);
+  assert.equal(macLogicalPoint?.calibration?.content_scale?.source, "native_window_rect_logical_scale");
+
+  const macToolbarPoint = clientPointToNativeWindowScreen(
+    { x: 77, y: 98 },
+    {
+      device_pixel_ratio: 2,
+      inner_height: 767,
+      inner_width: 1_512,
+      outer_height: 823,
+      outer_width: 1_512,
+      visual_viewport: {
+        offset_left: 0,
+        offset_top: 0,
+        scale: 1,
+      },
+    },
+    {
+      left: 0,
+      top: 159,
+      width: 1_512,
+      height: 823,
+      coordinate_system: "screen_points",
+      reference_frame: "browser_window",
+    },
+  );
+  assert.equal(macToolbarPoint?.x, 77);
+  assert.equal(macToolbarPoint?.y, 313);
+  assert.equal(macToolbarPoint?.calibration?.viewport_origin_screen?.y, 215);
+  assert.equal(macToolbarPoint?.calibration?.native_reference_frame, "browser_window");
+
+  const feiguaSliderTarget = {
+    role: "slider",
+    confidence: "medium",
+    rect: {
+      left: 586,
+      top: 351,
+      right: 626,
+      bottom: 391,
+      width: 40,
+      height: 40,
+      center_client: { x: 606, y: 371 },
+    },
+    track_rect: {
+      left: 586,
+      top: 351,
+      right: 926,
+      bottom: 391,
+      width: 340,
+      height: 40,
+    },
+  };
+  const feiguaDragHint = buildSliderDragHint(feiguaSliderTarget);
+  assert.deepEqual(feiguaDragHint?.from_client, { x: 606, y: 371 });
+  assert.deepEqual(feiguaDragHint?.to_client, { x: 936, y: 371 });
+  assert.equal(feiguaDragHint?.method, "track_rect_with_completion_overshoot");
+  assert.equal(feiguaDragHint?.completion_overshoot_css_px, 30);
+  const feiguaCoordinatePlan = buildCoordinateTransformPlan({
+    viewport: {
+      inner_width: 1_512,
+      inner_height: 823,
+      outer_width: 1_512,
+      outer_height: 823,
+      screen_x: 0,
+      screen_y: 0,
+      visual_viewport: {
+        width: 1_512,
+        height: 823,
+        offset_left: 0,
+        offset_top: 0,
+        scale: 1,
+      },
+    },
+  }, feiguaSliderTarget, feiguaDragHint, {});
+  assert.equal(feiguaCoordinatePlan.screenshot_clip_source, "slider_track_rect");
+  assert.deepEqual(feiguaCoordinatePlan.vision_correction_plan.screenshot_clip, {
+    x: 574,
+    y: 339,
+    width: 364,
+    height: 64,
+    scale: 1,
+    coordinate_system: "viewport_css_pixels",
+  });
+
+  const macActivationScript = buildChromiumTabWindowScript({
+    activate: true,
+    applicationName: "Google Chrome",
+    windowTabId: 1903725620,
+    windowUrl: "https://dy.feigua.cn/app/?secret=redacted#/workbench/index",
+  }).join("\n");
+  assert.match(macActivationScript, /id of candidateTab as text.*1903725620/);
+  assert.doesNotMatch(macActivationScript, /set candidateUrl to URL of candidateTab/);
+  assert.match(macActivationScript, /set tabIndex to active tab index of candidateWindow/);
+  assert.match(macActivationScript, /active tab index/);
+  assert.match(macActivationScript, /set index of candidateWindow to 1/);
+  assert.match(macActivationScript, /NSRunningApplication/);
+  assert.match(macActivationScript, /com\.google\.Chrome/);
+  assert.match(macActivationScript, /activateWithOptions\(2\)/);
+  assert.match(macActivationScript, /delay 0\.5/);
+  assert.equal(
+    macActivationScript.indexOf("set tabIndex to active tab index of candidateWindow")
+      < macActivationScript.indexOf("repeat with tabIndex from 1 to count tabs of candidateWindow"),
+    true,
+    "macOS Chromium lookup should prefer the TMWD-selected active tab before URL fallback scanning",
+  );
+  const macUrlFallbackScript = buildChromiumTabWindowScript({
+    activate: true,
+    applicationName: "Google Chrome",
+    windowUrl: "https://dy.feigua.cn/app/?secret=redacted#/workbench/index",
+  }).join("\n");
+  assert.match(macUrlFallbackScript, /set candidateUrl to URL of candidateTab/);
+  assert.match(macUrlFallbackScript, /https:\/\/dy\.feigua\.cn\/app\//);
+  assert.doesNotMatch(macUrlFallbackScript, /secret=redacted/);
+  const macAtomicPointerScript = buildChromiumTabWindowScript({
+    activate: true,
+    applicationName: "Google Chrome",
+    shellCommand: "'/opt/homebrew/bin/cliclick' '-e' '2' '-w' '35' 'm:75,234' 'dd:75,234' 'du:335,234'",
+    windowTabId: 1903725620,
+    windowUrl: "https://dy.feigua.cn/app/",
+  }).join("\n");
+  assert.match(macAtomicPointerScript, /do shell script/);
+  assert.match(macAtomicPointerScript, /cliclick/);
+  assert.equal(
+    macAtomicPointerScript.indexOf("activate") < macAtomicPointerScript.indexOf("do shell script"),
+    true,
+  );
+  const macWindow = parseChromiumTabWindowOutput(
+    ["Google Chrome", "2", "7", "0", "159", "1512", "982"].join("\u001f"),
+    "https://dy.feigua.cn/app/?secret=redacted#/workbench/index",
+    1903725620,
+  );
+  assert.equal(macWindow.width, 1_512);
+  assert.equal(macWindow.height, 823);
+  assert.equal(macWindow.coordinate_system, "screen_points");
+  assert.equal(macWindow.reference_frame, "browser_window");
+  assert.equal(macWindow.browser_tab_id, 1903725620);
+  assert.equal(macWindow.window_url_prefix, "https://dy.feigua.cn/app/");
   assert.equal(
     clientPointToNativeWindowScreen(
       { x: 75, y: 100 },

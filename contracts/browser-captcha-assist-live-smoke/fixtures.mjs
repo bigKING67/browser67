@@ -5,13 +5,21 @@ function sliderFixtureHtml(options = {}) {
   const embedded = options.embedded === true;
   const gray = options.gray === true;
   const canvas = options.canvas === true;
+  const handleTarget = options.handle_target === true;
   const zoom = Number.isFinite(Number(options.zoom)) ? Number(options.zoom) : 1;
   const title = embedded ? "fixture slider captcha frame" : "fixture slider captcha login";
   const handleStyle = gray
     ? "background: #6b7280; color: white;"
     : "background: #2b6cb0; color: white;";
+  const rootId = handleTarget ? "aliyunCaptcha-sliding-body" : "slider-captcha";
+  const handleId = handleTarget ? "aliyunCaptcha-sliding-slider" : "slider-handle";
   const sliderControl = canvas
     ? `<canvas id="slider-captcha" class="slider-captcha canvas-captcha" data-captcha="slider" aria-label="slide to verify captcha" width="320" height="52"></canvas>`
+    : handleTarget
+      ? `<div id="${rootId}" class="sliding-track" data-captcha="slider">
+      <div id="${handleId}" class="aliyunCaptcha-sliding-slider slider-handle" role="button" aria-label="drag slider handle">||</div>
+      <span class="slider-label">slide to verify</span>
+    </div>`
     : `<div id="slider-captcha" class="slider-captcha" data-captcha="slider" aria-label="slide to verify captcha">
       <div id="slider-handle" class="slider-handle" role="button" aria-label="drag slider handle">||</div>
       <span class="slider-label">slide to verify</span>
@@ -46,8 +54,10 @@ function sliderFixtureHtml(options = {}) {
   <style>
     body { font-family: sans-serif; margin: ${embedded ? "8px" : "48px"}; zoom: ${zoom}; }
     .slider-captcha { width: 320px; height: 52px; border: 1px solid #888; border-radius: 8px; position: relative; user-select: none; background: #f4f4f4; }
+    .sliding-track { width: 340px; height: 40px; border: 1px solid #888; border-radius: 6px; position: relative; user-select: none; background: #f4f4f4; }
     canvas.slider-captcha { box-sizing: border-box; display: block; }
     .slider-handle { width: 48px; height: 48px; position: absolute; left: 2px; top: 2px; margin: 0; border-radius: 6px; ${handleStyle} display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; transform: translateX(0); will-change: transform; }
+    .sliding-track .slider-handle { width: 40px; height: 40px; left: 0; top: 0; }
     .slider-label { position: absolute; left: 68px; top: 16px; color: #333; pointer-events: none; }
   </style>
 </head>
@@ -62,8 +72,8 @@ function sliderFixtureHtml(options = {}) {
   </form>
   <script>
     ${drawCanvas}
-    const root = document.getElementById("slider-captcha");
-    const handle = document.getElementById("slider-handle") || root;
+    const root = document.getElementById("${rootId}");
+    const handle = document.getElementById("${handleId}") || root;
     const status = document.getElementById("slider-status");
     const isCanvas = root instanceof HTMLCanvasElement;
     let startX = null;
@@ -239,6 +249,7 @@ function sliderFixtureOptions(pathname) {
     embedded: pathname === "/slider-frame",
     gray: pathname === "/slider-login-gray",
     canvas: pathname === "/slider-login-canvas",
+    handle_target: pathname === "/slider-login-handle-target",
     zoom: pathname === "/slider-login-zoom" ? 1.25 : 1,
   };
 }
@@ -297,6 +308,7 @@ async function startSliderFixture() {
       || requestUrl.pathname === "/slider-login-scroll"
       || requestUrl.pathname === "/slider-login-gray"
       || requestUrl.pathname === "/slider-login-canvas"
+      || requestUrl.pathname === "/slider-login-handle-target"
       || requestUrl.pathname === "/slider-login-zoom"
       || requestUrl.pathname === "/slider-frame"
     ) {

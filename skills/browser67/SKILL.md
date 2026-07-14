@@ -40,6 +40,11 @@ two paired MCP surfaces:
    matching interactive GUI host first. Run `proof:native-live` only with the
    explicit physical/confirm environment flags and `--write`; never fabricate a
    target-OS proof on another platform.
+7. For explicitly confirmed physical CAPTCHA assist on macOS, require the
+   exact managed Chrome/Edge tab id before `cliclick`, with its redacted URL only
+   as a fallback. Use logical screen-point window bounds, prefer a detected
+   slider track over the handle-only rect, and keep CAPTCHA screenshots
+   region-bounded.
 
 ## Quality bar
 

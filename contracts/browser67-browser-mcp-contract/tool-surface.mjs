@@ -26,6 +26,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(names.includes("browser_clipboard_ops"), true);
 
   const executeJsTool = tools.find((entry) => entry?.name === "browser_execute_js");
+  const nativeInputTool = tools.find((entry) => entry?.name === "browser_native_input");
   assert.equal(executeJsTool?.inputSchema?.properties?.output_mode?.enum?.includes("compact"), true);
   assert.equal(executeJsTool?.inputSchema?.properties?.max_return_chars?.maximum, 300_000);
 
@@ -178,7 +179,14 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(authTool?.inputSchema?.properties?.screen_to_x?.type, "number");
   assert.equal(authTool?.inputSchema?.properties?.drag_steps?.maximum, 240);
   assert.equal(authTool?.inputSchema?.properties?.pre_input_settle_ms?.maximum, 5_000);
-  assert.equal(authTool?.inputSchema?.properties?.wait_after_ms?.minimum, 5_000);
+  assert.equal(authTool?.inputSchema?.properties?.wait_after_ms?.minimum, 1_000);
+  assert.equal(nativeInputTool?.inputSchema?.properties?.window_tab_id?.type, "integer");
+  assert.equal(nativeInputTool?.inputSchema?.properties?.window_tab_id?.minimum, 1);
+  assert.equal(nativeInputTool?.inputSchema?.properties?.window_url?.type, "string");
+  assert.deepEqual(
+    nativeInputTool?.inputSchema?.properties?.window_application?.enum,
+    ["Google Chrome", "Microsoft Edge"],
+  );
   assert.equal(authTool?.inputSchema?.properties?.tmwd_mode?.default, "tmwd");
 
   return { tools, names };

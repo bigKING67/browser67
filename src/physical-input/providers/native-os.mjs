@@ -17,7 +17,7 @@ function normalizeCapabilities(capabilities = {}) {
     provider_name: "Native OS input",
     status: supportedActions.length > 0 ? "available" : "unavailable",
     execution_mode: "native_physical_input",
-    coordinate_system: "screen_pixels",
+    coordinate_system: String(capabilities.coordinate_system ?? "screen_pixels"),
     supports_window_activation: supportedActions.includes("activate_window"),
     supports_window_rect: supportedActions.includes("get_window_rect"),
     supports_window_region_capture: false,

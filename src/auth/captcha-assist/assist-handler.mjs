@@ -14,6 +14,7 @@ import {
   getManagedTabContext,
   isSupportedWindowsBrowserProcess,
   resolveManagedTabNativeWindowTitle,
+  resolveManagedTabNativeWindowUrl,
   sleep,
 } from "./context.mjs";
 import { handlePlanCaptchaAssist } from "./plan-handler.mjs";
@@ -164,13 +165,18 @@ async function getForegroundNativeWindowRect(args, activation = {}) {
   const explicitWindowTitle = String(args?.window_title ?? "").trim();
   const managedActivation = activation.native_window_activation ?? {};
   const managedWindowPid = finiteNumber(managedActivation.pid);
+  const managedWindowTabId = finiteNumber(managedActivation.window_tab_id);
   const managedWindowTitle = String(managedActivation.window_title ?? managedActivation.title ?? "").trim();
+  const managedWindowUrl = String(managedActivation.window_url ?? "").trim();
   const windowPid = explicitWindowPid ?? managedWindowPid;
   const windowTitle = explicitWindowTitle || (windowPid === null ? managedWindowTitle : "");
   try {
     const physicalInput = await runPhysicalInputAction("get_window_rect", {
       window_pid: windowPid ?? undefined,
       window_title: windowTitle || undefined,
+      window_tab_id: managedWindowTabId ?? undefined,
+      window_url: managedWindowUrl || undefined,
+      window_application: managedActivation.application_name || undefined,
       timeout_ms: args?.timeout_ms,
     }, {
       preferred_provider: args?.physical_input_provider,
@@ -187,9 +193,13 @@ async function getForegroundNativeWindowRect(args, activation = {}) {
       ...physicalInput.result,
       selector_source: explicitWindowPid !== null || explicitWindowTitle
         ? "caller_window_selector"
-        : (managedWindowPid !== null || managedWindowTitle
-          ? "native_managed_window_activation"
-          : "foreground_window"),
+        : (managedWindowTabId !== null
+          ? "native_managed_tab_id"
+          : (managedWindowUrl
+            ? "native_managed_tab_url"
+          : (managedWindowPid !== null || managedWindowTitle
+            ? "native_managed_window_activation"
+            : "foreground_window"))),
       provider: physicalInput.provider,
       provider_selection: physicalInput.provider_selection,
     };
@@ -369,6 +379,74 @@ async function handleAssistCaptcha(args) {
           ],
         });
       }
+    }
+  }
+
+  if (
+    activation.method === "tmwd_tabs_switch"
+    && planned.native_input_capabilities?.platform === "darwin"
+  ) {
+    const nativeWindowUrl = resolveManagedTabNativeWindowUrl(planned, activation, managedTab.managed_tab);
+    const nativeWindowTabId = finiteNumber(managedTab.tab_id ?? activation.tab_id);
+    if (!nativeWindowUrl && nativeWindowTabId === null) {
+      return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.MANAGED_TAB_ACTIVATION_FAILED, {
+        activation: {
+          ...activation,
+          native_window_activation: {
+            status: "blocked",
+            reason: "managed_tab_window_url_unavailable",
+          },
+        },
+        required_one_of: [
+          "managed tab page URL",
+          "window_title",
+          "window_pid",
+        ],
+      });
+    }
+    try {
+      const nativeActivation = await runPhysicalInputAction("activate_window", {
+        window_tab_id: nativeWindowTabId ?? undefined,
+        window_url: nativeWindowUrl,
+        timeout_ms: args?.timeout_ms,
+      }, {
+        preferred_provider: "native-os",
+      });
+      const nativeActivationSucceeded = nativeActivation.result?.status === "success"
+        && nativeActivation.result?.foregrounded === true;
+      activation = {
+        ...activation,
+        status: nativeActivationSucceeded ? "foregrounded" : "activation_failed",
+        os_foreground_verified: nativeActivationSucceeded,
+        native_window_activation: {
+          window_tab_id: nativeWindowTabId ?? undefined,
+          window_url: nativeWindowUrl,
+          provider_selection: nativeActivation.provider_selection,
+          provider: nativeActivation.provider,
+          ...nativeActivation.result,
+        },
+      };
+      if (!nativeActivationSucceeded) {
+        return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.MANAGED_TAB_ACTIVATION_FAILED, {
+          activation,
+          activation_error: "native Chromium tab activation did not reach the macOS foreground",
+        });
+      }
+    } catch (error) {
+      return assistBlocked(planned, CAPTCHA_ASSIST_REASONS.MANAGED_TAB_ACTIVATION_FAILED, {
+        activation: {
+          ...activation,
+          status: "activation_failed",
+          os_foreground_verified: false,
+          native_window_activation: {
+            status: "failed",
+            window_tab_id: nativeWindowTabId ?? undefined,
+            window_url: nativeWindowUrl,
+            error: String(error?.message ?? error),
+          },
+        },
+        activation_error: String(error?.message ?? error),
+      });
     }
   }
 
@@ -578,6 +656,9 @@ async function handleAssistCaptcha(args) {
       duration_ms: normalizeDragDurationMs(args?.drag_duration_ms),
       steps: normalizeDragSteps(args?.drag_steps),
       expected_window_hwnd: nativeWindowRect.status === "success" ? nativeWindowRect.hwnd : undefined,
+      window_tab_id: activation.native_window_activation?.window_tab_id,
+      window_url: activation.native_window_activation?.window_url,
+      window_application: activation.native_window_activation?.application_name,
       timeout_ms: args?.timeout_ms,
     }, {
       preferred_provider: args?.physical_input_provider,
@@ -587,6 +668,9 @@ async function handleAssistCaptcha(args) {
       y: inputCoordinates.screenY,
       button: "left",
       expected_window_hwnd: nativeWindowRect.status === "success" ? nativeWindowRect.hwnd : undefined,
+      window_tab_id: activation.native_window_activation?.window_tab_id,
+      window_url: activation.native_window_activation?.window_url,
+      window_application: activation.native_window_activation?.application_name,
       timeout_ms: args?.timeout_ms,
     }, {
       preferred_provider: args?.physical_input_provider,
@@ -629,7 +713,9 @@ async function handleAssistCaptcha(args) {
       y: Math.round(inputCoordinates.screenY),
       to_x: inputCoordinates.screenToX === null ? undefined : Math.round(inputCoordinates.screenToX),
       to_y: inputCoordinates.screenToY === null ? undefined : Math.round(inputCoordinates.screenToY),
-      coordinate_system: "screen_pixels",
+      coordinate_system: inputCoordinates.coordinate_calibration?.target_coordinate_system
+        ?? physicalInput.provider?.coordinate_system
+        ?? "screen_pixels",
       source: inputCoordinates.source,
     },
     coordinate_calibration: inputCoordinates.coordinate_calibration,

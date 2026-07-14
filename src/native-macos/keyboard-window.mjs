@@ -7,8 +7,20 @@ import {
   parseAppleKeyChord,
   runAppleScript,
 } from "./apple-script.mjs";
+import { findChromiumTabWindow } from "./chromium-window.mjs";
 
 async function activateWindow(args, timeoutMs) {
+  const windowUrl = String(args?.window_url ?? "").trim();
+  const windowTabId = args?.window_tab_id;
+  if (windowUrl || windowTabId !== undefined) {
+    return findChromiumTabWindow({
+      activate: true,
+      preferredApplication: args?.window_application,
+      timeoutMs,
+      windowTabId,
+      windowUrl,
+    });
+  }
   const selector = parseWindowSelector(args);
   if (!selector.title && !selector.pid) {
     throw createToolError("WINDOW_NOT_FOUND", "window not found: window_title or window_pid is required");
@@ -70,7 +82,18 @@ async function pasteText(args, timeoutMs) {
   };
 }
 
-async function getWindowRect(_args, timeoutMs) {
+async function getWindowRect(args, timeoutMs) {
+  const windowUrl = String(args?.window_url ?? "").trim();
+  const windowTabId = args?.window_tab_id;
+  if (windowUrl || windowTabId !== undefined) {
+    return findChromiumTabWindow({
+      activate: true,
+      preferredApplication: args?.window_application,
+      timeoutMs,
+      windowTabId,
+      windowUrl,
+    });
+  }
   const lines = [
     "tell application \"System Events\"",
     "  set frontProc to first process whose frontmost is true",
@@ -101,6 +124,7 @@ async function getWindowRect(_args, timeoutMs) {
     width,
     height,
     title: pieces.slice(4).join(","),
+    coordinate_system: "screen_points",
   };
 }
 

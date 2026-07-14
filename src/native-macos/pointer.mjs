@@ -7,6 +7,30 @@ import {
   normalizeMouseButton,
   runNativeCommand,
 } from "../native-core.mjs";
+import { runCliclickAgainstChromiumTab } from "./chromium-window.mjs";
+
+async function runCliclickPointerCommands(args, cliclickArgs, timeoutMs) {
+  const windowUrl = String(args?.window_url ?? "").trim();
+  const windowTabId = args?.window_tab_id;
+  if (windowUrl || windowTabId !== undefined) {
+    return {
+      foregroundActivation: await runCliclickAgainstChromiumTab({
+        cliclickArgs,
+        preferredApplication: args?.window_application,
+        timeoutMs,
+        windowTabId,
+        windowUrl,
+      }),
+      result: null,
+    };
+  }
+  const result = await runNativeCommand("cliclick", cliclickArgs, { timeoutMs });
+  ensureNativeCommandOk(result, "cliclick pointer input");
+  return {
+    foregroundActivation: null,
+    result,
+  };
+}
 
 function buildCliclickDragCommands({
   durationMs,
@@ -16,6 +40,7 @@ function buildCliclickDragCommands({
   toX,
   toY,
 }) {
+  const easing = 2;
   const waitMs = steps > 0 ? Math.max(20, Math.round(durationMs / Math.max(1, steps + 3))) : 20;
   const moveCommands = Array.from({ length: steps }, (_item, index) => {
     const ratio = (index + 1) / steps;
@@ -30,6 +55,7 @@ function buildCliclickDragCommands({
     `du:${String(toX)},${String(toY)}`,
   ];
   return {
+    easing,
     wait_ms: waitMs,
     commands,
     command_sequence: commands.map((command) => String(command).split(":", 1)[0]),
@@ -94,8 +120,11 @@ async function dragPointer(args, timeoutMs) {
     toX,
     toY,
   });
-  const result = await runNativeCommand("cliclick", ["-w", String(dragPlan.wait_ms), ...dragPlan.commands], { timeoutMs });
-  ensureNativeCommandOk(result, "cliclick drag");
+  const execution = await runCliclickPointerCommands(
+    args,
+    ["-e", String(dragPlan.easing), "-w", String(dragPlan.wait_ms), ...dragPlan.commands],
+    timeoutMs,
+  );
   return {
     driver: "macos-cliclick",
     from_x: fromX,
@@ -106,8 +135,10 @@ async function dragPointer(args, timeoutMs) {
     duration_ms: durationMs,
     steps,
     command_sequence: dragPlan.command_sequence,
+    easing: dragPlan.easing,
     pre_move: dragPlan.pre_move,
     wait_ms: dragPlan.wait_ms,
+    foreground_activation: execution.foregroundActivation ?? undefined,
   };
 }
 
@@ -121,8 +152,11 @@ async function clickPointer(action, args, timeoutMs) {
     x,
     y,
   });
-  const result = await runNativeCommand("cliclick", ["-w", String(clickPlan.wait_ms), ...clickPlan.commands], { timeoutMs });
-  ensureNativeCommandOk(result, "cliclick click");
+  const execution = await runCliclickPointerCommands(
+    args,
+    ["-w", String(clickPlan.wait_ms), ...clickPlan.commands],
+    timeoutMs,
+  );
   return {
     driver: "macos-cliclick",
     x,
@@ -133,6 +167,7 @@ async function clickPointer(action, args, timeoutMs) {
     pre_move: clickPlan.pre_move,
     pre_move_point: clickPlan.pre_move_point,
     wait_ms: clickPlan.wait_ms,
+    foreground_activation: execution.foregroundActivation ?? undefined,
   };
 }
 
