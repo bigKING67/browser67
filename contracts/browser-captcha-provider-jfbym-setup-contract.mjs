@@ -60,8 +60,18 @@ async function run() {
     const configPath = path.join(tmpDir, JFBYM_ENV_FILE);
     const fileText = await readFile(configPath, "utf8");
     assert.equal(fileText.includes(fakeToken), true);
-    assert.equal(modeBits(await stat(tmpDir)), 0o700);
-    assert.equal(modeBits(await stat(configPath)), 0o600);
+    const tmpDirStat = await stat(tmpDir);
+    if (process.platform !== "win32") {
+      assert.equal(modeBits(tmpDirStat), 0o700);
+    } else {
+      assert.equal(tmpDirStat.isDirectory(), true);
+    }
+    const configStat = await stat(configPath);
+    if (process.platform !== "win32") {
+      assert.equal(modeBits(configStat), 0o600);
+    } else {
+      assert.equal(configStat.isFile(), true);
+    }
 
     const config = await loadJfbymProviderConfig({ captcha_provider_config_dir: tmpDir });
     assert.equal(config.configured, true);

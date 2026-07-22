@@ -25,7 +25,12 @@ function createCaptchaSmokeRpc(cli) {
       const response = await rpc.call("tools/call", { name, arguments: args }, cli.timeout_ms);
       if (response?.result?.isError === true) {
         const payload = firstJsonContent(response.result);
-        throw new Error(`${name} failed: ${String(payload?.error ?? payload?.message ?? "tool error")}`);
+        const details = payload?.details
+          ? ` details=${JSON.stringify(payload.details)}`
+          : "";
+        throw new Error(
+          `${name} failed: ${String(payload?.error ?? payload?.message ?? "tool error")}${details}`,
+        );
       }
       return firstJsonContent(response.result);
     },

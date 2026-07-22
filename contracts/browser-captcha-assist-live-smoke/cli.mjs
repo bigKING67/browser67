@@ -5,7 +5,6 @@ function parseArgs(argv) {
     tmwd_transport: "auto",
     tmwd_ws_endpoint: "ws://127.0.0.1:18765",
     tmwd_link_endpoint: "http://127.0.0.1:18766/link",
-    cdp_endpoint: "http://127.0.0.1:9222",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
@@ -38,11 +37,6 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (token === "--cdp-endpoint") {
-      parsed.cdp_endpoint = String(argv[index + 1] ?? "").trim();
-      index += 1;
-      continue;
-    }
     if (!token) {
       continue;
     }
@@ -57,7 +51,6 @@ function commonArgs(cli) {
     tmwd_transport: cli.tmwd_transport,
     tmwd_ws_endpoint: cli.tmwd_ws_endpoint,
     tmwd_link_endpoint: cli.tmwd_link_endpoint,
-    cdp_endpoint: cli.cdp_endpoint,
     timeout_ms: cli.timeout_ms,
   };
 }
