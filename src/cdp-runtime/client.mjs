@@ -1,3 +1,5 @@
+import { WebSocket } from "ws";
+
 function waitForWebSocketOpen(socket, timeoutMs) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
