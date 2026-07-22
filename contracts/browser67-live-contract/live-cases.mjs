@@ -59,9 +59,11 @@ async function runExecuteCase({ rpc, cli, commonArgs }) {
   }
   assert.equal(typeof executePayload?.js_return?.title, "string");
   assert.equal(typeof executePayload?.js_return?.href, "string");
-  assert.equal(typeof executePayload?.js_return?.cookie, "string");
+  assert.equal(typeof executePayload?.js_return?.cookie, "object");
+  assert.equal(executePayload?.js_return?.cookie?.redacted, true);
+  assert.equal(typeof executePayload?.js_return?.cookie?.length, "number");
   if (cli.require_cookie) {
-    assert.equal(executePayload.js_return.cookie.length > 0, true);
+    assert.equal(executePayload.js_return.cookie.present, true);
   }
   return executePayload;
 }

@@ -15,8 +15,12 @@ import {
   syncSessionRegistry,
 } from "../session-registry.mjs";
 import { callTmwdLink } from "./link.mjs";
+import {
+  preferredTmwdTransportOrder,
+  recordTmwdTransportResult,
+} from "./health.mjs";
 import { normalizeTmwdSessions } from "./session-normalization.mjs";
-import { listTmwdWsSessions } from "./ws.mjs";
+import { listTmwdWsSessionsWithMeta } from "./ws.mjs";
 
 async function resolveTmwdContextViaLink(args, options = {}) {
   const timeoutMs = options.probe === true
@@ -42,7 +46,11 @@ async function resolveTmwdContextViaLink(args, options = {}) {
 }
 
 async function resolveTmwdContextViaWs(args, options = {}) {
-  const targets = await listTmwdWsSessions(args, { probe: options.probe === true });
+  const sessionResult = await listTmwdWsSessionsWithMeta(args, {
+    probe: options.probe === true,
+    refresh: options.refresh === true,
+  });
+  const targets = sessionResult.tabs;
   if (targets.length === 0) {
     throw new Error("tmwd ws tabs returned empty");
   }
@@ -56,6 +64,8 @@ async function resolveTmwdContextViaWs(args, options = {}) {
     target: picked.target,
     selection: picked.selection,
     sessions: listSessionsSnapshot(),
+    session_cache: sessionResult.cache,
+    connection_generation: sessionResult.cache.connection_generation,
     ...sessionPointers(),
   };
 }
@@ -63,44 +73,37 @@ async function resolveTmwdContextViaWs(args, options = {}) {
 async function resolveTmwdContext(args, options = {}) {
   const transport = resolveTmwdTransport(args?.tmwd_transport);
   const attempts = [];
-  if (transport !== "link") {
+  const order = transport === "auto"
+    ? preferredTmwdTransportOrder(args)
+    : [{ transport, reason: "forced_transport" }];
+  for (const candidate of order) {
     try {
-      const resolved = await resolveTmwdContextViaWs(args, options);
+      const resolved = candidate.transport === "ws"
+        ? await resolveTmwdContextViaWs(args, options)
+        : await resolveTmwdContextViaLink(args, options);
+      recordTmwdTransportResult(args, candidate.transport, true, { endpoint: resolved.endpoint });
       return {
         ...resolved,
         transport_attempts: [
           ...attempts,
-          { transport: "ws", status: "ok" },
+          {
+            transport: candidate.transport,
+            status: "ok",
+            reason: candidate.reason,
+            health: candidate.health,
+          },
         ],
       };
     } catch (error) {
+      recordTmwdTransportResult(args, candidate.transport, false, { error: error?.message });
       attempts.push({
-        transport: "ws",
+        transport: candidate.transport,
         status: "error",
+        reason: candidate.reason,
+        health: candidate.health,
         message: String(error?.message ?? error),
       });
-      if (transport === "ws") {
-        throw withTransportAttempts(error, attempts);
-      }
-    }
-  }
-  if (transport !== "ws") {
-    try {
-      const resolved = await resolveTmwdContextViaLink(args, options);
-      return {
-        ...resolved,
-        transport_attempts: [
-          ...attempts,
-          { transport: "link", status: "ok" },
-        ],
-      };
-    } catch (error) {
-      attempts.push({
-        transport: "link",
-        status: "error",
-        message: String(error?.message ?? error),
-      });
-      if (transport === "link") {
+      if (transport !== "auto") {
         throw withTransportAttempts(error, attempts);
       }
     }

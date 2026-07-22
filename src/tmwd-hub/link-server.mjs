@@ -81,6 +81,7 @@ async function handleExecuteJs(hub, config, res, payload) {
       sessionId: session.id,
       code: payload.code,
       timeoutMs,
+      monitorNewTabs: payload.monitorNewTabs !== false,
     });
   } catch (error) {
     respondJson(res, 200, { r: { error: toSerializableError(error).message } });

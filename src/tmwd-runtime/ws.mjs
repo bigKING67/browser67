@@ -13,7 +13,23 @@ const tmwdWsRuntime = {
   connectPromise: null,
   pending: new Map(),
   lastTabs: [],
+  lastTabsUpdatedAtMs: 0,
+  lastTabsSource: "none",
+  connectionGeneration: 0,
 };
+
+function resetTmwdWsSessionCache() {
+  tmwdWsRuntime.lastTabs = [];
+  tmwdWsRuntime.lastTabsUpdatedAtMs = 0;
+  tmwdWsRuntime.lastTabsSource = "none";
+}
+
+function updateTmwdWsSessionCache(tabs, source) {
+  tmwdWsRuntime.lastTabs = [...tabs];
+  tmwdWsRuntime.lastTabsUpdatedAtMs = Date.now();
+  tmwdWsRuntime.lastTabsSource = source;
+  syncSessionRegistry(tabs);
+}
 
 function clearTmwdWsPending(errorMessage) {
   for (const [, pending] of tmwdWsRuntime.pending) {
@@ -82,6 +98,7 @@ async function disposeTmwdRuntime(options = {}) {
   };
   const waitClose = socket ? waitForSocketClose(socket, timeoutMs) : Promise.resolve("no_socket");
   closeTmwdWsConnection(String(options.reason ?? "tmwd runtime disposed"));
+  resetTmwdWsSessionCache();
   const closeStatus = await waitClose;
   return {
     status: "success",
@@ -110,10 +127,7 @@ function onTmwdWsMessage(eventData) {
   }
   if (payload.type === "ext_ready" || payload.type === "tabs_update") {
     const tabs = normalizeTmwdTabsPayload(payload.tabs ?? payload.result ?? payload.data);
-    if (tabs.length > 0) {
-      tmwdWsRuntime.lastTabs = tabs;
-      syncSessionRegistry(tabs);
-    }
+    updateTmwdWsSessionCache(tabs, payload.type === "ext_ready" ? "push_ext_ready" : "push_tabs_update");
     return;
   }
   const responseId = String(payload.id ?? "").trim();
@@ -197,6 +211,8 @@ async function connectTmwdWs(args, options = {}) {
     socket.addEventListener("open", () => {
       tmwdWsRuntime.socket = socket;
       tmwdWsRuntime.state = "open";
+      tmwdWsRuntime.connectionGeneration += 1;
+      resetTmwdWsSessionCache();
       finishResolve();
     }, { once: true });
     socket.addEventListener("message", (event) => {
@@ -261,13 +277,53 @@ async function sendTmwdWsRequest(args, payload, timeoutMs) {
     id: requestId,
     tabId: payload.tabId,
     code: payload.code,
+    monitorNewTabs: payload.monitorNewTabs !== false,
   }));
   return promise;
 }
 
-async function listTmwdWsSessions(args, options = {}) {
+function normalizeSessionCacheTtlMs(raw) {
+  const value = Number(raw ?? process.env.BROWSER_STRUCTURED_TMWD_SESSION_CACHE_TTL_MS ?? 1_500);
+  return Number.isFinite(value) ? Math.max(0, Math.min(10_000, Math.floor(value))) : 1_500;
+}
+
+function cachedTabsCanSatisfySelection(args, tabs) {
+  const sessionId = String(args?.session_id ?? args?.sessionId ?? args?.switch_tab_id ?? "").trim();
+  if (sessionId && !tabs.some((tab) => String(tab.id) === sessionId)) return false;
+  const urlPattern = String(args?.session_url_pattern ?? args?.url_pattern ?? "").trim();
+  if (!urlPattern) return true;
+  try {
+    const expression = new RegExp(urlPattern);
+    return tabs.some((tab) => expression.test(String(tab.url ?? "")));
+  } catch {
+    return tabs.some((tab) => String(tab.url ?? "").includes(urlPattern));
+  }
+}
+
+async function listTmwdWsSessionsWithMeta(args, options = {}) {
   const timeoutMs = options.probe === true ? 1_500 : Math.min(10_000, normalizeTimeoutMs(args?.timeout_ms));
   await connectTmwdWs(args, { probe: options.probe === true });
+  const cacheTtlMs = normalizeSessionCacheTtlMs(options.cache_ttl_ms ?? args?.session_cache_ttl_ms);
+  const cacheAgeMs = tmwdWsRuntime.lastTabsUpdatedAtMs > 0
+    ? Date.now() - tmwdWsRuntime.lastTabsUpdatedAtMs
+    : Number.POSITIVE_INFINITY;
+  if (
+    options.refresh !== true
+    && args?.refresh_sessions !== true
+    && cacheAgeMs <= cacheTtlMs
+    && cachedTabsCanSatisfySelection(args, tmwdWsRuntime.lastTabs)
+  ) {
+    return {
+      tabs: [...tmwdWsRuntime.lastTabs],
+      cache: {
+        hit: true,
+        source: tmwdWsRuntime.lastTabsSource,
+        age_ms: cacheAgeMs,
+        ttl_ms: cacheTtlMs,
+        connection_generation: tmwdWsRuntime.connectionGeneration,
+      },
+    };
+  }
   const response = await sendTmwdWsRequest(args, {
     code: { cmd: "tabs" },
   }, timeoutMs);
@@ -275,15 +331,26 @@ async function listTmwdWsSessions(args, options = {}) {
     throw new Error(String(response.error ?? "tmwd ws tabs failed"));
   }
   const tabs = normalizeTmwdTabsPayload(response.result);
-  if (tabs.length > 0) {
-    tmwdWsRuntime.lastTabs = tabs;
-    syncSessionRegistry(tabs);
-  }
-  return tabs.length > 0 ? tabs : [...tmwdWsRuntime.lastTabs];
+  updateTmwdWsSessionCache(tabs, "pull_tabs");
+  return {
+    tabs: [...tabs],
+    cache: {
+      hit: false,
+      source: "pull_tabs",
+      age_ms: 0,
+      ttl_ms: cacheTtlMs,
+      connection_generation: tmwdWsRuntime.connectionGeneration,
+    },
+  };
+}
+
+async function listTmwdWsSessions(args, options = {}) {
+  return (await listTmwdWsSessionsWithMeta(args, options)).tabs;
 }
 
 export {
   disposeTmwdRuntime,
   listTmwdWsSessions,
+  listTmwdWsSessionsWithMeta,
   sendTmwdWsRequest,
 };

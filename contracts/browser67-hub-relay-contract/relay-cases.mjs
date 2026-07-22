@@ -55,6 +55,98 @@ async function runTabsCreateRelayCase(extensionWs, controllerWs) {
   assert.equal(createResponse?.result?.id, 456);
 }
 
+async function runNewTabMonitoringRelayCase(extensionWs, controllerWs, linkUrl) {
+  const noMonitorWsRelay = waitForWsMessage(
+    extensionWs,
+    (message) => message?.code?.params?.expression === "browser67_no_monitor_ws",
+    "relayed websocket monitorNewTabs=false",
+  );
+  controllerWs.send(JSON.stringify({
+    id: "no_monitor_ws",
+    tabId: 123,
+    monitorNewTabs: false,
+    code: {
+      cmd: "cdp",
+      method: "Runtime.evaluate",
+      params: { expression: "browser67_no_monitor_ws" },
+    },
+  }));
+  const relayedWs = await noMonitorWsRelay;
+  assert.equal(relayedWs.monitorNewTabs, false);
+  extensionWs.send(JSON.stringify({
+    type: "result",
+    id: relayedWs.id,
+    result: { value: "ws-no-monitor" },
+  }));
+  const wsResponse = await waitForWsMessage(
+    controllerWs,
+    (message) => String(message.id ?? "") === "no_monitor_ws",
+    "websocket monitorNewTabs=false response",
+  );
+  assert.equal(wsResponse?.type, "result");
+
+  const defaultMonitorRelay = waitForWsMessage(
+    extensionWs,
+    (message) => message?.code?.params?.expression === "browser67_default_monitor",
+    "relayed websocket default monitorNewTabs",
+  );
+  controllerWs.send(JSON.stringify({
+    id: "default_monitor_ws",
+    tabId: 123,
+    code: {
+      cmd: "cdp",
+      method: "Runtime.evaluate",
+      params: { expression: "browser67_default_monitor" },
+    },
+  }));
+  const relayedDefault = await defaultMonitorRelay;
+  assert.equal(relayedDefault.monitorNewTabs, true);
+  extensionWs.send(JSON.stringify({
+    type: "result",
+    id: relayedDefault.id,
+    result: { value: "ws-default-monitor" },
+  }));
+  const defaultResponse = await waitForWsMessage(
+    controllerWs,
+    (message) => String(message.id ?? "") === "default_monitor_ws",
+    "websocket default monitorNewTabs response",
+  );
+  assert.equal(defaultResponse?.type, "result");
+
+  const noMonitorLinkRelay = waitForWsMessage(
+    extensionWs,
+    (message) => message?.code?.params?.expression === "browser67_no_monitor_link",
+    "relayed link monitorNewTabs=false",
+  );
+  const linkResponsePromise = fetch(linkUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      cmd: "execute_js",
+      sessionId: 123,
+      timeout: "3",
+      monitorNewTabs: false,
+      code: {
+        cmd: "cdp",
+        method: "Runtime.evaluate",
+        params: { expression: "browser67_no_monitor_link" },
+      },
+    }),
+  });
+  const relayedLink = await noMonitorLinkRelay;
+  assert.equal(relayedLink.monitorNewTabs, false);
+  extensionWs.send(JSON.stringify({
+    type: "result",
+    id: relayedLink.id,
+    result: { value: "link-no-monitor" },
+  }));
+  const linkResponse = await linkResponsePromise;
+  assert.equal(linkResponse.ok, true);
+  assert.deepEqual(await linkResponse.json(), {
+    r: { data: { value: "link-no-monitor" } },
+  });
+}
+
 async function runNoExtensionCase(extensionWs, controllerWs) {
   extensionWs.close();
   await sleep(100);
@@ -68,6 +160,7 @@ async function runNoExtensionCase(extensionWs, controllerWs) {
 }
 
 export {
+  runNewTabMonitoringRelayCase,
   runNoExtensionCase,
   runTabsCreateRelayCase,
   runTabsListCase,

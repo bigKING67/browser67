@@ -27,6 +27,8 @@ function closeServer(server) {
 async function startMockTmwdWs() {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   let closeCount = 0;
+  let tabsRequestCount = 0;
+  const executionMonitorFlags = [];
   server.on("connection", (socket) => {
     socket.once("close", () => {
       closeCount += 1;
@@ -35,6 +37,7 @@ async function startMockTmwdWs() {
       const request = JSON.parse(String(data));
       const code = request?.code;
       if (code?.cmd === "tabs") {
+        tabsRequestCount += 1;
         socket.send(JSON.stringify({
           id: request.id,
           result: [
@@ -47,6 +50,7 @@ async function startMockTmwdWs() {
         }));
         return;
       }
+      executionMonitorFlags.push(request.monitorNewTabs);
       socket.send(JSON.stringify({
         id: request.id,
         result: {
@@ -73,6 +77,17 @@ async function startMockTmwdWs() {
     get clients_count() {
       return server.clients.size;
     },
+    get tabs_request_count() {
+      return tabsRequestCount;
+    },
+    get execution_monitor_flags() {
+      return [...executionMonitorFlags];
+    },
+    push_tabs(tabs) {
+      for (const client of server.clients) {
+        client.send(JSON.stringify({ type: "tabs_update", tabs }));
+      }
+    },
   };
 }
 
@@ -89,13 +104,35 @@ async function run() {
     const preferred = await resolvePreferredBrowserContext(args);
     assert.equal(preferred.transport, "tmwd_ws");
     assert.equal(preferred.context.target.id, "mock-tab");
+    assert.equal(preferred.context.session_cache.hit, false);
+    assert.equal(mock.tabs_request_count, 1);
+
+    mock.push_tabs([{
+      id: "mock-tab",
+      url: "https://example.test/runtime-dispose",
+      title: "Runtime dispose pushed",
+    }]);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+    const cachedPreferred = await resolvePreferredBrowserContext(args);
+    assert.equal(cachedPreferred.context.session_cache.hit, true);
+    assert.equal(cachedPreferred.context.session_cache.source, "push_tabs_update");
+    assert.equal(cachedPreferred.context.target.title, "Runtime dispose pushed");
+    assert.equal(mock.tabs_request_count, 1);
+
+    const refreshedPreferred = await resolvePreferredBrowserContext({
+      ...args,
+      refresh_sessions: true,
+    });
+    assert.equal(refreshedPreferred.context.session_cache.hit, false);
+    assert.equal(mock.tabs_request_count, 2);
 
     const executed = await executeTmwdJsWithFallback(
-      args,
+      { ...args, no_monitor: true },
       preferred.context,
       "return { disposed_contract: true };",
     );
     assert.equal(executed.executed.value?.disposed_contract, true);
+    assert.deepEqual(mock.execution_monitor_flags, [false]);
 
     const disposed = await disposeTmwdRuntime({
       reason: "tmwd-runtime-dispose-contract",
@@ -119,6 +156,9 @@ async function run() {
       dispose_close_status: disposed.close_status,
       server_close_count: mock.close_count,
       server_clients_count: mock.clients_count,
+      session_cache_push_hit: true,
+      tabs_pull_count: mock.tabs_request_count,
+      no_monitor_forwarded: mock.execution_monitor_flags[0] === false,
     })}\n`);
   } finally {
     await disposeTmwdRuntime({

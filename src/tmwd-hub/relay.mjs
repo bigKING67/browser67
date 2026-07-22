@@ -32,7 +32,17 @@ function clearPendingByControllerSocket(hub, socket, reason) {
   }
 }
 
-async function relayExecToExtension(hub, { sessionId, code, timeoutMs, replySocket = null, replyId = "" }) {
+async function relayExecToExtension(
+  hub,
+  {
+    sessionId,
+    code,
+    timeoutMs,
+    monitorNewTabs = true,
+    replySocket = null,
+    replyId = "",
+  },
+) {
   ensureExtensionSocketReady(hub);
   const tabId = Number(sessionId);
   if (!Number.isFinite(tabId)) {
@@ -62,6 +72,7 @@ async function relayExecToExtension(hub, { sessionId, code, timeoutMs, replySock
       id: relayId,
       tabId,
       code,
+      monitorNewTabs: monitorNewTabs !== false,
     }));
   } catch (error) {
     const pending = hub.pendingExec.get(relayId);
@@ -152,6 +163,7 @@ function handleControllerRequest(hub, config, socket, message) {
     sessionId: tabId,
     code: message.code,
     timeoutMs: config.requestTimeoutMs,
+    monitorNewTabs: message.monitorNewTabs !== false,
     replySocket: socket,
     replyId: requestId,
   }).catch((error) => {

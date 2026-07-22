@@ -7,6 +7,7 @@ import {
 } from "./hub-process.mjs";
 import { pickFreePortPair, sleep, waitForPort } from "./ports.mjs";
 import {
+  runNewTabMonitoringRelayCase,
   runNoExtensionCase,
   runTabsCreateRelayCase,
   runTabsListCase,
@@ -28,6 +29,7 @@ async function runHubRelayContract() {
 
     await runTabsListCase(extensionWs, controllerWs);
     await runTabsCreateRelayCase(extensionWs, controllerWs);
+    await runNewTabMonitoringRelayCase(extensionWs, controllerWs, linkUrl);
     await runNoExtensionCase(extensionWs, controllerWs);
 
     await sleep(100);
@@ -40,6 +42,9 @@ async function runHubRelayContract() {
       ws_endpoint: wsUrl,
       tabs_list_intercept_ok: true,
       tabs_create_relay_ok: true,
+      monitor_new_tabs_ws_relay_ok: true,
+      monitor_new_tabs_link_relay_ok: true,
+      monitor_new_tabs_default_compatible: true,
       no_extension_error_nonfatal: true,
     })}\n`);
   } finally {

@@ -1,7 +1,5 @@
-import {
-  appendTransportAttempt,
-  normalizeTimeoutMs,
-} from "../common.mjs";
+import { normalizeTimeoutMs } from "../runtime/config/limits.mjs";
+import { appendTransportAttempt } from "../runtime/transport-attempts.mjs";
 import {
   classifyBrowserErrorCode,
   shouldFallbackAcrossTmwdTransports,
@@ -9,6 +7,7 @@ import {
 } from "../errors.mjs";
 import { callTmwdLink } from "./link.mjs";
 import { resolveTmwdContextWithTransport } from "./context.mjs";
+import { recordTmwdTransportResult } from "./health.mjs";
 import { sendTmwdWsRequest } from "./ws.mjs";
 
 async function executeTmwdJs(args, tmwdContext, code) {
@@ -29,6 +28,7 @@ async function executeTmwdJs(args, tmwdContext, code) {
       {
         tabId: bridgeTabId,
         code: codePayload,
+        monitorNewTabs: args?.no_monitor !== true,
       },
       Math.max(500, timeoutMs + 2_000),
     );
@@ -66,6 +66,7 @@ async function executeTmwdJs(args, tmwdContext, code) {
       sessionId: tmwdContext.target.id,
       code,
       timeout: String(timeoutSecs),
+      monitorNewTabs: args?.no_monitor !== true,
     },
     Math.max(500, timeoutMs + 2_000),
   );
@@ -93,12 +94,17 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload) {
         context,
         codePayload,
       );
+      recordTmwdTransportResult(args, transport, true, { endpoint: context.endpoint });
       appendTransportAttempt(attempts, transport, "execute", "ok", { reason });
       return {
         executed,
         context,
       };
     } catch (error) {
+      recordTmwdTransportResult(args, transport, false, {
+        endpoint: context.endpoint,
+        error: error?.message,
+      });
       appendTransportAttempt(attempts, transport, "execute", "error", {
         reason,
         message: String(error?.message ?? error),
