@@ -168,7 +168,8 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
 
     const jobId = jobStartPayload.job.job_id;
     let jobStatusPayload = null;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    const jobDeadlineAt = Date.now() + Math.min(10_000, Math.max(1_000, timeoutMs));
+    while (Date.now() < jobDeadlineAt) {
       await sleep(50);
       const jobStatusCall = await rpc.call(
         "tools/call",
@@ -187,7 +188,11 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
       }
     }
     assert.equal(jobStatusPayload?.ok, true);
-    assert.equal(jobStatusPayload?.job?.status, "failed");
+    assert.equal(
+      jobStatusPayload?.job?.status,
+      "failed",
+      `background job did not reach failed before deadline: ${JSON.stringify(jobStatusPayload?.job ?? null)}`,
+    );
 
     const jobResultCall = await rpc.call(
       "tools/call",
