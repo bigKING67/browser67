@@ -131,7 +131,11 @@ async function assertSizeBudget(root) {
     "--keep-latest", "1",
   ]);
   assert.equal(budget.status, 0, budget.stderr || budget.stdout);
-  assert.equal(budget.payload?.budget_satisfied_after_plan, true);
+  assert.equal(
+    budget.payload?.budget_satisfied_after_plan,
+    true,
+    `size budget was not satisfied: ${JSON.stringify(budget.payload)}`,
+  );
   assert.equal(budget.payload?.planned_delete_count, 3);
   assert.deepEqual(
     budget.payload?.planned?.map((run) => run.run_id).sort(),

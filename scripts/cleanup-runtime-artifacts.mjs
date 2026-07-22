@@ -263,12 +263,13 @@ async function directorySizeAndNewestMtime(dir) {
         continue;
       }
       state.entries += 1;
-      state.bytes += Number(info.size ?? 0);
       state.newest_mtime_ms = Math.max(state.newest_mtime_ms, Number(info.mtimeMs ?? 0));
       if (info.isDirectory()) {
         state.directories += 1;
         await visit(entryPath);
       } else {
+        // Directory st_size is platform-specific; retention budgets track logical payload bytes.
+        state.bytes += Number(info.size ?? 0);
         state.files += 1;
       }
     }
