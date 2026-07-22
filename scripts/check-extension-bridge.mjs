@@ -1,9 +1,16 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildExtension } from "./build-extension.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -45,7 +52,35 @@ function run() {
     assertContains(source, "unsupported tabs method", relativeFile);
     assertContains(source, "R.push(await handleTabs(c))", relativeFile);
   }
-  process.stdout.write(`${JSON.stringify({ ok: true, checked: bridgeFiles })}\n`);
+  for (const relativeFile of [
+    "extension/browser67/runtime.js",
+    "extension/browser67/managed-content.js",
+  ]) {
+    checkSyntax(relativeFile);
+  }
+  const tempRoot = mkdtempSync(resolve(tmpdir(), "browser67-extension-check-"));
+  try {
+    const generatedDir = resolve(tempRoot, "extension");
+    buildExtension({ source_dir: resolve(repoRoot, "extension"), target_dir: generatedDir });
+    checkSyntax(resolve(generatedDir, "background.js"));
+    const generatedBackground = readFileSync(resolve(generatedDir, "background.js"), "utf8");
+    const generatedManifest = JSON.parse(readFileSync(resolve(generatedDir, "manifest.json"), "utf8"));
+    assertContains(generatedBackground, "browser67HandleCommand", "generated/background.js");
+    if (/id: 9999, priority: 1/.test(generatedBackground)) {
+      throw new Error("generated/background.js retained the upstream global CSP rule");
+    }
+    if (!Array.isArray(generatedManifest.content_scripts) || generatedManifest.content_scripts.length !== 0) {
+      throw new Error("generated/manifest.json must keep ordinary tabs free of content scripts");
+    }
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
+  }
+  process.stdout.write(`${JSON.stringify({
+    ok: true,
+    checked: bridgeFiles,
+    overlay_checked: true,
+    generated_checked: true,
+  })}\n`);
 }
 
 try {

@@ -24,6 +24,7 @@ const defaultSourceDir = resolve(
 );
 const targetDir = resolve(repoRoot, "extension");
 const managedExtraFiles = new Set(["config.example.js"]);
+const managedExtraPrefixes = ["browser67/"];
 const ignoredFiles = new Set(["config.js"]);
 
 function parseArgs(argv) {
@@ -96,6 +97,11 @@ function hashFile(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function isManagedExtra(file) {
+  return managedExtraFiles.has(file)
+    || managedExtraPrefixes.some((prefix) => file.startsWith(prefix));
+}
+
 function compare(sourceDir) {
   if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) {
     throw new Error(`missing GenericAgent extension source: ${sourceDir}`);
@@ -104,7 +110,7 @@ function compare(sourceDir) {
     throw new Error(`missing extension target: ${targetDir}`);
   }
   const sourceFiles = listFiles(sourceDir);
-  const targetFiles = listFiles(targetDir).filter((file) => !managedExtraFiles.has(file));
+  const targetFiles = listFiles(targetDir).filter((file) => !isManagedExtra(file));
   const sourceSet = new Set(sourceFiles);
   const targetSet = new Set(targetFiles);
   const added = sourceFiles.filter((file) => !targetSet.has(file));
@@ -121,7 +127,7 @@ function compare(sourceDir) {
     removed,
     changed,
     ignored: [...ignoredFiles].sort(),
-    managed_extra: [...managedExtraFiles].sort(),
+    managed_extra: [...managedExtraFiles, ...managedExtraPrefixes.map((prefix) => `${prefix}*`)].sort(),
   };
 }
 
