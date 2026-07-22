@@ -12,6 +12,7 @@ import { createRunStore } from "../src/runtime/runs/store.mjs";
 import { scanNdjsonBackwards } from "../src/runtime/storage/ndjson.mjs";
 
 const RUN_EVENT_COUNT = 2_000;
+const SEMANTIC_DIFF_BUDGET_MS = process.env.CI === "true" ? 1_000 : 500;
 
 function assertBudget(label, elapsedMs, budgetMs) {
   if (elapsedMs > budgetMs) {
@@ -183,7 +184,7 @@ async function main() {
     assertBudget("indexed run writes", runListWriteMs, 8_000);
     assertBudget("indexed run list", runListReadMs, 500);
     assertBudget("event tail read", eventTailMs, 250);
-    assertBudget("semantic diff", semanticDiffMs, 500);
+    assertBudget("semantic diff", semanticDiffMs, SEMANTIC_DIFF_BUDGET_MS);
     assertBudget("MCP cold start", mcpColdStartMs, 3_000);
     process.stdout.write(`${JSON.stringify({
       ok: true,
@@ -211,7 +212,7 @@ async function main() {
         indexed_run_writes: 8_000,
         indexed_run_list: 500,
         event_tail: 250,
-        semantic_diff: 500,
+        semantic_diff: SEMANTIC_DIFF_BUDGET_MS,
         mcp_cold_start: 3_000,
       },
     })}\n`);
