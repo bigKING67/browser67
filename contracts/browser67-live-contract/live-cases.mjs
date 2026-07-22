@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import { firstJsonContent } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 import { buildLivePrereqHint, toToolErrorSummary } from "./errors.mjs";
+import { buildLiveTargetRoute } from "./target-routing.mjs";
 
 async function runScanCase({ rpc, cli, commonArgs }) {
   const scanCall = await rpc.call(
@@ -11,9 +12,7 @@ async function runScanCase({ rpc, cli, commonArgs }) {
       arguments: {
         ...commonArgs,
         tabs_only: true,
-        ...(cli.target_url_contains
-          ? { session_url_pattern: cli.target_url_contains }
-          : {}),
+        ...buildLiveTargetRoute(cli),
       },
     },
     cli.timeout_ms,
@@ -31,7 +30,7 @@ async function runScanCase({ rpc, cli, commonArgs }) {
   return scanPayload;
 }
 
-async function runExecuteCase({ rpc, cli, commonArgs }) {
+async function runExecuteCase({ rpc, cli, commonArgs, targetTabId }) {
   const executeCall = await rpc.call(
     "tools/call",
     {
@@ -42,9 +41,10 @@ async function runExecuteCase({ rpc, cli, commonArgs }) {
         native_auto_fallback: true,
         native_auto_fallback_policy: "balanced",
         script: "let cookie = ''; try { cookie = document.cookie; } catch {} return ({ title: document.title, href: location.href, cookie });",
-        ...(cli.target_url_contains
-          ? { target_url_contains: cli.target_url_contains }
-          : {}),
+        ...buildLiveTargetRoute({
+          ...cli,
+          target_tab_id: targetTabId || cli.target_tab_id,
+        }),
       },
     },
     cli.timeout_ms,

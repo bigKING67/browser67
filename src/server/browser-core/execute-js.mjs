@@ -332,7 +332,10 @@ async function handleBrowserExecuteJs(args) {
         afterTargets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
         syncSessionRegistry(afterTargets);
       } else {
-        const executed = await cdpEvaluateScript(args, String(scriptInput.value ?? ""));
+        const executed = await cdpEvaluateScript({
+          ...args,
+          switch_tab_id: preferred.context.target.id,
+        }, String(scriptInput.value ?? ""));
         const cdpValue = executed.result.value;
         if (cdpValue && typeof cdpValue === "object" && Object.prototype.hasOwnProperty.call(cdpValue, "ok")) {
           if (cdpValue.ok === false) {
@@ -344,7 +347,6 @@ async function handleBrowserExecuteJs(args) {
           jsReturn = cdpValue;
         }
         tabId = executed.target.id;
-        selection = executed.result.selection;
         afterTargets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
         syncSessionRegistry(afterTargets);
       }

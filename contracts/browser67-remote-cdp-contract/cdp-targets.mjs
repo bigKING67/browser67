@@ -99,6 +99,49 @@ async function waitForCdpTarget(cdpEndpoint, expectedUrl, timeoutMs) {
   });
 }
 
+async function waitForCdpTargetIdentity(cdpEndpoint, options = {}) {
+  const endpoint = `${String(cdpEndpoint).replace(/\/$/, "")}/json/list`;
+  const targetId = String(options.target_id ?? "").trim();
+  const expectedUrl = String(options.expected_url ?? "").trim();
+  const expectedTitle = String(options.expected_title ?? "").trim();
+  const timeoutMs = Number(options.timeout_ms ?? 0);
+  if (!targetId) {
+    throw new Error("waitForCdpTargetIdentity requires target_id");
+  }
+  return pollUntil({
+    timeoutMs,
+    intervalMs: 100,
+    probe: async () => {
+      const response = await fetch(endpoint);
+      const rows = await response.json();
+      const targets = Array.isArray(rows) ? rows : [];
+      const matched = targets.find((item) => item?.type === "page" && String(item?.id ?? "") === targetId);
+      const actualUrl = String(matched?.url ?? "");
+      const actualTitle = String(matched?.title ?? "");
+      const ready = Boolean(matched)
+        && (!expectedUrl || actualUrl === expectedUrl)
+        && (!expectedTitle || actualTitle === expectedTitle);
+      if (ready) {
+        return {
+          done: true,
+          value: {
+            id: targetId,
+            url: actualUrl,
+            title: actualTitle,
+          },
+        };
+      }
+      return {
+        done: false,
+        lastValue: matched
+          ? `id=${targetId} url=${actualUrl || "<none>"} title=${actualTitle || "<none>"}`
+          : `id=${targetId} missing`,
+      };
+    },
+    timeoutMessage: (lastSeen) => `timed out waiting on CDP target identity ${targetId}; last_seen=${lastSeen || "<none>"}`,
+  });
+}
+
 async function createCdpTarget(cdpEndpoint, url) {
   const base = String(cdpEndpoint).replace(/\/$/, "");
   const targetUrl = `${base}/json/new?${encodeURIComponent(url)}`;
@@ -140,5 +183,6 @@ export {
   closeOtherCdpTargets,
   createCdpTarget,
   waitForCdpTarget,
+  waitForCdpTargetIdentity,
   waitForUrl,
 };

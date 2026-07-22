@@ -4,7 +4,13 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
-import { closeOtherCdpTargets, createCdpTarget, waitForCdpTarget, waitForUrl } from "./cdp-targets.mjs";
+import {
+  closeOtherCdpTargets,
+  createCdpTarget,
+  waitForCdpTarget,
+  waitForCdpTargetIdentity,
+  waitForUrl,
+} from "./cdp-targets.mjs";
 import { findChromeBinary, launchChrome, terminateChrome } from "./chrome.mjs";
 import { parseArgs } from "./cli.mjs";
 import {
@@ -390,10 +396,17 @@ async function runRemoteCdpContract(argv) {
     const createdTarget = await createCdpTarget(cdpEndpoint, fixtureUrl);
     const fixtureTarget = await waitForCdpTarget(cdpEndpoint, fixtureUrl, cli.timeout_ms);
     await closeOtherCdpTargets(cdpEndpoint, fixtureTarget.id || createdTarget.id);
+    const stableFixtureTarget = await waitForCdpTargetIdentity(cdpEndpoint, {
+      target_id: fixtureTarget.id || createdTarget.id,
+      expected_url: fixtureUrl,
+      expected_title: "remote-cdp-fixture",
+      timeout_ms: cli.timeout_ms,
+    });
 
     const commonGateArgs = [
       "--tmwd-mode", "remote_cdp",
       "--cdp-endpoint", cdpEndpoint,
+      "--target-tab-id", stableFixtureTarget.id,
       "--target-url-contains", fixtureUrl,
       "--disable-event-log",
       "--timeout-ms", String(cli.timeout_ms),
@@ -403,7 +416,7 @@ async function runRemoteCdpContract(argv) {
     const livePayload = live.payload;
     const contentCore = await runContentCoreFixture({
       cdpEndpoint,
-      fixtureTarget,
+      fixtureTarget: stableFixtureTarget,
       fixtureUrl,
       registryPath,
       timeoutMs: cli.timeout_ms,
@@ -413,6 +426,7 @@ async function runRemoteCdpContract(argv) {
       && doctor.payload?.doctor?.readiness?.path === "cdp"
       && livePayload?.stage === "live_passed"
       && livePayload?.live?.transport === "cdp"
+      && livePayload?.live?.tab_id === stableFixtureTarget.id
       && livePayload?.live?.href === fixtureUrl
       && livePayload?.live?.title === "remote-cdp-fixture"
       && contentCore.ok === true;
@@ -423,6 +437,7 @@ async function runRemoteCdpContract(argv) {
       chrome_version: chrome.version,
       cdp_endpoint: cdpEndpoint,
       fixture_url: fixtureUrl,
+      fixture_target_id: stableFixtureTarget.id,
       doctor: {
         exit_code: doctor.status,
         ready: doctor.payload?.doctor?.readiness?.ready === true,
@@ -433,6 +448,7 @@ async function runRemoteCdpContract(argv) {
         exit_code: live.status,
         stage: livePayload?.stage ?? "",
         transport: livePayload?.live?.transport ?? "",
+        tab_id: livePayload?.live?.tab_id ?? "",
         title: livePayload?.live?.title ?? "",
         href: livePayload?.live?.href ?? "",
         tabs_count: livePayload?.live?.tabs_count ?? 0,

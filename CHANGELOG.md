@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Pin isolated remote-CDP live checks to the exact fixture target across scan
+  and execution, revalidate target ID/URL/title after startup-tab cleanup, and
+  fail explicitly on target or URL drift instead of accepting `about:blank`.
 - Add an installed Agent integration doctor that separates repository/release
   readiness from machine-local MCP, extension, active-skill, AGENTS route, and
   live-runtime readiness.

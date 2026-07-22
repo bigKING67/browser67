@@ -95,7 +95,20 @@ const entries = [
   commandEntry("managed-baseline-end", ["node", "scripts/check-managed-tab-cleanup.mjs", "--baseline-file", "{managed_baseline}"], { label: "managed tab cleanup finalizer", changed_paths: ["src/tab-workspace/**", "scripts/check-managed-tab-cleanup.mjs"] }),
   commandEntry("npm-audit", ["npm", "audit", "--audit-level=moderate"], { changed_paths: ["package.json", "package-lock.json"], requirements: ["node", "network"] }),
   npmEntry("active-skill-strict", "skills:active:check", { changed_paths: ["skills/**", "scripts/active-skill-sync.mjs"] }),
-  npmEntry("remote-cdp", "check:remote-cdp", { changed_paths: ["src/cdp-runtime.mjs", "src/browser/**", "contracts/browser67-remote-cdp-contract/**"], requirements: ["node", "local_chrome"] }),
+  npmEntry("remote-cdp", "check:remote-cdp", {
+    changed_paths: [
+      "src/cdp-runtime.mjs",
+      "src/cdp-runtime/**",
+      "src/browser/**",
+      "src/server/browser-core/execute-js.mjs",
+      "contracts/browser67-live-contract.mjs",
+      "contracts/browser67-live-contract/**",
+      "contracts/browser67-live-gate.mjs",
+      "contracts/browser67-live-gate/**",
+      "contracts/browser67-remote-cdp-contract/**",
+    ],
+    requirements: ["node", "local_chrome"],
+  }),
   commandEntry("release-ready", ["node", "scripts/release-readiness.mjs", "--require-clean", "--require-synced", "--require-current-upstreams"], { changed_paths: ["**"], requirements: ["clean_git", "synced_origin_main", "network"] }),
   commandEntry("release-ready-strict", ["node", "scripts/release-readiness.mjs", "--require-clean", "--require-synced", "--require-current-upstreams", "--strict-optional-proofs"], { changed_paths: ["**"], requirements: ["clean_git", "synced_origin_main", "network", "optional_external_proofs"] }),
 ];

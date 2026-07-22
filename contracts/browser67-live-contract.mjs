@@ -3,6 +3,7 @@ import { createRpcClient } from "./browser67-browser-mcp-contract/rpc-client.mjs
 import { parseArgs, commonArgs } from "./browser67-live-contract/cli.mjs";
 import { runExecuteCase, runScanCase } from "./browser67-live-contract/live-cases.mjs";
 import { initializeAndAssertTools } from "./browser67-live-contract/session.mjs";
+import { assertLiveTargetIdentity } from "./browser67-live-contract/target-routing.mjs";
 
 async function run(argv = process.argv.slice(2)) {
   const cli = parseArgs(argv);
@@ -11,7 +12,13 @@ async function run(argv = process.argv.slice(2)) {
     await initializeAndAssertTools(rpc, cli);
     const baseArgs = commonArgs(cli);
     const scanPayload = await runScanCase({ rpc, cli, commonArgs: baseArgs });
-    const executePayload = await runExecuteCase({ rpc, cli, commonArgs: baseArgs });
+    const executePayload = await runExecuteCase({
+      rpc,
+      cli,
+      commonArgs: baseArgs,
+      targetTabId: scanPayload?.metadata?.active_tab,
+    });
+    assertLiveTargetIdentity({ cli, scanPayload, executePayload });
     const tabsCount = Number(scanPayload?.metadata?.tabs_count ?? 0);
     process.stdout.write(
       `${JSON.stringify({
@@ -20,6 +27,7 @@ async function run(argv = process.argv.slice(2)) {
         transport_attempts: executePayload.transport_attempts,
         tabs_count: tabsCount,
         active_tab: scanPayload?.metadata?.active_tab,
+        tab_id: executePayload?.tab_id,
         title: executePayload?.js_return?.title,
         href: executePayload?.js_return?.href,
         cookie_length: executePayload?.js_return?.cookie?.length ?? 0,

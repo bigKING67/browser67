@@ -120,7 +120,9 @@ approval_mode = "approve"
 
 Validate the explicit remote CDP path with `npm run check:remote-cdp`. The gate
 launches an isolated headless Chrome profile and local fixture page, then runs
-doctor + live checks against that temporary `remote_cdp` endpoint. Set
+doctor + live checks against that temporary `remote_cdp` endpoint. It pins the
+fixture target by ID after revalidating its URL/title and rejects scan/execute
+target drift instead of falling back to a startup `about:blank` page. Set
 `CHROME_BIN=/path/to/chrome` when Chrome is not installed in a default location.
 
 ## Wrapper tools

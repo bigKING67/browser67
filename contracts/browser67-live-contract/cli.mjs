@@ -32,6 +32,7 @@ function parseArgs(argv) {
     tmwd_ws_endpoint: "ws://127.0.0.1:18765",
     tmwd_link_endpoint: "http://127.0.0.1:18766/link",
     cdp_endpoint: "http://127.0.0.1:9222",
+    target_tab_id: "",
     target_url_contains: "",
     require_cookie: false,
     allow_empty_tabs: false,
@@ -70,6 +71,11 @@ function parseArgs(argv) {
     }
     if (token === "--target-url-contains") {
       parsed.target_url_contains = String(argv[index + 1] ?? "").trim();
+      index += 1;
+      continue;
+    }
+    if (token === "--target-tab-id") {
+      parsed.target_tab_id = parseRequiredString(argv[index + 1], "--target-tab-id");
       index += 1;
       continue;
     }
