@@ -2,78 +2,54 @@
 
 import { readFileSync } from "node:fs";
 
-const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-const verifySource = readFileSync("scripts/verify.mjs", "utf8");
+import { entries, resolveTier, tiers } from "./verification/manifest.mjs";
 
-const tiers = {
-  ci: {
-    command: "npm run verify:ci",
-    purpose: "Deterministic contracts, docs/skills sync, dependency audit, and release metadata without a real browser profile.",
-    requires: ["node", "network_for_npm_audit"],
-  },
-  coverage: {
-    command: "npm run coverage:contracts",
-    purpose: "Generate the deterministic src/scripts coverage baseline without pretending the first baseline is a release threshold.",
-    requires: ["node", "c8"],
-  },
-  local: {
-    command: "npm run verify:local",
-    purpose: "Full local TMWD verification plus strict active skill drift checking.",
-    requires: ["browser67_extension", "tmwd_hub", "active_browser_tab"],
-  },
-  live: {
-    command: "npm run verify:live",
-    purpose: "Real-browser doctor, managed tabs, auth/CAPTCHA planning, JS reverse, and screenshot behavior.",
-    requires: ["browser67_extension", "tmwd_hub", "active_browser_tab"],
-  },
-  platform: {
-    command: "npm run verify:platform",
-    purpose: "Explicit remote CDP and native/platform capability gates without claiming cross-OS proof.",
-    requires: ["local_chrome", "native_capability_probe"],
-  },
-  all: {
-    command: "npm run verify:all",
-    purpose: "Local release-grade verification including active skills, screenshot live proof, and isolated remote CDP.",
-    requires: ["local", "platform"],
-  },
-  release: {
-    command: "npm run release:ready",
-    purpose: "Clean, synced release gate with current GenericAgent and JS reverse reference reviews.",
-    requires: ["clean_git", "synced_origin_main", "network_for_upstream_freshness"],
-  },
+const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+
+const requiredAliases = {
+  check: "node scripts/run-verification.mjs --tier check",
+  verify: "node scripts/verify.mjs",
+  "verify:ci": "node scripts/run-verification.mjs --tier ci",
+  "verify:local": "node scripts/run-verification.mjs --tier local",
+  "verify:live": "node scripts/run-verification.mjs --tier live",
+  "verify:platform": "node scripts/run-verification.mjs --tier platform",
+  "verify:all": "node scripts/run-verification.mjs --tier all",
 };
 
-const requiredScripts = [
-  "verify",
-  "coverage:contracts",
-  "verify:ci",
-  "verify:local",
-  "verify:live",
-  "verify:platform",
-  "verify:all",
-  "release:ready",
-  "release:ready:strict",
-  "check:job-persistence",
-  "check:screenshot-live",
-  "check:remote-cdp",
-  "check:native-live",
-  "proof:native-live",
-];
-
 function buildReport() {
-  const missingScripts = requiredScripts.filter((name) => typeof pkg.scripts?.[name] !== "string");
-  const verifyMissing = [
-    "check:job-persistence",
-    "check:screenshot-live",
-  ].filter((name) => !verifySource.includes(name));
+  const ids = entries.map((entry) => entry.id);
+  const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
+  const missingScripts = entries
+    .filter((entry) => entry.script && typeof pkg.scripts?.[entry.script] !== "string")
+    .map((entry) => entry.script);
+  const aliasDrift = Object.entries(requiredAliases)
+    .filter(([name, command]) => pkg.scripts?.[name] !== command)
+    .map(([name, expected]) => ({ name, expected, actual: pkg.scripts?.[name] ?? null }));
+  const tierErrors = [];
+  for (const tier of Object.keys(tiers)) {
+    try {
+      resolveTier(tier);
+    } catch (error) {
+      tierErrors.push({ tier, error: String(error?.message ?? error) });
+    }
+  }
   return {
-    ok: missingScripts.length === 0 && verifyMissing.length === 0,
+    ok: duplicateIds.length === 0
+      && missingScripts.length === 0
+      && aliasDrift.length === 0
+      && tierErrors.length === 0,
     check: "verification-manifest",
-    schema_version: "browser67.verification.v1",
-    tiers,
-    required_scripts: requiredScripts,
-    missing_scripts: missingScripts,
-    default_verify_missing: verifyMissing,
+    schema_version: "browser67.verification.v2",
+    tiers: Object.fromEntries(Object.entries(tiers).map(([id, tier]) => [id, {
+      purpose: tier.purpose,
+      step_count: resolveTier(id).length,
+      command: `node scripts/run-verification.mjs --tier ${id}`,
+    }])),
+    entry_count: entries.length,
+    duplicate_ids: duplicateIds,
+    missing_scripts: [...new Set(missingScripts)],
+    alias_drift: aliasDrift,
+    tier_errors: tierErrors,
   };
 }
 
@@ -82,6 +58,8 @@ const report = buildReport();
 if (args.has("--json") || !args.has("--check")) {
   process.stdout.write(`${JSON.stringify(report, null, args.has("--json") ? 2 : 0)}\n`);
 } else {
-  process.stdout.write(`verification_manifest=${report.ok ? "ok" : "failed"} tiers=${Object.keys(tiers).length} missing_scripts=${report.missing_scripts.length} verify_missing=${report.default_verify_missing.length}\n`);
+  process.stdout.write(`verification_manifest=${report.ok ? "ok" : "failed"} tiers=${Object.keys(report.tiers).length} entries=${report.entry_count} missing_scripts=${report.missing_scripts.length} alias_drift=${report.alias_drift.length}\n`);
 }
 process.exitCode = report.ok ? 0 : 1;
+
+export { buildReport };

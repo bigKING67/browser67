@@ -6,10 +6,46 @@ const repoRoot = resolve(import.meta.dirname, "..");
 
 const MATRIX = [
   {
+    id: "lint",
+    command: "npm run lint",
+    tier: "required",
+    covers: ["biome-static-analysis", "registry-and-contract-source"],
+  },
+  {
+    id: "type-check",
+    command: "npm run type-check",
+    tier: "required",
+    covers: ["checkjs-runtime-contracts", "tool-and-transport-shapes"],
+  },
+  {
+    id: "dependency-boundaries",
+    command: "npm run check:dependency-boundaries",
+    tier: "required",
+    covers: ["module-cycles", "layer-boundaries", "complexity-observations"],
+  },
+  {
     id: "core-contracts",
     command: "npm run check:mcp",
     tier: "required",
-    covers: ["tool-surface", "run-lifecycle", "browser-job", "wait-surface", "transport-health", "native-fallback"],
+    covers: ["tool-surface", "tool-outcome-v3", "run-lifecycle", "browser-job", "wait-surface", "transport-health", "native-fallback"],
+  },
+  {
+    id: "browser-runtime",
+    command: "npm run check:browser-runtime",
+    tier: "required",
+    covers: ["runtime-composition", "tool-registry", "per-tab-scheduler"],
+  },
+  {
+    id: "browser-content-core",
+    command: "npm run check:browser-content-core",
+    tier: "required",
+    covers: ["actionable-snapshot-v2", "semantic-diff-v2", "managed-raw-execution", "adopted-navigation-suspension", "network-observation"],
+  },
+  {
+    id: "run-store",
+    command: "npm run check:run-store",
+    tier: "required",
+    covers: ["atomic-checkpoints", "tail-reads", "group-index", "active-job-index"],
   },
   {
     id: "browser-job-persistence",
@@ -72,6 +108,12 @@ const MATRIX = [
     covers: ["installed-extension-drift", "setup-reload-guidance", "generated-config-ignore"],
   },
   {
+    id: "extension-reload-live",
+    command: "npm run check:extension-reload-live",
+    tier: "required",
+    covers: ["connected-extension-self-reload", "reload-error-propagation"],
+  },
+  {
     id: "performance-smoke",
     command: "npm run check:performance-smoke",
     tier: "required",
@@ -112,6 +154,12 @@ const MATRIX = [
     command: "npm run check:js-reverse-live",
     tier: "live",
     covers: ["real-browser-js-reverse", "managed-tabs", "runtime-hooks"],
+  },
+  {
+    id: "tmwd-performance-live",
+    command: "npm run check:tmwd-performance-live",
+    tier: "live",
+    covers: ["tmwd-tabs-get-latency", "managed-execute-latency", "actionable-snapshot-latency", "selector-wait-latency"],
   },
   {
     id: "screenshot-live",

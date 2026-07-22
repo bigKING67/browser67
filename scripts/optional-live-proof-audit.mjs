@@ -21,6 +21,8 @@ const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     id: "captcha-assist-physical-local",
     type: "captcha_physical_live",
     title: `Local ${process.platform} CAPTCHA physical-input live proof`,
+    release_scope: "default",
+    default_required: true,
     matches: { platform: process.platform },
     required_fields: [
       "platform",
@@ -39,18 +41,13 @@ const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
   },
 ];
 
-const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
-  {
-    id: "native-live-linux",
-    type: "native_live",
-    title: "Linux native physical-input live proof",
-    matches: { platform: "linux" },
-    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "evidence"],
-  },
+const DEFAULT_EXTERNAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
   {
     id: "native-live-win32",
     type: "native_live",
     title: "Windows native physical-input live proof",
+    release_scope: "default",
+    default_required: true,
     matches: { platform: "win32" },
     required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "evidence"],
   },
@@ -58,6 +55,8 @@ const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     id: "idp-oauth-popup",
     type: "idp_live",
     title: "External OAuth popup handoff/resume live proof",
+    release_scope: "default",
+    default_required: true,
     matches: { provider_kind: "oauth_popup" },
     required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified", "evidence"],
   },
@@ -65,6 +64,8 @@ const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     id: "idp-cross-domain-sso",
     type: "idp_live",
     title: "External cross-domain SSO handoff/resume live proof",
+    release_scope: "default",
+    default_required: true,
     matches: { provider_kind: "cross_domain_sso" },
     required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified", "evidence"],
   },
@@ -72,18 +73,41 @@ const OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     id: "idp-mfa",
     type: "idp_live",
     title: "External MFA handoff/resume live proof",
+    release_scope: "default",
+    default_required: true,
     matches: { provider_kind: "mfa" },
     required_fields: ["provider_kind", "checked_at", "command", "manual_required_verified", "resume_verified", "evidence"],
   },
 ];
 
-const ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
+const ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
+  {
+    id: "native-live-linux",
+    type: "native_live",
+    title: "Linux desktop native physical-input live proof",
+    release_scope: "on_demand",
+    default_required: false,
+    matches: { platform: "linux" },
+    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "evidence"],
+  },
+];
+
+// Compatibility name: default external requirements used by readiness/release.
+const OPTIONAL_LIVE_PROOF_REQUIREMENTS = DEFAULT_EXTERNAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS;
+
+const DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
   ...LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
-  ...OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  ...DEFAULT_EXTERNAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+];
+
+const ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
+  ...DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  ...ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
 ];
 
 function parseArgs(argv) {
   const parsed = {
+    include_on_demand: false,
     json: false,
     strict: false,
     proof_dir: process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
@@ -92,6 +116,10 @@ function parseArgs(argv) {
     const token = argv[index] ?? "";
     if (token === "--json") {
       parsed.json = true;
+      continue;
+    }
+    if (token === "--include-on-demand") {
+      parsed.include_on_demand = true;
       continue;
     }
     if (token === "--strict") {
@@ -547,6 +575,8 @@ function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREME
       id: requirement.id,
       type: requirement.type,
       title: requirement.title,
+      release_scope: requirement.release_scope,
+      default_required: requirement.default_required,
       satisfied: Boolean(accepted),
       proof_path: accepted?.path,
       accepted: accepted
@@ -572,36 +602,60 @@ async function buildOptionalLiveProofAudit(args = {}) {
   const proofRows = rows.filter((row) => row.proof);
   const local_requirements = evaluateRequirements(proofRows, LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS);
   const requirements = evaluateRequirements(proofRows, OPTIONAL_LIVE_PROOF_REQUIREMENTS);
+  const on_demand_requirements = evaluateRequirements(proofRows, ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS);
   const missing = requirements
     .filter((requirement) => !requirement.satisfied)
     .map((requirement) => requirement.id);
   const local_missing = local_requirements
     .filter((requirement) => !requirement.satisfied)
     .map((requirement) => requirement.id);
+  const on_demand_missing = on_demand_requirements
+    .filter((requirement) => !requirement.satisfied)
+    .map((requirement) => requirement.id);
   const localSatisfiedCount = local_requirements.filter((requirement) => requirement.satisfied).length;
   const externalSatisfiedCount = requirements.filter((requirement) => requirement.satisfied).length;
-  const complete = missing.length === 0 && local_missing.length === 0 && invalid_files.length === 0;
+  const onDemandSatisfiedCount = on_demand_requirements.filter((requirement) => requirement.satisfied).length;
+  const includeOnDemand = args.include_on_demand === true;
+  const defaultComplete = missing.length === 0 && local_missing.length === 0 && invalid_files.length === 0;
+  const onDemandComplete = on_demand_missing.length === 0;
+  const complete = defaultComplete && (!includeOnDemand || onDemandComplete);
+  const requiredMissing = [
+    ...local_missing,
+    ...missing,
+    ...(includeOnDemand ? on_demand_missing : []),
+  ];
   return {
     ok: true,
     status: complete ? "complete" : "optional_gaps",
     check: "optional-live-proof-audit",
     proof_dir: proofDir,
     strict: args.strict === true,
+    include_on_demand: includeOnDemand,
     complete,
+    default_complete: defaultComplete,
+    on_demand_complete: onDemandComplete,
     proof_file_count: rows.length,
     invalid_files,
     local_requirements,
     requirements,
+    on_demand_requirements,
     local_missing,
     missing,
+    on_demand_missing,
+    required_missing: requiredMissing,
     summary: {
-      required_count: ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.length,
-      satisfied_count: localSatisfiedCount + externalSatisfiedCount,
+      required_count: DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS.length
+        + (includeOnDemand ? ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS.length : 0),
+      available_count: ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.length,
+      satisfied_count: localSatisfiedCount + externalSatisfiedCount
+        + (includeOnDemand ? onDemandSatisfiedCount : 0),
       local_satisfied_count: localSatisfiedCount,
       external_satisfied_count: externalSatisfiedCount,
+      on_demand_satisfied_count: onDemandSatisfiedCount,
       local_missing_count: local_missing.length,
       external_missing_count: missing.length,
-      missing_count: local_missing.length + missing.length,
+      on_demand_missing_count: on_demand_missing.length,
+      missing_count: requiredMissing.length,
       invalid_file_count: invalid_files.length,
     },
   };
@@ -616,6 +670,9 @@ function outputText(audit) {
   }
   if (audit.local_missing.length > 0) {
     process.stdout.write(`local_missing=${audit.local_missing.join(",")}\n`);
+  }
+  if (audit.include_on_demand && audit.on_demand_missing.length > 0) {
+    process.stdout.write(`on_demand_missing=${audit.on_demand_missing.join(",")}\n`);
   }
   if (audit.invalid_files.length > 0) {
     process.stdout.write(`invalid_files=${audit.invalid_files.map((item) => item.path).join(",")}\n`);
@@ -646,8 +703,11 @@ export {
   ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   buildOptionalLiveProofAudit,
   buildProofRedactionChecklist,
+  DEFAULT_EXTERNAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
+  DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   proofTargetsRequirement,
   validateProof,

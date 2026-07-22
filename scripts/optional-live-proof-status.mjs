@@ -77,6 +77,8 @@ function compactChecklistItem(item = {}) {
     id: item.id,
     title: item.title,
     type: item.type,
+    release_scope: item.release_scope,
+    default_required: item.default_required,
     scope: proofScope(item),
     owner: proofOwner(item),
     status: item.status,
@@ -97,6 +99,8 @@ function acceptedItem(item = {}) {
     id: item.id,
     title: item.title,
     type: item.type,
+    release_scope: item.release_scope,
+    default_required: item.default_required,
     proof_path: item.proof_path,
     checked_at: item.accepted?.checked_at,
     expires_at: item.accepted?.expires_at,
@@ -132,7 +136,12 @@ function classifyMissing(items) {
 
 async function buildOptionalLiveProofStatus(args = {}) {
   const proofDir = resolve(args.proof_dir || process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR);
-  const plan = await buildOptionalLiveProofPlan({ proof_dir: proofDir, id: args.id });
+  const plan = await buildOptionalLiveProofPlan({
+    proof_dir: proofDir,
+    id: args.id,
+    current_platform: args.current_platform,
+    native_pointer: args.native_pointer,
+  });
   const classified = classifyMissing(plan.items);
   const accepted = plan.items
     .filter((item) => item.satisfied === true)

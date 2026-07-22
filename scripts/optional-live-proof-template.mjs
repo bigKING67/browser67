@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
 } from "./optional-live-proof-audit.mjs";
 
@@ -62,8 +63,11 @@ function parseArgs(argv) {
 }
 
 function selectedRequirements(args) {
-  if (args.all || args.ids.length === 0) {
+  if (args.all) {
     return ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS;
+  }
+  if (args.ids.length === 0) {
+    return DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS;
   }
   const byId = new Map(ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.map((requirement) => [requirement.id, requirement]));
   return args.ids.map((id) => {

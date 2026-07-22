@@ -11,6 +11,7 @@ import { buildNativePointerReadinessReport } from "../src/native-capabilities/po
 import { detectNativeInputCapabilities } from "../src/native-input.mjs";
 import { loadJfbymProviderConfig } from "../src/auth/captcha/providers/config.mjs";
 import { getLjqCtrlPhysicalInputProviderCapabilities } from "../src/physical-input/providers/ljq-ctrl.mjs";
+import { resolveTier } from "./verification/manifest.mjs";
 
 const DEFAULT_FAIL_BELOW = 99.0;
 
@@ -390,7 +391,7 @@ function buildJfbymProviderGap(config = {}) {
   );
 }
 
-function buildRequiredChecks({ packageJson, readme, skill, verifySource, report }) {
+function buildRequiredChecks({ packageJson, readme, skill, report }) {
   const scriptNames = [
     "check:syntax",
     "check:project-structure",
@@ -444,6 +445,9 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
   ];
 
   const packageScriptsOk = scriptNames.every((name) => hasScript(packageJson, name));
+  const verifyEntries = resolveTier("verify");
+  const verifyScripts = new Set(verifyEntries.map((entry) => entry.script).filter(Boolean));
+  const localEntryIds = new Set(resolveTier("local").map((entry) => entry.id));
   const groupedIds = new Set(report.groups.map((group) => group.id));
   const groupedPlanOk = GROUPS.every((group) => groupedIds.has(group.id) || report.changed_paths_count === 0);
   const groupMetadataOk = GROUPS.every((group) => (
@@ -463,7 +467,7 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
     ),
     createCheck(
       "verify_includes_governance_gates",
-      textIncludesAll(verifySource, [
+      [
         "check:performance-smoke",
         "check:extension-install-doctor",
         "check:project-structure",
@@ -495,13 +499,13 @@ function buildRequiredChecks({ packageJson, readme, skill, verifySource, report 
         "check:skills-roots-audit",
         "plan:optional-live-proofs",
         "proof:optional-live-status",
-      ]),
-      "verify.mjs includes project-structure, change-set, readiness, latest upstream audit, upstream review schema, captcha assist, ljqctrl, optional live proof audit, planning, and status gates",
+      ].every((script) => verifyScripts.has(script)),
+      "verification manifest verify tier includes project-structure, change-set, readiness, latest upstream audit, upstream review schema, captcha assist, ljqctrl, optional live proof audit, planning, and status gates",
     ),
     createCheck(
       "local_verify_includes_active_skill_check",
-      String(packageJson.scripts?.["verify:local"] ?? "").includes("skills:active:check"),
-      "verify:local runs the strict active skill drift gate outside default verify",
+      localEntryIds.has("active-skill-strict"),
+      "verification manifest local tier runs the strict active skill drift gate outside default verify",
     ),
     createCheck(
       "change_set_grouped",
@@ -617,7 +621,7 @@ async function buildOptionalGaps({ report }) {
       "portability",
       0.004,
       `current_platform=${process.platform} missing_proofs=${missingNativeProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}`,
-      "Run npm run check:native-live on each Linux/Windows GUI host, then explicitly run proof:native-live to generate sanitized target-OS proof JSON before validating it on the release host.",
+      "Run npm run check:native-live on the Windows GUI host, then explicitly run proof:native-live to generate sanitized target-OS proof JSON. Linux desktop proof is supported on demand and is not part of the default self-use readiness set.",
       proofPlanDetails(optionalProofAudit, missingNativeProofs),
     ));
   }
@@ -683,12 +687,10 @@ async function buildAudit(args) {
     packageJson,
     readme,
     skill,
-    verifySource,
   ] = await Promise.all([
     readPackageJson(),
     readText("README.md"),
     readText("skills/tmwd-browser-mcp/SKILL.md"),
-    readText("scripts/verify.mjs"),
   ]);
   const report = buildChangeSetReport(undefined, {
     include_empty_groups: true,
@@ -698,7 +700,6 @@ async function buildAudit(args) {
     packageJson,
     readme,
     skill,
-    verifySource,
     report,
   });
   const optional_gaps = await buildOptionalGaps({ report });

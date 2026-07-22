@@ -5,6 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveTier } from "./verification/manifest.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = new Set(process.argv.slice(2));
 
@@ -79,6 +81,7 @@ const ALLOWED_SRC_ROOT_MODULES = new Set([
   "src/tmwd-runtime.mjs",
   "src/tool-schemas.mjs",
 ]);
+const SRC_ROOT_MODULE_BUDGET = 28;
 
 function runGit(gitArgs) {
   const result = spawnSync("git", gitArgs, {
@@ -137,7 +140,8 @@ function createCheck(id, ok, detail, next = null) {
 function buildAudit() {
   const tracked = trackedPaths();
   const packageJson = readJson("package.json");
-  const verifySource = readText("scripts/verify.mjs");
+  const checkEntryIds = new Set(resolveTier("check").map((entry) => entry.id));
+  const verifyEntryIds = new Set(resolveTier("verify").map((entry) => entry.id));
   const structureDoc = readText("docs/project-structure.md");
   const gitignore = readText(".gitignore");
   const legacyBrowserServer = readText("src/server.mjs");
@@ -194,6 +198,12 @@ function buildAudit() {
       "Place new source modules under a domain directory or intentionally update docs and this allowlist with a migration rationale.",
     ),
     createCheck(
+      "src_root_module_budget_non_increasing",
+      ALLOWED_SRC_ROOT_MODULES.size <= SRC_ROOT_MODULE_BUDGET,
+      `allowed=${ALLOWED_SRC_ROOT_MODULES.size} budget=${SRC_ROOT_MODULE_BUDGET}`,
+      "Do not increase the root module budget; move implementation under capability directories and reduce the budget as shims migrate.",
+    ),
+    createCheck(
       "legacy_entrypoints_are_canonical_shims",
       legacyBrowserServer.includes('import "./mcp/browser/server.mjs";')
         && legacyJsReverseServer.includes('import "./mcp/js-reverse/server.mjs";'),
@@ -226,14 +236,14 @@ function buildAudit() {
     createCheck(
       "package_scripts_include_structure_gate",
       packageJson.scripts?.["check:project-structure"] === "node scripts/project-structure-audit.mjs"
-        && String(packageJson.scripts?.check ?? "").includes("check:project-structure"),
-      "package.json registers check:project-structure and includes it in npm run check",
+        && checkEntryIds.has("project-structure"),
+      "package.json registers check:project-structure and the verification manifest check tier includes it",
       "Register this audit in package scripts and the aggregate check gate.",
     ),
     createCheck(
       "verify_includes_structure_gate",
-      verifySource.includes("check:project-structure"),
-      "scripts/verify.mjs includes check:project-structure",
+      verifyEntryIds.has("project-structure"),
+      "verification manifest verify tier includes check:project-structure",
       "Keep structure governance in the broad verification path.",
     ),
   ];

@@ -8,6 +8,8 @@ import {
   DEFAULT_RUN_ROOT,
   runRoot as configuredRunRoot,
 } from "../src/run-lifecycle.mjs";
+import { createRunStore } from "../src/runtime/runs/store.mjs";
+import { createJobStore } from "../src/runtime/jobs/store.mjs";
 
 const DEFAULT_MAX_AGE_DAYS = 30;
 const DEFAULT_MAX_TOTAL_MB = 1024;
@@ -510,17 +512,21 @@ async function applyRuntimeArtifactCleanup(root, plan, args = {}) {
       deleted_count: 0,
       deleted_bytes: 0,
       errors: [],
+      compacted_groups: [],
+      job_index_rebuilt: false,
     };
   }
   let deletedCount = 0;
   let deletedBytes = 0;
   const errors = [];
+  const affectedGroups = new Set();
   for (const decision of plan.planned) {
     const safeRunDir = assertSafeRunDir(root, decision.run.path);
     try {
       await fs.rm(safeRunDir, { recursive: true, force: false });
       deletedCount += 1;
       deletedBytes += decision.run.bytes;
+      affectedGroups.add(decision.run.group);
     } catch (error) {
       if (error?.code === "ENOENT") {
         continue;
@@ -531,10 +537,37 @@ async function applyRuntimeArtifactCleanup(root, plan, args = {}) {
       });
     }
   }
+  const compactedGroups = [];
+  const runStore = createRunStore({ root });
+  for (const group of affectedGroups) {
+    try {
+      await runStore.compactGroupIndex(group);
+      compactedGroups.push(group);
+    } catch (error) {
+      errors.push({
+        path: path.join(root, group, "index.ndjson"),
+        error: `index compaction failed: ${String(error?.message ?? error)}`,
+      });
+    }
+  }
+  let jobIndexRebuilt = false;
+  if (affectedGroups.size > 0) {
+    try {
+      await createJobStore({ run_root: root }).rebuild();
+      jobIndexRebuilt = true;
+    } catch (error) {
+      errors.push({
+        path: root,
+        error: `job index rebuild failed: ${String(error?.message ?? error)}`,
+      });
+    }
+  }
   return {
     deleted_count: deletedCount,
     deleted_bytes: deletedBytes,
     errors,
+    compacted_groups: compactedGroups,
+    job_index_rebuilt: jobIndexRebuilt,
   };
 }
 
@@ -585,6 +618,8 @@ function buildPayload(root, scan, plan, result, args = {}) {
     count_satisfied_after_plan: plan.count_satisfied_after_plan,
     deleted_count: result.deleted_count,
     deleted_bytes: result.deleted_bytes,
+    compacted_groups: result.compacted_groups,
+    job_index_rebuilt: result.job_index_rebuilt,
     planned: planned.items,
     planned_returned_count: planned.returned_count,
     planned_truncated: planned.truncated,

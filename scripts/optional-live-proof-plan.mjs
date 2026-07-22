@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import {
   ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   buildOptionalLiveProofAudit,
+  DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
 } from "./optional-live-proof-audit.mjs";
 import { detectNativeInputCapabilities } from "../src/native-input.mjs";
@@ -59,7 +60,7 @@ function parseArgs(argv) {
 
 function selectedRequirements(id) {
   if (!id) {
-    return ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS;
+    return DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS;
   }
   const selected = ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.filter((requirement) => requirement.id === id);
   if (selected.length === 0) {
@@ -90,6 +91,7 @@ function requirementResultsById(audit) {
   return new Map([
     ...audit.local_requirements,
     ...audit.requirements,
+    ...audit.on_demand_requirements,
   ].map((requirement) => [requirement.id, requirement]));
 }
 
@@ -105,8 +107,11 @@ function proofRecordReplaceCommand(id) {
   return `${proofRecordCommand(id)} --write --replace`;
 }
 
-function validateProofCommand(proofDir) {
-  return `TMWD_OPTIONAL_PROOF_DIR=${proofDir} npm run check:optional-live-proofs`;
+function validateProofCommand(proofDir, requirement) {
+  const includeOnDemand = requirement?.release_scope === "on_demand"
+    ? " -- --include-on-demand"
+    : "";
+  return `TMWD_OPTIONAL_PROOF_DIR=${proofDir} npm run check:optional-live-proofs${includeOnDemand}`;
 }
 
 function baseCommands(requirement, proofDir) {
@@ -115,7 +120,7 @@ function baseCommands(requirement, proofDir) {
     record_write: `${proofRecordCommand(requirement.id)} --write`,
     record_replace: proofRecordReplaceCommand(requirement.id),
     template: proofTemplateCommand(requirement.id),
-    validate: validateProofCommand(proofDir),
+    validate: validateProofCommand(proofDir, requirement),
   };
 }
 
@@ -124,6 +129,8 @@ function baseItem({ requirement, result, proofDir }) {
     id: requirement.id,
     type: requirement.type,
     title: requirement.title,
+    release_scope: requirement.release_scope,
+    default_required: requirement.default_required,
     satisfied: result?.satisfied === true,
     proof_path: result?.proof_path,
     accepted: result?.accepted,
@@ -133,7 +140,7 @@ function baseItem({ requirement, result, proofDir }) {
   };
 }
 
-function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer }) {
+function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer, currentPlatform }) {
   const satisfied = result?.satisfied === true;
   let status = "ready_for_explicit_opt_in";
   if (satisfied) {
@@ -142,13 +149,13 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
     status = "blocked_by_native_pointer";
   }
   const nextCommand = satisfied
-    ? validateProofCommand(proofDir)
+    ? validateProofCommand(proofDir, requirement)
     : nativePointer?.ok === true ? PHYSICAL_GATE_COMMAND : NATIVE_POINTER_COMMAND;
   return {
     ...baseItem({ requirement, result, proofDir }),
     status,
     collection_mode: "local_gui_physical_gate",
-    current_platform: process.platform,
+    current_platform: currentPlatform,
     required_current_platform: requirement.matches.platform,
     next_command: nextCommand,
     commands: {
@@ -191,13 +198,13 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer })
   };
 }
 
-function buildNativeHostItem({ requirement, result, proofDir, nativePointer }) {
+function buildNativeHostItem({ requirement, result, proofDir, nativePointer, currentPlatform }) {
   const targetPlatform = requirement.matches.platform;
-  const currentHostMatches = process.platform === targetPlatform;
+  const currentHostMatches = currentPlatform === targetPlatform;
   const satisfied = result?.satisfied === true;
   const liveGateCommand = nativeLiveCommand(targetPlatform);
   const nextCommand = satisfied
-    ? validateProofCommand(proofDir)
+    ? validateProofCommand(proofDir, requirement)
     : currentHostMatches
       ? (nativePointer?.ok === true ? liveGateCommand : NATIVE_POINTER_COMMAND)
       : `Run this plan on a ${targetPlatform} GUI host`;
@@ -209,7 +216,7 @@ function buildNativeHostItem({ requirement, result, proofDir, nativePointer }) {
         ? (nativePointer?.ok === true ? "run_on_this_host_with_explicit_opt_in" : "blocked_by_native_pointer")
         : "requires_target_platform_host",
     collection_mode: "cross_os_native_physical_gate",
-    current_platform: process.platform,
+    current_platform: currentPlatform,
     target_platform: targetPlatform,
     next_command: nextCommand,
     commands: {
@@ -265,7 +272,7 @@ function buildIdpItem({ requirement, result, proofDir }) {
     collection_mode: "approved_external_idp_handoff_resume",
     provider_kind: providerKind,
     next_command: satisfied
-      ? validateProofCommand(proofDir)
+      ? validateProofCommand(proofDir, requirement)
       : `Run approved external ${providerKind} handoff/resume gate`,
     commands: {
       ...baseCommands(requirement, proofDir),
@@ -300,12 +307,12 @@ function buildIdpItem({ requirement, result, proofDir }) {
   };
 }
 
-function buildPlanItem({ requirement, result, proofDir, nativePointer }) {
+function buildPlanItem({ requirement, result, proofDir, nativePointer, currentPlatform }) {
   if (requirement.type === "captcha_physical_live") {
-    return buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer });
+    return buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer, currentPlatform });
   }
   if (requirement.type === "native_live") {
-    return buildNativeHostItem({ requirement, result, proofDir, nativePointer });
+    return buildNativeHostItem({ requirement, result, proofDir, nativePointer, currentPlatform });
   }
   return buildIdpItem({ requirement, result, proofDir });
 }
@@ -313,20 +320,24 @@ function buildPlanItem({ requirement, result, proofDir, nativePointer }) {
 async function buildOptionalLiveProofPlan(args = {}) {
   const proofDir = resolve(args.proof_dir || process.env.TMWD_OPTIONAL_PROOF_DIR || DEFAULT_OPTIONAL_LIVE_PROOF_DIR);
   const selected = selectedRequirements(String(args.id ?? "").trim());
-  const [audit, nativeCapabilities] = await Promise.all([
-    buildOptionalLiveProofAudit({ proof_dir: proofDir }),
-    detectNativeInputCapabilities({ refresh: true, cache_ttl_ms: 0 }),
-  ]);
-  const nativePointer = buildNativePointerReadinessReport(nativeCapabilities, {
-    verify_command: NATIVE_POINTER_COMMAND,
-    physical_gate_command: PHYSICAL_GATE_COMMAND,
-  });
+  const currentPlatform = String(args.current_platform || process.platform);
+  const auditPromise = buildOptionalLiveProofAudit({ proof_dir: proofDir });
+  const nativePointerPromise = args.native_pointer
+    ? Promise.resolve(args.native_pointer)
+    : detectNativeInputCapabilities({ refresh: true, cache_ttl_ms: 0 }).then((nativeCapabilities) => (
+      buildNativePointerReadinessReport(nativeCapabilities, {
+        verify_command: NATIVE_POINTER_COMMAND,
+        physical_gate_command: PHYSICAL_GATE_COMMAND,
+      })
+    ));
+  const [audit, nativePointer] = await Promise.all([auditPromise, nativePointerPromise]);
   const resultById = requirementResultsById(audit);
   const items = selected.map((requirement) => buildPlanItem({
     requirement,
     result: resultById.get(requirement.id),
     proofDir,
     nativePointer,
+    currentPlatform,
   }));
   const summary = summarizeItems(items, audit.summary);
   return {
@@ -335,6 +346,7 @@ async function buildOptionalLiveProofPlan(args = {}) {
     proof_dir: proofDir,
     filter: {
       id: args.id || undefined,
+      release_scope: args.id ? selected[0]?.release_scope : "default",
     },
     complete: summary.missing_count === 0 && summary.invalid_file_count === 0,
     summary,
