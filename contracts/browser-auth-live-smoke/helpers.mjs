@@ -12,7 +12,6 @@ export function parseArgs(argv) {
     tmwd_transport: "auto",
     tmwd_ws_endpoint: "ws://127.0.0.1:18765",
     tmwd_link_endpoint: "http://127.0.0.1:18766/link",
-    cdp_endpoint: "http://127.0.0.1:9222",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
@@ -45,11 +44,6 @@ export function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (token === "--cdp-endpoint") {
-      parsed.cdp_endpoint = String(argv[index + 1] ?? "").trim();
-      index += 1;
-      continue;
-    }
     if (!token) {
       continue;
     }
@@ -64,7 +58,6 @@ export function commonArgs(cli) {
     tmwd_transport: cli.tmwd_transport,
     tmwd_ws_endpoint: cli.tmwd_ws_endpoint,
     tmwd_link_endpoint: cli.tmwd_link_endpoint,
-    cdp_endpoint: cli.cdp_endpoint,
     timeout_ms: cli.timeout_ms,
   };
 }
@@ -74,7 +67,8 @@ export function createToolCaller({ rpc, cli }) {
     const response = await rpc.call("tools/call", { name, arguments: args }, cli.timeout_ms);
     if (response?.result?.isError === true) {
       const payload = firstJsonContent(response.result);
-      throw new Error(`${name} failed: ${String(payload?.error ?? payload?.message ?? "tool error")}`);
+      const details = payload?.details ? ` details=${JSON.stringify(payload.details)}` : "";
+      throw new Error(`${name} failed: ${String(payload?.error ?? payload?.message ?? "tool error")}${details}`);
     }
     return firstJsonContent(response.result);
   };

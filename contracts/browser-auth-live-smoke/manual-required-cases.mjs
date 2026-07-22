@@ -11,7 +11,7 @@ async function runManualRequiredCases(context) {
   const sso = await runSsoCase(context);
   const oauth = await runOauthPopupCase(context);
   const detection = await runAuthDetectionCoverage(context);
-  const delayedPopup = await runDelayedPopupCase(context);
+  const delayedPopup = await runDelayedPopupCase(context, detection.tabIds[0]);
   return {
     additionalTabIds: [...detection.tabIds, delayedPopup.parentTabId],
     authenticatedNoise: detection.authenticatedNoise,
@@ -128,9 +128,11 @@ async function runAuthDetectionCoverage(context) {
   };
 }
 
-async function runDelayedPopupCase(context) {
+async function runDelayedPopupCase(context, creatorTabId) {
   const { callTool, cli, fixture, workspaceKey } = context;
   const parentTabId = await createManagedTab(context, "/delayed-popup-parent");
+  assert.ok(creatorTabId, "delayed popup fixture requires a separate managed creator tab");
+  assert.notEqual(creatorTabId, parentTabId, "delayed popup creator must not share the monitored tab queue");
   await callTool("browser_auth_ops", {
     ...commonArgs(cli),
     action: "inspect_login_page",
@@ -141,7 +143,7 @@ async function runDelayedPopupCase(context) {
     await new Promise((resolve) => setTimeout(resolve, 300));
     return callTool("browser_execute_js", {
       ...commonArgs(cli),
-      tab_id: parentTabId,
+      tab_id: creatorTabId,
       no_monitor: true,
       script: JSON.stringify({
         cmd: "tabs",

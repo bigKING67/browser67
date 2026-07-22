@@ -92,11 +92,17 @@ async function runProfileLoginCase(context) {
   assert.equal(upserted.status, "success", "upsert_profile should save the fixture profile");
   assert.equal(upserted.created, true);
   assert.equal(upserted.updated, false);
-  assert.equal(upserted.profile?.file_mode, "600");
+  if (process.platform !== "win32") {
+    assert.equal(upserted.profile?.file_mode, "600");
+  }
   assert.equal(upserted.profile?.insecure_file_permissions, false);
   assertNoSecretLeak(upserted, "upsert_profile result");
   const fixtureProfileStat = await stat(path.join(profileDir, "fixture-live.env"));
-  assert.equal((fixtureProfileStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
+  if (process.platform !== "win32") {
+    assert.equal((fixtureProfileStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
+  } else {
+    assert.equal(fixtureProfileStat.isFile(), true);
+  }
 
   const auth = await callTool("browser_auth_ops", {
     ...commonArgs(cli),
