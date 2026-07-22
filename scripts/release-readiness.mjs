@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 
 import { buildChangeSetReport } from "./change-set-lib.mjs";
 import { buildOptionalLiveProofAudit } from "./optional-live-proof-audit.mjs";
+import { resolveTier } from "./verification/manifest.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 
@@ -179,12 +180,15 @@ async function buildReadiness(args) {
   const releaseDoc = existsSync(resolve(repoRoot, "docs/release-governance.md"))
     ? readText("docs/release-governance.md")
     : "";
-  const verifySource = readText("scripts/verify.mjs");
+  const verifyEntryIds = new Set(resolveTier("verify").map((entry) => entry.id));
+  const releaseCommands = resolveTier("release").map((entry) => entry.command.join(" "));
+  const strictReleaseCommands = resolveTier("release-strict").map((entry) => entry.command.join(" "));
   const status = gitStatus();
   const aheadBehind = gitAheadBehind();
   const versionAnchor = gitVersionAnchor(pkg.version);
   const changeSet = buildChangeSetReport();
   const optionalProofAudit = await buildOptionalLiveProofAudit({});
+  const versionBumpPending = status.changed_paths.some((line) => /package(?:-lock)?\.json$/.test(line));
 
   const checks = [
     check("package_name", pkg.name === "browser67", `name=${pkg.name}`),
@@ -198,14 +202,14 @@ async function buildReadiness(args) {
     check(
       "release_scripts_registered",
       pkg.scripts?.["check:release-readiness"] === "node scripts/release-readiness.mjs"
-        && pkg.scripts?.["release:ready"]?.includes("--require-current-upstreams")
-        && pkg.scripts?.["release:ready:strict"]?.includes("--require-current-upstreams"),
+        && releaseCommands.some((command) => command.includes("--require-current-upstreams"))
+        && strictReleaseCommands.some((command) => command.includes("--require-current-upstreams")),
       "check:release-readiness plus current-upstream strict release scripts",
     ),
     check(
       "verify_includes_release_readiness",
-      verifySource.includes("check:release-readiness"),
-      "scripts/verify.mjs includes check:release-readiness",
+      verifyEntryIds.has("release-readiness-contract"),
+      "verification manifest verify tier includes check:release-readiness",
     ),
     check(
       "changelog_current_version",
@@ -215,11 +219,12 @@ async function buildReadiness(args) {
     ),
     check(
       "changelog_unreleased_covers_post_version_changes",
-      versionAnchor.ok
-        && (versionAnchor.commits_after === 0 || hasChangelogBullet(changelogSection(changelog, "Unreleased"))),
+      (versionAnchor.ok
+        && (versionAnchor.commits_after === 0 || hasChangelogBullet(changelogSection(changelog, "Unreleased"))))
+        || (versionBumpPending && changelog.includes(`## ${pkg.version} - `)),
       versionAnchor.ok
         ? `version_anchor=${versionAnchor.commit.slice(0, 12)} commits_after=${versionAnchor.commits_after} unreleased_has_entries=${hasChangelogBullet(changelogSection(changelog, "Unreleased"))}`
-        : versionAnchor.error,
+        : `pending_version_bump=${versionBumpPending} ${versionAnchor.error}`,
       "Add a non-empty CHANGELOG.md Unreleased section for material commits made after the current version was introduced.",
     ),
     check(
@@ -301,7 +306,7 @@ async function buildReadiness(args) {
       "optional_live_proofs_complete",
       optionalProofAudit.complete,
       `satisfied=${optionalProofAudit.summary.satisfied_count}/${optionalProofAudit.summary.required_count} missing=${optionalProofAudit.summary.missing_count}`,
-      "Collect sanitized Linux/Windows native and approved external IdP proofs, then rerun release:ready:strict.",
+      "Collect the default sanitized Windows native and approved external IdP proofs, then rerun release:ready:strict. Linux desktop proof remains available on demand.",
     ));
   }
 
@@ -329,7 +334,7 @@ async function buildReadiness(args) {
     advisories.push(advisory(
       "optional_live_proofs_incomplete_non_strict",
       `satisfied=${optionalProofAudit.summary.satisfied_count}/${optionalProofAudit.summary.required_count} missing=${optionalProofAudit.summary.missing_count} scope=${optionalProofScope}`,
-      "Optional live proofs require cross-OS hosts or approved external IdP tenants; use npm run release:ready:strict only when they are release acceptance criteria.",
+      "Default optional live proofs require a Windows GUI host or approved external IdP tenants; Linux desktop proof is on demand and does not affect default release readiness.",
       {
         proof_dir: optionalProofAudit.proof_dir,
         missing: optionalProofAudit.missing,

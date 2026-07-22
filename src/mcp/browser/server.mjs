@@ -3,6 +3,8 @@
 import { createInterface } from "node:readline";
 
 import { createRequestHandler, sendError } from "../../server/protocol.mjs";
+import { disposeRegisteredBrowserRuntime } from "./tool-registry.mjs";
+import { disposeAdoptionRuntime } from "../../tab-workspace/adoption.mjs";
 
 const handleRequest = createRequestHandler();
 
@@ -21,4 +23,13 @@ rl.on("line", (line) => {
   } catch (error) {
     sendError(null, -32700, `parse error: ${String(error)}`);
   }
+});
+
+rl.on("close", () => {
+  Promise.allSettled([
+    disposeRegisteredBrowserRuntime(),
+    disposeAdoptionRuntime(),
+  ]).catch((error) => {
+    process.stderr.write(`browser runtime dispose failed: ${String(error)}\n`);
+  });
 });

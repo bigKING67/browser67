@@ -88,8 +88,18 @@ Live gates when browser/runtime behavior changes:
 ```bash
 npm run check:live:doctor
 npm run check:managed-tab-live
+npm run check:tmwd-performance-live
 npm run check:js-reverse-live
 ```
+
+The TMWD performance live gate complements the deterministic performance
+smoke with cold and warm p50/p95/p99 measurements for extension transport,
+managed execution, actionable extraction, and selector waits against an
+isolated local fixture. It also verifies that scoped finalization leaves no
+managed registry records. Default p95 guardrails are 100 ms for transport,
+execution, and selector waits plus 150 ms for a 120-node actionable snapshot;
+the complete fixture must finish within 5 seconds. Environment overrides remain
+available for slower target hosts.
 
 Extension/upstream gates when bridge files change:
 

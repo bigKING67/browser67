@@ -45,7 +45,7 @@ Normal `npm run check:release-readiness` stays network-light. Release
 declaration is the boundary that turns moved upstreams into blockers.
 
 Use the strict optional-proof gate only when a local release policy explicitly
-requires every optional live proof:
+requires every proof in the default self-use acceptance set:
 
 ```bash
 npm run release:ready:strict
@@ -55,6 +55,15 @@ This adds the same hard requirement as:
 
 ```bash
 npm run check:optional-live-proofs -- --strict
+```
+
+The default set includes the local CAPTCHA physical proof, Windows native GUI
+proof, and approved external OAuth/SSO/MFA proofs. Linux desktop native proof is
+on demand and does not affect `release:ready:strict`. If browser67 is actually
+being accepted for a Linux desktop deployment, additionally run:
+
+```bash
+npm run check:optional-live-proofs -- --include-on-demand --strict
 ```
 
 In non-strict release readiness, missing optional live proofs are reported as
@@ -86,17 +95,21 @@ not access a user's browser profile.
 Optional live proofs are not faked or downgraded into required local checks;
 the phrase `optional live proofs` is used consistently in release gates so
 agents can match the policy text without interpreting prose.
-They require the real target environment:
+The default set requires the real target environment:
 
-- Linux GUI host for `native-live-linux`.
 - Windows GUI host for `native-live-win32`.
 - Approved external IdP tenants for OAuth popup, cross-domain SSO, and MFA.
 
-The Linux/Windows hosts may be physical machines or desktop VMs, but they must
-have an unlocked interactive GUI session, a visible Chrome/Edge window, the
-browser67 extension and hub, and real system pointer input. Headless CI, SSH-only
-Linux, containers without a desktop, and locked/disconnected Windows sessions do
-not satisfy these proofs.
+`native-live-linux` is retained as an on-demand Linux desktop proof. Headless
+Linux servers, SSH-only VPS nodes, and containers without a desktop do not need
+it and do not create a default readiness or release gap. If a Linux desktop is
+actually in scope, collect it explicitly with
+`--id native-live-linux` / `--include-on-demand`.
+
+Windows and any explicitly scoped Linux desktop host may be a physical machine
+or desktop VM, but it must have an unlocked interactive GUI session, a visible
+Chrome/Edge window, the browser67 extension and hub, and real system pointer
+input. Locked/disconnected GUI sessions do not satisfy these proofs.
 
 Use:
 
@@ -106,10 +119,11 @@ npm run proof:optional-live-status
 npm run check:native-live
 ```
 
-On each matching Linux/Windows GUI host, run the no-input readiness command
-first, then explicitly opt into `npm run proof:native-live -- --write`. The gate
-records canonical sanitized `native-live-*.json` proof automatically. See
-`docs/native-live-linux.md` and `docs/native-live-windows.md`.
+On the Windows GUI host, or on an explicitly scoped Linux desktop host, run the
+no-input readiness command first, then explicitly opt into
+`npm run proof:native-live -- --write`. The gate records canonical sanitized
+`native-live-*.json` proof automatically. See `docs/native-live-linux.md` and
+`docs/native-live-windows.md`.
 
 Collected proofs must be sanitized JSON and stored under the active browser67
 home, not the repository:
@@ -150,12 +164,15 @@ other external release action requires an explicit operator decision after:
 npm run release:ready
 ```
 
-If strict cross-OS or external IdP proof is part of that release's acceptance
-criteria, run:
+If default Windows native or external IdP proof is part of that release's
+acceptance criteria, run:
 
 ```bash
 npm run release:ready:strict
 ```
+
+For a Linux desktop acceptance target, also run the explicit on-demand audit
+shown above. A Linux server/headless release does not require it.
 
 ## Version bump policy
 

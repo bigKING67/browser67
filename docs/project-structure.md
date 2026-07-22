@@ -34,6 +34,14 @@ The current implementation still preserves several compatibility entrypoints:
 - `src/native-*`, `src/native-*/*`, `src/physical-input/`: native fallback and
   physical-input provider planning.
 - `src/runtime/paths/home.mjs`: canonical browser67 runtime-home resolution.
+- `src/runtime/config/`, `src/runtime/storage/`, `src/runtime/runs/`, and
+  `src/runtime/jobs/`: bounded configuration, atomic storage, indexed run
+  records, and job recovery indexes.
+- `src/browser/content/`, `src/browser/execution/`, and `src/browser/network/`:
+  actionable snapshots/diffs, managed execution policy, and network lifecycle
+  observation.
+- `extension/browser67/`: browser67-owned managed-tab overlay; upstream root
+  extension files remain provenance-tracked inputs to the generated install.
 
 ## Target structure direction
 
@@ -68,6 +76,10 @@ contracts have migrated.
   home or an explicit test override.
 - Large browser outputs must be bounded or written as artifacts with
   path/hash/count metadata.
+- The root `src/*.mjs` compatibility allowlist has a non-increasing budget. New
+  implementation modules must go under a capability directory; future
+  migrations should remove root entries and reduce the budget rather than
+  replacing them with new catch-all modules.
 
 ## Executable structure gate
 
@@ -83,4 +95,4 @@ top-level directories, canonical MCP entrypoints, runtime-home source location,
 legacy shim boundaries, `.gitignore` runtime/evidence exclusions, and a guarded
 allowlist for root-level `src/*.mjs` compatibility modules. If a future refactor
 adds a new root source module, either move it under a domain directory or update
-this document and the audit allowlist with an explicit migration rationale.
+the migration plan. The allowlist budget may decrease but must not increase.

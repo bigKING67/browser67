@@ -82,6 +82,14 @@ async function main() {
     assert.equal(first.ok, true);
     assert.equal(first.product, "browser67");
     assert.equal(first.mcp_registry_changed, true);
+    assert.equal(first.extension_build?.schema, "browser67.extension-build.v1");
+    const installedManifest = JSON.parse(await readFile(path.join(targetDir, "manifest.json"), "utf8"));
+    assert.equal(installedManifest.name, "browser67 TMWD Bridge");
+    assert.deepEqual(installedManifest.content_scripts, []);
+    assert.equal(installedManifest.permissions.includes("webRequest"), true);
+    assert.match(await readFile(path.join(targetDir, "background.js"), "utf8"), /browser67HandleCommand/);
+    assert.match(await readFile(path.join(targetDir, "browser67", "runtime.js"), "utf8"), /tabIds: \[tabId\]/);
+    assert.match(await readFile(path.join(targetDir, "config.js"), "utf8"), /globalThis\.__browser67TID/);
 
     const normalized = await readFile(registryPath, "utf8");
     assert.match(normalized, /name = "tmwd_browser"/);
@@ -91,9 +99,15 @@ async function main() {
     assertMissingTomlString(normalized, legacyBrowserServerPath);
     assertMissingTomlString(normalized, legacyJsReverseServerPath);
 
+    await writeFile(path.join(targetDir, "config.js"), "const TID = '__legacy_tid_kept';\n", "utf8");
     const second = await runSetup({ targetDir, registryPath });
     assert.equal(second.ok, true);
     assert.equal(second.mcp_registry_changed, false);
+    assert.equal(second.config_migrated, true);
+    assert.equal(
+      await readFile(path.join(targetDir, "config.js"), "utf8"),
+      'globalThis.__browser67TID = "__legacy_tid_kept";\n',
+    );
     assert.equal(await readFile(registryPath, "utf8"), normalized);
 
     process.stdout.write(JSON.stringify({
@@ -101,6 +115,8 @@ async function main() {
       check: "setup-extension-contract",
       normalized_legacy_registry: true,
       idempotent: true,
+      managed_overlay_built: true,
+      legacy_config_migrated: true,
     }) + "\n");
   } finally {
     await rm(tmpDir, { recursive: true, force: true });

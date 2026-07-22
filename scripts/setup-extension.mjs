@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { randomBytes } from "node:crypto";
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveBrowser67Home } from "../src/runtime/paths/home.mjs";
+import { buildExtension } from "./build-extension.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -161,15 +162,19 @@ function run() {
     throw new Error(`missing extension source: ${sourceDir}`);
   }
   mkdirSync(args.targetDir, { recursive: true });
-  cpSync(sourceDir, args.targetDir, {
-    recursive: true,
-    force: true,
-    errorOnExist: false,
-  });
+  const extensionBuild = buildExtension({ source_dir: sourceDir, target_dir: args.targetDir });
   const configPath = resolve(args.targetDir, "config.js");
   const configExists = existsSync(configPath);
+  let configMigrated = false;
   if (!configExists || args.forceConfig) {
-    writeFileSync(configPath, `const TID = '${makeTid()}';\n`, "utf8");
+    writeFileSync(configPath, `globalThis.__browser67TID = '${makeTid()}';\n`, "utf8");
+  } else {
+    const currentConfig = readFileSync(configPath, "utf8");
+    const legacyTid = currentConfig.match(/\b(?:const|let|var)\s+TID\s*=\s*['"]([^'"]+)['"]/);
+    if (legacyTid && !currentConfig.includes("__browser67TID")) {
+      writeFileSync(configPath, `globalThis.__browser67TID = ${JSON.stringify(legacyTid[1])};\n`, "utf8");
+      configMigrated = true;
+    }
   }
   const registry = args.skipRegistry
     ? { path: args.registryPath, changed: false, skipped: true }
@@ -182,8 +187,10 @@ function run() {
     canonical_home: homeResolution.canonical_default,
     legacy_home: homeResolution.legacy_default,
     extension_dir: args.targetDir,
+    extension_build: extensionBuild,
     config_path: configPath,
     config_created: !configExists || args.forceConfig,
+    config_migrated: configMigrated,
     mcp_registry_path: registry.path,
     mcp_registry_changed: registry.changed,
     mcp_registry_skipped: registry.skipped === true,
@@ -191,8 +198,9 @@ function run() {
       "Open chrome://extensions or edge://extensions",
       "Enable Developer mode",
       `Load unpacked extension from: ${args.targetDir}`,
-      "Reload TMWD CDP Bridge after every extension source update",
       "Run: npm run hub:start",
+      "For an already loaded extension, run: npm run extension:reload-live",
+      "Otherwise reload browser67 TMWD Bridge from the browser extension page",
       "Run: npm run doctor",
     ],
   };

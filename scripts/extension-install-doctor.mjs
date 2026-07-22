@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { resolveBrowser67Home } from "../src/runtime/paths/home.mjs";
+import { buildExtension } from "./build-extension.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const defaultSourceDir = path.resolve(repoRoot, "extension");
@@ -158,7 +167,8 @@ function buildReport(options) {
     ok: installedCurrent,
     check: "extension-install-doctor",
     mode: options.check ? "check" : "doctor",
-    source_dir: options.sourceDir,
+    source_dir: options.sourceDisplayDir ?? options.sourceDir,
+    source_kind: options.sourceKind ?? "raw",
     target_dir: options.targetDir,
     active_home: homeResolution.path,
     active_home_source: homeResolution.source,
@@ -183,10 +193,10 @@ function buildReport(options) {
     },
     next_steps: installedCurrent ? [
       "No installed extension file drift was detected.",
-      "If Chrome/Edge still behaves like old bridge code, reload the unpacked extension and refresh target tabs.",
+      "If Chrome/Edge still behaves like old bridge code, run npm run extension:reload-live and refresh target tabs.",
     ] : [
       "Run: npm run setup",
-      "Reload the unpacked TMWD CDP Bridge extension from the reported target_dir.",
+      "Run npm run extension:reload-live when the previous browser67 extension is still connected; otherwise reload it from the browser extension page.",
       "Refresh old target tabs so content scripts reinject.",
       needsCleanSetup
         ? "Inspect extra target files; setup copies current files but does not prune unknown files."
@@ -220,9 +230,31 @@ function main() {
     process.stdout.write(`${usage()}\n`);
     return 0;
   }
-  const report = buildReport(options);
-  process.stdout.write(options.json ? `${JSON.stringify(report)}\n` : formatText(report));
-  return options.check && !report.installed_current ? 1 : 0;
+  let generatedRoot = "";
+  try {
+    const overlaySource = existsSync(path.resolve(options.sourceDir, "browser67/runtime.js"))
+      && existsSync(path.resolve(options.sourceDir, "browser67/managed-content.js"));
+    const reportOptions = overlaySource
+      ? (() => {
+        generatedRoot = mkdtempSync(path.resolve(tmpdir(), "browser67-extension-doctor-"));
+        const generatedSourceDir = path.resolve(generatedRoot, "extension");
+        buildExtension({ source_dir: options.sourceDir, target_dir: generatedSourceDir });
+        return {
+          ...options,
+          sourceDir: generatedSourceDir,
+          sourceDisplayDir: options.sourceDir,
+          sourceKind: "generated_overlay",
+        };
+      })()
+      : options;
+    const report = buildReport(reportOptions);
+    process.stdout.write(options.json ? `${JSON.stringify(report)}\n` : formatText(report));
+    return options.check && !report.installed_current ? 1 : 0;
+  } finally {
+    if (generatedRoot) {
+      rmSync(generatedRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
+    }
+  }
 }
 
 try {

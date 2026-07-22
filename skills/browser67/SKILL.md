@@ -29,17 +29,32 @@ two paired MCP surfaces:
 
 1. Check readiness with `browser67 doctor` or `npm run doctor`.
 2. For setup, use `browser67 setup`; it writes under the active browser67 home.
+   When an existing bridge is connected, use `npm run extension:reload-live`
+   after setup and confirm readiness with `npm run check:live:doctor`.
 3. For legacy runtime migration, run `browser67 migrate-home --dry-run` before
    `browser67 migrate-home --write`.
 4. For real browser work, select/create browser67-owned managed tabs and finalize
    the current `workspace_key`/`task_id` before handoff; report the returned
    `delivery_summary` so tab cleanup state is visible.
+   - If the user already opened and logged into a tab, use
+     `inspect_adoption -> adopt_existing` on that exact tab. Do not reopen the
+     page or repeat login. Finalization releases adopted tabs without closing
+     them.
+   - Agent navigation on an adopted tab uses a short-lived one-shot
+     authorization. User/out-of-band navigation or a connection/lease change
+     suspends the tab; run a fresh `inspect_adoption -> adopt_existing` before
+     continuing.
+   - Ordinary unmanaged tabs are read-only. Raw TMWD scripts and NodeRef
+     mutations require an agent-created or adopted managed tab.
 5. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
    `js-reverse new_page`.
-6. For Linux/Windows portability proof, run `npm run check:native-live` on the
-   matching interactive GUI host first. Run `proof:native-live` only with the
+6. Windows GUI portability proof remains in the default external acceptance
+   set. Linux GUI proof is on demand only; headless/SSH Linux servers do not
+   require it. On an in-scope interactive GUI host, run
+   `npm run check:native-live` first. Run `proof:native-live` only with the
    explicit physical/confirm environment flags and `--write`; never fabricate a
-   target-OS proof on another platform.
+   target-OS proof on another platform. Select Linux explicitly with
+   `--id native-live-linux` or `--include-on-demand`.
 7. For explicitly confirmed physical CAPTCHA assist on macOS, require the
    exact managed Chrome/Edge tab id before `cliclick`, with its redacted URL only
    as a fallback. Use logical screen-point window bounds, prefer a detected
@@ -50,6 +65,14 @@ two paired MCP surfaces:
    before using `manual_context.kind:"oauth_popup"`. For JS clicks that may open
    a delayed provider window, rely on the bounded default new-target poll or set
    `new_tab_wait_ms`; `no_monitor:true` intentionally disables that poll.
+9. Treat MCP output as `browser67.tool-outcome.v3`: inspect `ok/status`, then
+   read success data from `data` or failure details from `error`.
+10. Use `script`, not the removed `code` alias, for `browser_execute_js` and
+    `browser_job_ops.start`. Bridge commands must be strict JSON.
+11. For a script or NodeRef action whose network completion matters, pass
+    bounded `network_observation` options and inspect its idle/final summary.
+    Snapshot `limitations` and `marker_policy` are authoritative for opaque
+    cross-origin frames, closed shadow roots, document lifetime, and retention.
 
 ## Quality bar
 
@@ -59,10 +82,14 @@ two paired MCP surfaces:
 - Keep large outputs bounded; write screenshots, run records, and rebuild
   bundles as repo-external artifacts with path/hash/count metadata.
 - Do not silently fallback from browser67 login-state tasks to remote CDP.
-- Treat headless CI, SSH-only Linux, and locked/disconnected Windows sessions as
-  insufficient for `native-live-linux` / `native-live-win32` proof.
+  `tmwd_mode=auto` CDP fallback is not the explicit remote-CDP exception.
+- Treat locked/disconnected Windows sessions as insufficient for the default
+  `native-live-win32` proof. Headless/SSH Linux does not require GUI proof;
+  `native-live-linux` applies only to an explicitly scoped Linux desktop.
 - Keep docs, skills, schemas, and contracts synchronized for externally visible
   behavior changes.
+- Ordinary tabs must retain native CSP/dialog behavior and receive no
+  browser67 badge, marker, content bridge, or network observer.
 - Run `npm run check:mcp`, `npm run check:js-reverse-mcp`,
   `npm run check:browser67-naming`, `npm run check:runtime-home`, and
   `npm run skills:check` after naming/runtime/tooling changes.

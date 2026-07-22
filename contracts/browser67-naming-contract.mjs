@@ -47,7 +47,7 @@ function assertPackage() {
   assert.equal(pkg.scripts?.["check:skills-roots-audit"], "node contracts/skills-roots-audit-contract.mjs");
   assert.equal(pkg.scripts?.["extension:doctor"], "node scripts/extension-install-doctor.mjs --json");
   assert.equal(pkg.scripts?.["check:extension-install-doctor"], "node contracts/extension-install-doctor-contract.mjs");
-  assert.equal(pkg.scripts?.["verify:local"], "npm run verify && npm run skills:active:check");
+  assert.equal(pkg.scripts?.["verify:local"], "node scripts/run-verification.mjs --tier local");
   assert.equal(pkg.scripts?.["check:runtime-home"], "node contracts/runtime-home-contract.mjs");
   assert.equal(pkg.scripts?.["migrate:home"], "node scripts/migrate-home.mjs");
 }
