@@ -22,6 +22,32 @@ import {
   firstOutcomeContent,
 } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 
+function sleep(ms) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+async function removeTempRoot(tempRoot) {
+  let lastError;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      rmSync(tempRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 8,
+        retryDelay: 125,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!["EBUSY", "ENOTEMPTY", "EPERM"].includes(error?.code) || attempt === 9) {
+        throw error;
+      }
+      await sleep(250);
+    }
+  }
+  throw lastError;
+}
+
 async function callTool(rpc, name, args, timeoutMs) {
   const response = await rpc.call("tools/call", { name, arguments: args }, timeoutMs);
   const outcome = firstOutcomeContent(response.result);
@@ -426,12 +452,7 @@ async function runRemoteCdpContract(argv) {
     await closeServer(crossOriginServer).catch(() => {});
     await terminateChrome(chromeProcess);
     if (cli.keep_temp !== true) {
-      rmSync(tempRoot, {
-        recursive: true,
-        force: true,
-        maxRetries: 8,
-        retryDelay: 125,
-      });
+      await removeTempRoot(tempRoot);
     }
   }
 }

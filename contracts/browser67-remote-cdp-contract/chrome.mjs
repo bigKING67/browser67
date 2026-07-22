@@ -72,27 +72,37 @@ function launchChrome({ chromePath, cdpPort, userDataDir }) {
 }
 
 async function terminateChrome(chromeProcess) {
-  if (!chromeProcess) {
+  if (!chromeProcess || chromeProcess.exitCode !== null || chromeProcess.signalCode !== null) {
     return;
   }
-  try {
-    chromeProcess.kill("SIGTERM");
-  } catch {
-    // ignore
-  }
   await new Promise((resolvePromise) => {
-    const timer = setTimeout(() => {
+    let settled = false;
+    let forceTimer;
+    let abandonTimer;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(forceTimer);
+      clearTimeout(abandonTimer);
+      chromeProcess.removeListener("exit", finish);
+      resolvePromise();
+    };
+    chromeProcess.once("exit", finish);
+    try {
+      chromeProcess.kill("SIGTERM");
+    } catch {
+      finish();
+      return;
+    }
+    forceTimer = setTimeout(() => {
       try {
         chromeProcess.kill("SIGKILL");
       } catch {
-        // ignore
+        finish();
+        return;
       }
-      resolvePromise();
+      abandonTimer = setTimeout(finish, 2_000);
     }, 1_000);
-    chromeProcess.once("exit", () => {
-      clearTimeout(timer);
-      resolvePromise();
-    });
   });
 }
 
