@@ -94,6 +94,7 @@ const GROUPS = [
       /^src\/tool-schemas(?:\.mjs|\/)/,
       /^src\/(?:evidence-schema|run-lifecycle)\.mjs$/,
       /^src\/common\.mjs$/,
+      /^src\/errors\.mjs$/,
       /^contracts\/browser-screenshot-live-smoke\.mjs$/,
       /^contracts\/browser67-browser-mcp-contract(?:\.mjs|\/)/,
       /^contracts\/browser-job-persistence-contract\.mjs$/,
