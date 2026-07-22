@@ -224,6 +224,59 @@ content using `browser67.tool-outcome.v3`. Read successful handler data from
   reconnects, or the ownership/lease generation changes, the record is
   suspended and mutations return `ADOPTED_TAB_SUSPENDED`; run a fresh
   `inspect_adoption -> adopt_existing` flow to resume from the new document.
+
+Frontend route planners must keep browser policy separate from runtime truth.
+`planned_browser_lifecycle` is the canonical route policy and the legacy
+`browser_lifecycle` field is only its compatibility alias. Planner output uses
+an `actual_browser_lifecycle_state` evidence object whose `.state` is
+`not_started` for browser67 routes and `not_applicable` for other runtimes; it
+must not prefill ownership, workspace/task scope, entry/adoption success,
+finalize success, or a delivery summary. Final delivery may report those values
+only as a separate runtime receipt from actual `browser_tab_lifecycle` outcomes;
+the route planner payload is not automatically updated. In particular,
+`inspect_adoption` alone does not prove adoption, adopted-tab finalization means
+release rather than close, and cleanup completion requires the scoped
+`finalize_task` result and its `delivery_summary`.
+
+In the current Codex installation,
+`~/.codex/tools/frontend_route_browser_receipt.py` is the lifecycle receipt
+reducer. It accepts a saved route plus
+`frontend-route.browser-lifecycle-observations.v1`, where each ordered
+observation includes the exact call arguments and raw MCP result, and emits
+`frontend-route.browser-lifecycle-receipt.v1`. A failed outcome does not carry
+the requested lifecycle action, so a naked outcome is insufficient evidence.
+The reducer also checks both the outer outcome and `data.status`: the current
+registry wrapper can return outer `ok=true,status=completed` when a lifecycle
+handler's inner status is `partial`. Only `receipt_valid=true` proves the
+evidence was unambiguous; cleanup is complete only when
+`runtime_complete=true`. The host receipt is digest-and-scope correlation, not
+server-native route correlation, and it omits URL/title/tab/token/lease details.
+Request IDs are emitted only as bounded SHA-256 references.
+
+Cleanup scope is identifier-derived. When `workspace_key` is present,
+`close_scope.scope` is `workspace`; a simultaneous `task_id` narrows and
+correlates that workspace cleanup but does not relabel it as task scope.
+Task-only cleanup omits `workspace_key`. Live `close_scope` currently exposes
+`workspaceKey` / `taskId`, so host receipt adapters must normalize those aliases
+to snake_case and fail closed if an explicit call scope disagrees with the live
+scope.
+
+The installation-specific PostToolUse capture adapter does not dispatch
+`finalize_task`. Global Codex config now registers a matcher only for the exact
+`mcp__tmwd_browser__browser_tab_lifecycle` tool; it does not intercept every
+`tmwd_browser` call. `frontend_route_browser_capture.py` is the capture/ingest
+entrypoint: it binds the planner's privacy-safe route view to session/turn,
+sanitizes the completed lifecycle call in memory, and atomically replaces one
+repo-external capture state before invoking the receipt reducer. It does not
+persist raw hook payloads, URLs, titles, tab IDs, adoption tokens, lease IDs, or
+raw request IDs. The hook is observational: it can record the completed call,
+not invoke another MCP call through the active Codex client. The main agent must
+therefore still call scoped `finalize_task` explicitly. Periodic maintenance
+prunes incomplete state after 7 days, complete state after 30 days, and retains
+at most 100 complete receipts. Configuration is not active-runtime proof: after
+the hook changes, a new Codex session must review/trust it and produce a real
+lifecycle receipt before automatic capture may be reported as active.
+
 - `browser_auth_ops`: `list_profiles`, `validate_profile`, `inspect_login_page`, `suggest_profile`, `upsert_profile`, `ensure_login`. Use after `browser_tab_lifecycle.select_or_create` when a browser67-owned tab lands on a login page. Profiles are exact-origin allowlisted, stored only in repo-external local secret files, and outputs are redacted; unknown origins are reported as blocked and are never auto-filled. Profile lifecycle metadata is kept in a separate redacted sidecar file.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
@@ -541,61 +594,6 @@ sites to use the generic profile directory above.
 - GenericAgent's newer macOS `macljqCtrl` / AX implementation is imported only as reference material under `docs/upstream/genericagent/`. On macOS, `check:ljqctrl -- --json` reports a `macljqctrl` informational diagnostic for `Quartz`, `AppKit`, `ApplicationServices`, `PIL`, `cv2`, and `numpy`, plus the physical-pixel `CropToScreen` coordinate model. This does not promote AX, screenshots, clicks, or window activation into the default path; `native-os` remains the default macOS provider unless a future guarded provider is explicitly enabled.
 - Run `npm run check:readiness` for the near-100 governance score. Its `ljqCtrl` row is platform-aware and uses the same diagnostic-only Python capability probe as `check:ljqctrl`; it distinguishes non-Windows not-applicable defaults, Windows/default not-configured, invalid configured interpreter, importable-but-execution-gated, and execution-bridge-available states without clicking, dragging, activating windows, capturing screenshots, reading cookies, or touching clipboard. It also reports an informational native pointer row when the OS provider lacks click/drag capability or required permissions, and the local CAPTCHA physical-proof row separately distinguishes native pointer blocked, not executed, and proof-missing states. When macOS Accessibility blocks `cliclick`, the affected readiness JSON gaps include the same structured `permission_recovery` plan as `check:native-pointer`, so callers can show the Settings path and copyable recovery commands directly. Optional proof gaps also include a compact `proof_plan` with the plan command, proof directory, and missing proof ids.
 - Run `npm run check:optional-live-proofs` when collecting near-100 default evidence from the local CAPTCHA physical gate, the Windows native-input host, or approved external OAuth/SSO/MFA providers. Proof files live outside the repo by default under `~/.browser67/optional-live-proofs`, must be sanitized, and are documented in `docs/optional-live-proofs.md`. Linux desktop proof remains available through `--id native-live-linux` and `--include-on-demand`; it is not a default self-use requirement. Use `npm run plan:optional-live-proofs` for a no-input, no-browser proof collection runbook with per-proof status, accepted proof freshness, host/provider requirements, blockers, `next_command`, `collection_steps`, commands, and evidence fields. Use `npm run proof:optional-live-status` for an operator-facing accepted/missing checklist with owner, next command, record/write/replace commands, validation command, and the no-fabricated-proof completion policy. Use `npm run proof:optional-live-template` to generate safe `ok:false` starter templates instead of hand-writing proof JSON; after a real host/provider gate produces sanitized JSON, use `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` for dry-run validation and redaction checklist output. The record validator rejects obvious Bearer/JWT/cookie-like values and unredacted IdP tenant/account/provider identifiers. Add `--write` only to persist canonical proof repo-externally, and add `--replace` only for an intentional audited refresh of an existing proof.
-
-## Codex host hard-finally contract
-
-Wrapper-level cleanup is not a substitute for a host/runtime turn finalizer. A
-Codex-style host that wants hard-finally semantics should treat every MCP tool
-result as a possible cleanup signal and register any returned
-`finalize_hint.required:true` before the assistant turn ends.
-
-Use `src/codex-host-finalizer.mjs` as the repo-side contract adapter:
-
-```js
-import { createCodexFinalizerTracker } from "/path/to/browser67/src/codex-host-finalizer.mjs";
-
-const finalizer = createCodexFinalizerTracker({
-  default_arguments: {
-    tmwd_mode: "tmwd",
-    tmwd_transport: "auto",
-    timeout_ms: 20000,
-  },
-});
-
-// After each MCP tool result:
-finalizer.addToolResult({
-  source_server: "tmwd_browser",
-  source_tool: "browser_tab_lifecycle",
-  result: mcpToolResult,
-});
-
-// In the host turn-end finally block:
-const plan = finalizer.plan();
-for (const call of plan.calls) {
-  // Dispatch call.server + call.tool with call.arguments through the host MCP client.
-}
-```
-
-Host policy:
-
-- Run this from a real `finally` path that executes before the final user-facing
-  response, handoff, or interrupted-turn checkpoint.
-- De-duplicate by `call.key`; each call is already scoped by `workspace_key` and
-  / or `task_id`.
-- Never auto-run `scope:"all"`, `all:true`, or `confirm_all:true`; the planner
-  returns those hints under `ignored` with `reason:"auto_scope_all_blocked"`.
-- Preserve `keep:true`: hints for kept tabs are `required:false`, and
-  `finalize_task` preserves kept managed tabs even if called for the same scope.
-- Log `pending_count`, `ignored_count`, `scope_all_blocked_count`, closed tabs,
-  `delivery_summary`, remaining tabs, and finalizer errors. Do not silently swallow cleanup failure.
-- On process restart or a fresh turn, use `npm run check:managed-tabs-clean` or a
-  registry-backed recovery pass to detect missed finalizers.
-
-Validate the adapter with:
-
-```bash
-npm run check:codex-host-finalizer
-```
 
 ## JS reverse boundary
 

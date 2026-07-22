@@ -15,7 +15,7 @@
 ## 页面和浏览器操作
 
 1. 真实 Chrome/Edge 登录态、当前 tab、cookie/session 感知读取、CDP bridge batch、后台 tab、下载/上传、file chooser 规划、clipboard 写入/粘贴 wrapper、managed tab lifecycle 优先使用 browser67 real-browser MCP（当前工具 key 是 `tmwd_browser`）；登录态任务默认 `tmwd_mode=tmwd`，禁止静默 fallback 到 remote-debugging CDP。
-2. browser67 主动操作网页时默认使用 `browser_tab_lifecycle action=select_or_create` 创建或复用 browser67-owned managed tab；用户自己打开的 unmanaged tab 默认只读观察，不导航、不点击、不输入、不关闭、不接管。
+2. browser67 主动操作网页时默认使用 `browser_tab_lifecycle action=select_or_create` 创建或复用 browser67-owned managed tab；用户自己打开的 unmanaged tab 默认只读观察，不导航、不点击、不输入、不关闭。仅当用户明确要求操作该 exact tab 时，执行 `inspect_adoption -> adopt_existing`，不要重新打开页面或重复登录；`finalize_task` 只释放 adopted tab 而不关闭用户页面。用户/外部导航、扩展重连或 lease generation 变化导致 suspended 后，必须重新 inspection/adoption。
 3. 页面 API/接口发现、请求 initiator 追踪、签名链路定位、脚本搜索、网络/WS 采样、Hook、证据导出、本地补环境包优先使用 `js-reverse` MCP，并遵循 `docs/codex-integration.md` 与 `js-reverse` skill。
 4. Chrome profile 是用户私有运行态：不查看 cookies、密码、session stores、无关历史、无关标签页、无关账号数据；外部可见动作按危险操作确认。
 5. CDP 只用于 Runtime、Network、Performance、DOM 精确状态、下载/file chooser、自动化断言；普通点击/观察不用 CDP。
@@ -34,8 +34,15 @@
 - 修改扩展后运行：
   - `npm run extension:check`
   - `npm run setup`
-  - 浏览器扩展页 reload browser67 extension（显示名可能仍为 `TMWD CDP Bridge`）
+  - 已有 bridge 连接时运行 `npm run extension:reload-live`
+  - bridge 未连接时再从浏览器扩展页 reload unpacked extension（显示名可能仍为 `TMWD CDP Bridge`）
   - 刷新目标 tab，让 content script 重新注入
+  - `npm run check:live:doctor`
+- 修改 browser67/tmwd-browser-mcp skill 或 Agent 安装规则后运行：
+  - `npm run check:active-skill-sync`
+  - `npm run skills:active:diff -- --target ~/.agents/skills`
+  - 仅在明确更新当前 active root 时运行 `npm run skills:active:sync -- --target ~/.agents/skills`，随后用新 Agent 会话验证 skill discovery
+  - `npm run doctor:agent -- --check --json`
 - 同步 GenericAgent 上游扩展后运行：
   - `npm run extension:sync`
   - `npm run extension:check`

@@ -57,7 +57,6 @@ const ALLOWED_SRC_ROOT_MODULES = new Set([
   "src/browser-wrappers.mjs",
   "src/capabilities.mjs",
   "src/cdp-runtime.mjs",
-  "src/codex-host-finalizer.mjs",
   "src/common.mjs",
   "src/content-extraction.mjs",
   "src/errors.mjs",
@@ -99,6 +98,7 @@ function trackedPaths() {
   return runGit(["ls-files", "-z"])
     .split("\0")
     .filter(Boolean)
+    .filter((path) => existsSync(resolve(repoRoot, path)))
     .sort();
 }
 

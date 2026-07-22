@@ -70,6 +70,25 @@ const GROUPS = [
     ],
   },
   {
+    id: "codex_host_finalizer_removal",
+    title: "Remove obsolete Codex host finalizer adapter",
+    description: "Exact tombstones for the unused repo-side host finalizer and its contract.",
+    commit_message: "Remove obsolete Codex host finalizer adapter",
+    verification: [
+      "npm run check:change-set-contract",
+      "npm run check:change-set",
+    ],
+    risk_notes: [
+      "Codex lifecycle cleanup still requires an explicit scoped finalize_task call; PostToolUse capture is observational only.",
+      "Do not restore a repo-side adapter without a real Codex host dispatch integration.",
+    ],
+    patterns: [
+      /^src\/codex-host-finalizer\.mjs$/,
+      /^src\/codex-host-finalizer\/payloads\.mjs$/,
+      /^contracts\/codex-host-finalizer-contract\.mjs$/,
+    ],
+  },
+  {
     id: "browser_mcp_surface",
     title: "Split structured browser MCP surface",
     description: "Structured browser MCP server, wrappers, schemas, and deterministic tool contracts.",
@@ -88,7 +107,6 @@ const GROUPS = [
       /^src\/browser\/(?:content|execution|network)\//,
       /^src\/browser-screenshot\//,
       /^src\/browser-wrappers(?:\.mjs|\/)/,
-      /^src\/codex-host-finalizer(?:\.mjs|\/)/,
       /^src\/capabilities\.mjs$/,
       /^src\/image\//,
       /^src\/tool-schemas(?:\.mjs|\/)/,
@@ -327,7 +345,8 @@ const GROUPS = [
       /^package\.json$/,
       /^tsconfig\.checkjs\.json$/,
       /^scripts\/verification\//,
-      /^scripts\/(?:verify|run-verification|verification-manifest|dependency-boundary-audit|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|migrate-runtime-store|setup-captcha-provider-jfbym|native-live-proof-gate|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync|skills-roots-audit)\.mjs$/,
+      /^scripts\/(?:verify|run-verification|verification-manifest|dependency-boundary-audit|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|migrate-runtime-store|setup-captcha-provider-jfbym|native-live-proof-gate|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync|skills-roots-audit|agent-integration-doctor)\.mjs$/,
+      /^contracts\/(?:agent-integration-doctor|change-set)-contract\.mjs$/,
       /^contracts\/active-skill-sync-contract\.mjs$/,
       /^contracts\/skills-roots-audit-contract\.mjs$/,
       /^contracts\/runtime-artifact-cleanup-contract\.mjs$/,

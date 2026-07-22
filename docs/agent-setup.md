@@ -15,7 +15,6 @@ owns observe/capture/rebuild workflows.
 | Purpose | File or directory |
 | --- | --- |
 | MCP server config examples | `docs/codex-integration.md` |
-| Codex host hard-finally adapter | `src/codex-host-finalizer.mjs` |
 | Copy-ready global prompt rules | `docs/global-prompt-snippet.md` |
 | Project-level prompt for this repo | `AGENTS.md` |
 | browser67 skill | `skills/browser67/` |
@@ -116,6 +115,23 @@ copies, missing browser67-managed skills, and broken symlinks. Do not sync
 browser67 skills into audit-only roots unless that specific agent loader is
 confirmed to read them.
 
+Audit the complete installed Agent usage path with:
+
+```bash
+npm run doctor:agent -- --json
+npm run doctor:agent -- --check --json
+```
+
+This keeps repository/release readiness separate from machine-local usage
+readiness. It checks canonical MCP entrypoints, installed extension parity,
+active skill parity, global/project browser67 routing anchors, canonical Codex
+MCP registration, and optionally the live TMWD runtime. Use `--skip-live` only
+for deterministic contract fixtures. That mode reports
+`readiness_basis:"static_only"`, `runtime_verified:false`, and
+`effective_agent_usage_ready:false`; rerun without it before claiming effective
+runtime readiness. After skill or AGENTS synchronization, start a new Agent
+session before treating loader discovery as verified.
+
 The active skill copy is only a loader-facing install artifact. Keep
 `skills/browser67`, `skills/tmwd-browser-mcp`, and `skills/js-reverse` as the
 version-controlled source of truth, and keep MCP configs pointed at
@@ -161,10 +177,15 @@ For active browser work, use browser_tab_lifecycle action=select_or_create with
 ownership_policy=tmwd_only and a stable project/surface-level workspace_key.
 User-opened unmanaged tabs are read-only by default. Do not navigate, click,
 type into, close, or adopt them unless the user explicitly asks to operate on
-that tab. End active browser tasks with browser_tab_lifecycle
-action=finalize_task for the current workspace_key or task_id unless the user
-asked to keep the page open; it closes only keep=false managed tabs, preserves
-keep=true, prunes stale registry records, and ignores unmanaged user tabs.
+that exact tab. When explicitly requested, use inspect_adoption then
+adopt_existing; do not reopen the page or repeat login. Finalization releases
+the adopted lease without closing the user tab. User/out-of-band navigation,
+extension reconnect, or ownership/lease generation changes suspend the tab and
+require a fresh inspection/adoption flow. End other active browser tasks with
+browser_tab_lifecycle action=finalize_task for the current workspace_key or
+task_id unless the user asked to keep the page open; it closes only keep=false
+agent-created managed tabs, preserves keep=true, prunes stale registry records,
+and ignores unmanaged user tabs.
 For visual QA, call browser_screenshot_ops after browser_wait settles the page.
 Use target=viewport for the baseline, target=selector or target=clip for
 focused component evidence, and target=full_page only on bounded pages with an
@@ -279,12 +300,6 @@ unrelated pre-existing workspaces stay visible but do not make repository
 verification flaky. Managed tab creation results include finalize_hint; treat
 finalize_hint.required=true as a task-end cleanup obligation unless the user
 explicitly asked to keep the page open.
-
-If the host can run a turn-end finally block, wire
-src/codex-host-finalizer.mjs into the MCP client layer. Register every MCP tool
-result with createCodexFinalizerTracker(), then dispatch plan().calls in the
-host finally path before the final response or handoff. The planner refuses
-automatic scope=all cleanup and only emits scoped finalize_task calls.
 
 For JS reverse tasks, observe first, prefer hooks over breakpoints, record
 runtime evidence, and rebuild locally only after identifying the target request,

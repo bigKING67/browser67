@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add an installed Agent integration doctor that separates repository/release
+  readiness from machine-local MCP, extension, active-skill, AGENTS route, and
+  live-runtime readiness.
+- Document and align the external frontend `planned_browser_lifecycle` policy
+  and runtime receipt boundary for managed-tab creation, explicit user-tab
+  adoption, scoped finalization, and login-state fail-closed behavior.
+- Align project/global Agent guidance with v0.3 user-tab adoption and the
+  deterministic connected-extension reload path.
 - Add a real TMWD hot-path performance gate with cold and p50/p95/p99 budgets
   for extension transport, managed execution, actionable snapshots, and
   selector waits.
