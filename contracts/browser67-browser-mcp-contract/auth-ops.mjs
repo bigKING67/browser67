@@ -183,7 +183,9 @@ async function assertAuthOpsContract({
   assert.equal(authUpsertPayload?.updated, false);
   assert.equal(authUpsertPayload?.profile?.profile_id, "onboard-site");
   assert.equal(authUpsertPayload?.profile?.allowed_origins?.[0], "https://onboard.example");
-  assert.equal(authUpsertPayload?.profile?.file_mode, "600");
+  if (process.platform !== "win32") {
+    assert.equal(authUpsertPayload?.profile?.file_mode, "600");
+  }
   assert.equal(authUpsertPayload?.profile?.insecure_file_permissions, false);
   assert.equal(authUpsertPayload?.profile?.lifecycle?.last_status, "saved");
   assert.equal(authUpsertPayload?.profile?.lifecycle?.last_reason, "created");
@@ -192,10 +194,18 @@ async function assertAuthOpsContract({
   assert.equal(JSON.stringify(authUpsertPayload).includes("onboard-password"), false);
   const writtenProfilePath = path.join(tmpLoginProfileDir, "onboard-site.env");
   const writtenProfileStat = await fs.stat(writtenProfilePath);
-  assert.equal((writtenProfileStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
+  if (process.platform !== "win32") {
+    assert.equal((writtenProfileStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
+  } else {
+    assert.equal(writtenProfileStat.isFile(), true);
+  }
   const writtenMetadataPath = path.join(tmpLoginProfileDir, "onboard-site.meta.json");
   const writtenMetadataStat = await fs.stat(writtenMetadataPath);
-  assert.equal((writtenMetadataStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
+  if (process.platform !== "win32") {
+    assert.equal((writtenMetadataStat.mode & 0o777).toString(8).padStart(3, "0"), "600");
+  } else {
+    assert.equal(writtenMetadataStat.isFile(), true);
+  }
 
   const authUpsertExistsCall = await rpc.call(
     "tools/call",
@@ -335,7 +345,7 @@ async function assertAuthOpsContract({
   assert.equal(authUnsupportedCall?.result?.isError, true);
   const authUnsupportedPayload = firstJsonContent(authUnsupportedCall.result);
   assert.equal(authUnsupportedPayload?.tool, "browser_auth_ops");
-  assert.equal(authUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+  assert.equal(authUnsupportedPayload?.error_code, "INVALID_ARGUMENTS");
 }
 
 export { assertAuthOpsContract };

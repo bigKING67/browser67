@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -7,17 +7,18 @@ import {
   runDirFor,
   runRoot,
 } from "../../run-lifecycle.mjs";
+import { getDefaultJobStore } from "../../runtime/jobs/store.mjs";
+import { atomicWriteJson } from "../../runtime/storage/atomic-file.mjs";
 import { handleBrowserExecuteJs } from "./execute-js.mjs";
 
-const JOB_SCHEMA_VERSION = "tmwd.browser.job.v2";
+const JOB_SCHEMA_VERSION = "browser67.browser-job.v3";
 const MAX_RETAINED_JOBS = 200;
-const MAX_RECOVERED_JOB_FILES = 1_000;
 const jobs = new Map();
 let recoveryPromise = null;
+let recoveryRunRoot = "";
 
 const EXECUTE_ARG_KEYS = [
   "script",
-  "code",
   "tab_id",
   "switch_tab_id",
   "session_id",
@@ -117,10 +118,8 @@ async function persistJob(job) {
   if (!statePath) return false;
   const checkpointAt = nowIso();
   job.checkpoint_at = checkpointAt;
-  const tempPath = `${statePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-  await mkdir(path.dirname(statePath), { recursive: true });
-  await writeFile(tempPath, `${JSON.stringify(persistedJob(job), null, 2)}\n`, "utf8");
-  await rename(tempPath, statePath);
+  await atomicWriteJson(statePath, persistedJob(job));
+  await getDefaultJobStore(runRoot()).index(job, statePath);
   return true;
 }
 
@@ -147,44 +146,30 @@ function restoredJob(payload, statePath) {
   };
 }
 
-async function jobStateFiles() {
-  const root = runRoot();
-  const files = [];
-  const groups = await readdir(root, { withFileTypes: true }).catch((error) => {
-    if (error?.code === "ENOENT") return [];
-    throw error;
-  });
-  for (const group of groups) {
-    if (!group.isDirectory()) continue;
-    const groupDir = path.join(root, group.name);
-    const runs = await readdir(groupDir, { withFileTypes: true }).catch(() => []);
-    for (const run of runs) {
-      if (!run.isDirectory()) continue;
-      const jobsDir = path.join(groupDir, run.name, "jobs");
-      const entries = await readdir(jobsDir, { withFileTypes: true }).catch(() => []);
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-        files.push(path.join(jobsDir, entry.name));
-        if (files.length >= MAX_RECOVERED_JOB_FILES) return files;
-      }
-    }
+async function readIndexedJob(reference) {
+  const statePath = path.resolve(String(reference?.state_path ?? ""));
+  if (!statePath) return null;
+  const relative = path.relative(runRoot(), statePath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  let payload;
+  try {
+    payload = JSON.parse(await readFile(statePath, "utf8"));
+  } catch {
+    return null;
   }
-  return files;
+  const stateJobId = path.basename(statePath, ".json");
+  if (!/^job_[a-zA-Z0-9_]+$/.test(String(payload?.job_id ?? ""))) return null;
+  if (payload.job_id !== stateJobId) return null;
+  return restoredJob(payload, statePath);
 }
 
 async function recoverJobsFromDisk() {
   const recoveredAt = nowIso();
-  for (const statePath of await jobStateFiles()) {
-    let payload;
-    try {
-      payload = JSON.parse(await readFile(statePath, "utf8"));
-    } catch {
-      continue;
-    }
-    const stateJobId = path.basename(statePath, ".json");
-    if (!/^job_[a-zA-Z0-9_]+$/.test(String(payload?.job_id ?? ""))) continue;
-    if (payload.job_id !== stateJobId || jobs.has(payload.job_id)) continue;
-    const job = restoredJob(payload, statePath);
+  const store = getDefaultJobStore(runRoot());
+  const activeReferences = await store.activeReferences();
+  for (const reference of activeReferences) {
+    const job = await readIndexedJob(reference);
+    if (!job || jobs.has(job.job_id)) continue;
     if (["pending", "running", "cancel_requested"].includes(job.status)) {
       job.status = "interrupted";
       job.recovery_status = "interrupted_after_restart";
@@ -198,15 +183,27 @@ async function recoverJobsFromDisk() {
         ? "interrupted_after_cancel_request"
         : "not_requested";
       await persistJobSafe(job);
-    } else {
-      job.recovery_status = "recovered_terminal_checkpoint";
     }
+    jobs.set(job.job_id, job);
+  }
+  const recentReferences = await store.recentReferences(MAX_RETAINED_JOBS);
+  for (const reference of recentReferences) {
+    if (jobs.has(reference.job_id) || reference.active === true) continue;
+    const job = await readIndexedJob(reference);
+    if (!job) continue;
+    job.recovery_status = "recovered_terminal_checkpoint";
     jobs.set(job.job_id, job);
   }
   pruneJobs();
 }
 
 async function ensureRecovered() {
+  const currentRunRoot = runRoot();
+  if (recoveryRunRoot !== currentRunRoot) {
+    jobs.clear();
+    recoveryPromise = null;
+    recoveryRunRoot = currentRunRoot;
+  }
   if (!recoveryPromise) recoveryPromise = recoverJobsFromDisk();
   await recoveryPromise;
 }
@@ -323,8 +320,8 @@ function startBackgroundJob(job, executeArgs) {
 
 async function startJob(args = {}) {
   await ensureRecovered();
-  if (!String(args.code ?? args.script ?? "").trim()) {
-    return { ok: false, action: "start", error: "browser_job_ops start requires code or script" };
+  if (!String(args.script ?? "").trim()) {
+    return { ok: false, action: "start", error: "browser_job_ops start requires script" };
   }
   const createdAt = nowIso();
   const job = {
@@ -362,21 +359,27 @@ async function startJob(args = {}) {
   return { ok: true, action: "start", job: serializableJob(job) };
 }
 
-function getJob(jobId) {
+async function getJob(jobId) {
   const normalized = String(jobId ?? "").trim();
-  return normalized ? jobs.get(normalized) ?? null : null;
+  if (!normalized) return null;
+  if (jobs.has(normalized)) return jobs.get(normalized);
+  const reference = await getDefaultJobStore(runRoot()).findReference(normalized);
+  if (!reference) return null;
+  const job = await readIndexedJob(reference);
+  if (job) jobs.set(job.job_id, job);
+  return job;
 }
 
 async function statusJob(args = {}) {
   await ensureRecovered();
-  const job = getJob(args.job_id);
+  const job = await getJob(args.job_id);
   if (!job) return { ok: false, action: "status", error: "job not found" };
   return { ok: true, action: "status", job: serializableJob(job) };
 }
 
 async function resultJob(args = {}) {
   await ensureRecovered();
-  const job = getJob(args.job_id);
+  const job = await getJob(args.job_id);
   if (!job) return { ok: false, action: "result", error: "job not found" };
   return {
     ok: true,
@@ -388,7 +391,7 @@ async function resultJob(args = {}) {
 
 async function cancelJob(args = {}) {
   await ensureRecovered();
-  const job = getJob(args.job_id);
+  const job = await getJob(args.job_id);
   if (!job) return { ok: false, action: "cancel", error: "job not found" };
   const previousStatus = job.status;
   job.cancel_requested = true;

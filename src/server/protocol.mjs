@@ -1,7 +1,9 @@
-import { TOOL_SCHEMAS } from "../tool-schemas.mjs";
-import { dispatchToolCall } from "./tool-dispatch.mjs";
+import {
+  dispatchRegisteredTool,
+  listRegisteredTools,
+} from "../mcp/browser/tool-registry.mjs";
 
-const VERSION = "0.2.0-ga-cdp";
+const VERSION = "0.3.0";
 const SERVER_NAME = "browser67-tmwd-browser";
 
 function sendResponse(id, result, output = process.stdout) {
@@ -13,12 +15,7 @@ function sendError(id, code, message, output = process.stdout) {
 }
 
 function listToolsPayload() {
-  const tools = Object.entries(TOOL_SCHEMAS).map(([name, schema]) => ({
-    name,
-    description: schema.description,
-    inputSchema: schema.inputSchema,
-  }));
-  return { tools };
+  return { tools: listRegisteredTools() };
 }
 
 function createRequestHandler(options = {}) {
@@ -53,7 +50,7 @@ function createRequestHandler(options = {}) {
         sendError(id ?? null, -32602, "tools/call requires string params.name", output);
         return;
       }
-      dispatchToolCall(toolName, args)
+      dispatchRegisteredTool(toolName, args, { request_id: String(id ?? "") })
         .then((result) => {
           sendResponse(id, result, output);
         })

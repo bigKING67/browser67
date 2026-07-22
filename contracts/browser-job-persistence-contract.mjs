@@ -27,6 +27,22 @@ function runRecoveryProbe(runRoot, jobId) {
   return JSON.parse(String(result.stdout || "").trim());
 }
 
+function runMigration(runRoot) {
+  const result = spawnSync(process.execPath, [
+    "scripts/migrate-runtime-store.mjs",
+    "--write",
+    "--json",
+    "--run-root",
+    runRoot,
+  ], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    timeout: 15_000,
+  });
+  assert.equal(result.status, 0, String(result.stderr || result.stdout));
+  return JSON.parse(String(result.stdout || "").trim());
+}
+
 async function main() {
   const root = await mkdtemp(path.join(tmpdir(), "browser67-job-persistence-"));
   const workspaceKey = "recovery-contract";
@@ -71,10 +87,16 @@ async function main() {
       result_available: false,
     }, null, 2)}\n`, "utf8");
 
+    const migration = runMigration(root);
+    assert.equal(migration.ok, true);
+    assert.equal(migration.write, true);
+    assert.equal(migration.rebuilt_jobs.indexed_count, 1);
+    assert.equal(migration.rebuilt_jobs.active_count, 1);
+
     const result = runRecoveryProbe(root, jobId);
     assert.equal(result.ok, true);
     assert.equal(result.result_available, true);
-    assert.equal(result.job.schema_version, "tmwd.browser.job.v2");
+    assert.equal(result.job.schema_version, "browser67.browser-job.v3");
     assert.equal(result.job.status, "interrupted");
     assert.equal(result.job.durable, true);
     assert.equal(result.job.abort_supported, false);
@@ -87,12 +109,20 @@ async function main() {
     assert.equal(persisted.result_available, true);
     assert.equal(typeof persisted.checkpoint_at, "string");
 
+    const activeIndexPath = path.join(path.dirname(root), `${path.basename(root)}-jobs`, "active", "index.ndjson");
+    assert.equal((await readFile(activeIndexPath, "utf8")).trim(), "");
+
+    const run = JSON.parse(await readFile(path.join(runDir, "run.json"), "utf8"));
+    assert.equal(run.schema_version, "browser67.run.v2");
+
     process.stdout.write(`${JSON.stringify({
       ok: true,
       check: "browser-job-persistence-contract",
       recovered_status: result.job.status,
       recovery_status: result.job.recovery_status,
       abort_supported: result.job.abort_supported,
+      migration_indexed_jobs: migration.rebuilt_jobs.indexed_count,
+      active_index_cleared: true,
     })}\n`);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -20,6 +20,21 @@ import {
 } from "../tab-workspace.mjs";
 import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
 import {
+  adoptExisting,
+  closeAdopted,
+  inspectAdoption,
+  inspectCloseAdopted,
+  releaseAdopted,
+  releaseExpiredAdoptions,
+} from "../tab-workspace/adoption.mjs";
+import {
+  applyManagedTabPolicy,
+  normalizeManagementPolicy,
+} from "../tab-workspace/policy-bridge.mjs";
+import {
+  authorizeManagedExecutionNavigation,
+} from "../browser/execution/managed-context.mjs";
+import {
   executeBrowserScript,
   executeTmwdCommandWithPreferred,
   liveTabMap,
@@ -64,7 +79,7 @@ async function createManagedTab(args, options = {}) {
       finalize_hint: managedTabFinalizeHint(record),
     };
   }
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
   let tabId = "";
   let title = "";
   let transport = preferred.transport;
@@ -90,7 +105,7 @@ async function createManagedTab(args, options = {}) {
   }
   const visible = await waitForManagedTabVisible(args, preferred, tabId, { url, title });
   const visibleTab = visible.tab;
-  const record = await recordManagedTab({
+  let record = await recordManagedTab({
     ...args,
     tab_id: tabId,
     url: String(visibleTab?.url ?? "").trim() || url,
@@ -99,7 +114,31 @@ async function createManagedTab(args, options = {}) {
     dry_run: false,
     status: "open",
     source: options.source ?? "tmwd_browser",
+    ownership_origin: "agent_created",
+    close_on_finalize: true,
+    management_policy: normalizeManagementPolicy(args?.policy),
   });
+  let policyApplication;
+  try {
+    policyApplication = await applyManagedTabPolicy(args, preferred, record);
+    record = await updateManagedTab(record.tab_id, {
+      management_policy_applied: policyApplication.applied === true,
+      management_policy_status: policyApplication.status,
+      touch: false,
+    }) ?? record;
+  } catch (error) {
+    policyApplication = {
+      status: "unavailable",
+      applied: false,
+      error: String(error?.message ?? error),
+      next_step: "Install and reload the browser67 v0.3 extension overlay.",
+    };
+    record = await updateManagedTab(record.tab_id, {
+      management_policy_applied: false,
+      management_policy_status: "unavailable",
+      touch: false,
+    }) ?? record;
+  }
   markSessionSelected(tabId, { make_default: false });
   return {
     status: "success",
@@ -111,9 +150,11 @@ async function createManagedTab(args, options = {}) {
     transport_attempts: transportAttempts,
     ready: visible.ready,
     ready_after_ms: visible.ready_after_ms,
+    ready_source: visible.ready_source,
     wait_until: visible.wait_until,
     ready_warning: visible.ready_warning,
     managed_tab: managedTabPayload(record),
+    policy_application: policyApplication,
     finalize_hint: managedTabFinalizeHint(record),
     ...sessionPointers(),
   };
@@ -162,7 +203,7 @@ async function selectOrCreateManagedTab(args) {
     }
     return createManagedTab(args, { action: "select_or_create" });
   }
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
   const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
   const liveById = liveTabMap(liveTabs);
   const { reusable, reusable_liveness: reusableLiveness } = await findLiveReusableManagedTab(
@@ -177,15 +218,22 @@ async function selectOrCreateManagedTab(args) {
     let record = reusable.record;
     let navigation;
     if (reusable.policy.navigate_reused && record.url !== reusable.policy.target.normalized_url) {
+      const navigationAuthorization = await authorizeManagedExecutionNavigation(
+        preferred,
+        { ...args, session_id: record.tab_id, switch_tab_id: record.tab_id },
+        "managed_tab_reuse_navigation",
+      );
       const nav = await executeBrowserScript(
         { ...args, session_id: record.tab_id, switch_tab_id: record.tab_id },
         "if (location.href !== input.url) location.href = input.url; return { url: location.href, title: document.title };",
         { url },
+        { preferred },
       );
       navigation = {
         requested_url: url,
         result: nav.value,
         transport: nav.transport,
+        authorization: navigationAuthorization,
       };
       record = await updateManagedTab(record.tab_id, {
         url,
@@ -249,6 +297,7 @@ async function markManagedTabKeep(args) {
 }
 
 async function handleBrowserTabLifecycle(args) {
+  await releaseExpiredAdoptions();
   const action = normalizeAction(args, [
     "create_managed",
     "select_or_create",
@@ -257,7 +306,27 @@ async function handleBrowserTabLifecycle(args) {
     "prune_stale",
     "close_unkept",
     "finalize_task",
+    "inspect_adoption",
+    "adopt_existing",
+    "release_adopted",
+    "inspect_close_adopted",
+    "close_adopted",
   ]);
+  if (action === "inspect_adoption") {
+    return inspectAdoption(args);
+  }
+  if (action === "adopt_existing") {
+    return adoptExisting(args);
+  }
+  if (action === "release_adopted") {
+    return releaseAdopted(args);
+  }
+  if (action === "inspect_close_adopted") {
+    return inspectCloseAdopted(args);
+  }
+  if (action === "close_adopted") {
+    return closeAdopted(args);
+  }
   if (action === "select_or_create") {
     return selectOrCreateManagedTab(args);
   }

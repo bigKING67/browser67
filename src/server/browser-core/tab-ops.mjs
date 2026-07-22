@@ -1,7 +1,7 @@
 import {
   mergeTransportAttempts,
   normalizeTmwdTransportLabel,
-} from "../../common.mjs";
+} from "../../runtime/transport-attempts.mjs";
 import {
   asShortTabs,
   getActiveTargetId,

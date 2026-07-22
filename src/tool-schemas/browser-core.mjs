@@ -30,7 +30,52 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
       type: "object",
       properties: {
         script: { type: "string" },
-        code: { type: "string" },
+        operation: {
+          type: "string",
+          enum: ["click", "focus", "set_value", "select_option", "read"],
+        },
+        node_ref: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            snapshot_id: { type: "string" },
+            node_id: { type: "string" },
+          },
+          required: ["snapshot_id", "node_id"],
+        },
+        expected: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            tag: { type: "string" },
+            role: { type: "string" },
+            accessible_name: { type: "string" },
+          },
+        },
+        value: { type: "string" },
+        workspace_key: { type: "string" },
+        task_id: { type: "string" },
+        network_observation: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            enabled: { type: "boolean", default: false },
+            ttl_ms: { type: "number", minimum: 1000, maximum: 120000 },
+            idle_ms: { type: "number", minimum: 50, maximum: 30000 },
+            max_inflight: { type: "number", minimum: 0, maximum: 100 },
+            interval_ms: { type: "number", minimum: 25, maximum: 5000 },
+            ignore_patterns: {
+              type: "array",
+              maxItems: 100,
+              items: { type: "string" },
+            },
+            ignore_resource_types: {
+              type: "array",
+              maxItems: 50,
+              items: { type: "string" },
+            },
+          },
+        },
         tab_id: { type: "string" },
         switch_tab_id: { type: "string" },
         session_id: { type: "string" },
@@ -84,7 +129,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
       properties: {
         type: {
           type: "string",
-          enum: ["selector", "text", "function", "dom_stable", "network_idle"],
+          enum: ["selector", "text", "function", "dom_stable", "resource_quiet", "network_idle"],
           default: "selector",
         },
         selector: { type: "string" },
@@ -93,6 +138,30 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
         code: { type: "string" },
         visible: { type: "boolean", default: true },
         stable_ms: { type: "number", minimum: 50, maximum: 30_000 },
+        idle_ms: { type: "number", minimum: 50, maximum: 30_000 },
+        max_inflight: { type: "number", minimum: 0, maximum: 100 },
+        ignore_patterns: {
+          type: "array",
+          maxItems: 100,
+          items: { type: "string" },
+        },
+        ignore_resource_types: {
+          type: "array",
+          maxItems: 50,
+          items: { type: "string" },
+        },
+        root_selector: { type: "string" },
+        ignore_selectors: {
+          type: "array",
+          maxItems: 100,
+          items: { type: "string" },
+        },
+        ignore_attributes: {
+          type: "array",
+          maxItems: 100,
+          items: { type: "string" },
+        },
+        mutation_threshold: { type: "number", minimum: 0, maximum: 10_000 },
         interval_ms: { type: "number", minimum: 25, maximum: 5_000 },
         timeout_ms: { type: "number", minimum: 100, maximum: 120_000 },
         tab_id: { type: "string" },
@@ -163,7 +232,6 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
         prepare_run: { type: "boolean", default: true },
         max_items: { type: "number", minimum: 1, maximum: 500 },
         script: { type: "string" },
-        code: { type: "string" },
         tab_id: { type: "string" },
         switch_tab_id: { type: "string" },
         session_id: { type: "string" },
@@ -211,12 +279,11 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
     },
   },
   browser_extract: {
-    description: "Extract actionable nodes from html or active page html.",
+    description: "Capture actionable-snapshot.v2 from the active managed document for reliable follow-up NodeRef operations.",
     inputSchema: {
       type: "object",
       properties: {
-        html: { type: "string" },
-        selector_limit: { type: "number", minimum: 1, maximum: 300 },
+        selector_limit: { type: "number", minimum: 1, maximum: 5000 },
         tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "auto" },
         tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
         tmwd_ws_endpoint: { type: "string" },
@@ -229,14 +296,25 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
     },
   },
   browser_diff: {
-    description: "Diff two HTML snapshots and return signatures.",
+    description: "Compare two actionable snapshot references and return semantic-diff.v2 state changes.",
     inputSchema: {
       type: "object",
       properties: {
-        before: { type: "string" },
-        after: { type: "string" },
+        before_snapshot_id: { type: "string" },
+        after_snapshot_id: { type: "string" },
+        capture_after: { type: "boolean", default: false },
+        workspace_key: { type: "string" },
+        task_id: { type: "string" },
+        tab_id: { type: "string" },
+        switch_tab_id: { type: "string" },
+        session_id: { type: "string" },
+        tmwd_mode: { type: "string", enum: ["auto", "tmwd", "remote_cdp", "cdp"], default: "auto" },
+        tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },
+        tmwd_ws_endpoint: { type: "string" },
+        tmwd_link_endpoint: { type: "string" },
+        cdp_endpoint: { type: "string" },
       },
-      required: ["before", "after"],
+      required: ["before_snapshot_id"],
     },
   },
   browser_tab_ops: {

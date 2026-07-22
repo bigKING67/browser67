@@ -51,7 +51,7 @@ async function listManagedTabs(args = {}, options = {}) {
     if (registryRecords.length > 0) {
       let preferred = null;
       try {
-        preferred = await resolvePreferredBrowserContext(args ?? {});
+        preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
       } catch (error) {
         liveFilter.warning = `live browser check unavailable; returning only tabs known in the active session registry: ${String(error?.message ?? error)}`;
       }

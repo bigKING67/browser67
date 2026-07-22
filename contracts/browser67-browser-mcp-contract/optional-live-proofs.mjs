@@ -4,10 +4,11 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   buildOptionalLiveProofAudit,
   buildProofRedactionChecklist,
-  LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
-  OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   validateProof,
 } from "../../scripts/optional-live-proof-audit.mjs";
 import { buildOptionalLiveProofPlan } from "../../scripts/optional-live-proof-plan.mjs";
@@ -16,10 +17,7 @@ import { buildOptionalLiveProofStatus } from "../../scripts/optional-live-proof-
 import { createProofTemplate } from "../../scripts/optional-live-proof-template.mjs";
 
 function requirement(id) {
-  const found = [
-    ...LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
-    ...OPTIONAL_LIVE_PROOF_REQUIREMENTS,
-  ].find((item) => item.id === id);
+  const found = ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.find((item) => item.id === id);
   assert.ok(found, `missing optional live proof requirement: ${id}`);
   return found;
 }
@@ -72,6 +70,10 @@ function validIdpProof(providerKind) {
 
 async function assertOptionalLiveProofContract() {
   const nativeLinux = requirement("native-live-linux");
+  assert.equal(nativeLinux.release_scope, "on_demand");
+  assert.equal(nativeLinux.default_required, false);
+  assert.equal(DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS.some((item) => item.id === "native-live-linux"), false);
+  assert.equal(ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS.some((item) => item.id === "native-live-linux"), true);
   const nativeTemplate = createProofTemplate(nativeLinux, new Date("2026-06-17T00:00:00.000Z"));
   const nativeTemplateValidation = validateProof(nativeTemplate, nativeLinux);
   assert.equal(nativeTemplateValidation.ok, false);
@@ -282,8 +284,13 @@ async function assertOptionalLiveProofContract() {
       `${JSON.stringify(validNativeProof("win32"), null, 2)}\n`,
     );
     const audit = await buildOptionalLiveProofAudit({ proof_dir: tmpDir });
-    const linux = audit.requirements.find((item) => item.id === "native-live-linux");
+    assert.equal(audit.requirements.some((item) => item.id === "native-live-linux"), false);
+    assert.equal(audit.summary.required_count, 5);
+    assert.equal(audit.summary.available_count, 6);
+    const linux = audit.on_demand_requirements.find((item) => item.id === "native-live-linux");
     assert.equal(linux?.satisfied, false);
+    assert.equal(linux?.release_scope, "on_demand");
+    assert.equal(linux?.default_required, false);
     assert.equal(linux?.candidates?.length, 1);
     assert.ok(linux.candidates[0].validation.errors.includes("template_only_not_accepted"));
     const win32 = audit.requirements.find((item) => item.id === "native-live-win32");
@@ -291,11 +298,32 @@ async function assertOptionalLiveProofContract() {
     assert.equal(win32?.accepted?.path?.endsWith("native-live-win32.json"), true);
     assert.equal(win32?.accepted?.expires_at, "2099-06-17T00:00:00.000Z");
     assert.equal(typeof win32?.accepted?.expires_in_days, "number");
+    const fullAudit = await buildOptionalLiveProofAudit({
+      proof_dir: tmpDir,
+      include_on_demand: true,
+    });
+    assert.equal(fullAudit.include_on_demand, true);
+    assert.equal(fullAudit.summary.required_count, 6);
+    assert.equal(fullAudit.summary.on_demand_missing_count, 1);
+    assert.equal(fullAudit.required_missing.includes("native-live-linux"), true);
 
-    const plan = await buildOptionalLiveProofPlan({ proof_dir: tmpDir });
+    const deterministicHost = {
+      ok: false,
+      status: "requirements_missing",
+      platform: "contract-os",
+      supports_click: false,
+      supports_drag: false,
+      requirements: ["contract fixture has no native pointer"],
+    };
+    const plan = await buildOptionalLiveProofPlan({
+      proof_dir: tmpDir,
+      current_platform: "contract-os",
+      native_pointer: deterministicHost,
+    });
     assert.equal(plan.action, "optional-live-proof-plan");
     assert.equal(plan.summary.invalid_file_count, 0);
-    assert.equal(plan.summary.rejected_candidate_count, 1);
+    assert.equal(plan.summary.required_count, 5);
+    assert.equal(plan.summary.rejected_candidate_count, 0);
     assert.equal(plan.safe_defaults.includes("This plan does not move the mouse."), true);
     assert.equal(plan.safe_defaults.includes("This plan does not read browser private state."), true);
     const captchaPlan = plan.items.find((item) => item.id === "captcha-assist-physical-local");
@@ -309,7 +337,12 @@ async function assertOptionalLiveProofContract() {
       captchaPlan.safety_boundaries.includes("Do not use JS/CDP clicks on CAPTCHA widgets."),
       true,
     );
-    const filteredPlan = await buildOptionalLiveProofPlan({ proof_dir: tmpDir, id: "idp-oauth-popup" });
+    const filteredPlan = await buildOptionalLiveProofPlan({
+      proof_dir: tmpDir,
+      id: "idp-oauth-popup",
+      current_platform: "contract-os",
+      native_pointer: deterministicHost,
+    });
     assert.equal(filteredPlan.filter.id, "idp-oauth-popup");
     assert.equal(filteredPlan.items.length, 1);
     assert.equal(filteredPlan.items[0].id, "idp-oauth-popup");
@@ -326,13 +359,28 @@ async function assertOptionalLiveProofContract() {
     assert.equal(typeof win32Plan?.accepted?.expires_in_days, "number");
     assert.equal(win32Plan?.next_command, `TMWD_OPTIONAL_PROOF_DIR=${tmpDir} npm run check:optional-live-proofs`);
     assert.equal(win32Plan?.commands.record_replace, "npm run proof:optional-live-record -- --id native-live-win32 --from-json <sanitized.json> --write --replace");
-    const linuxPlan = plan.items.find((item) => item.id === "native-live-linux");
+    assert.equal(plan.items.some((item) => item.id === "native-live-linux"), false);
+    const linuxOnlyPlan = await buildOptionalLiveProofPlan({
+      proof_dir: tmpDir,
+      id: "native-live-linux",
+      current_platform: "contract-os",
+      native_pointer: deterministicHost,
+    });
+    assert.equal(linuxOnlyPlan.summary.required_count, 1);
+    assert.equal(linuxOnlyPlan.summary.rejected_candidate_count, 1);
+    const linuxPlan = linuxOnlyPlan.items[0];
+    assert.equal(linuxPlan?.release_scope, "on_demand");
+    assert.equal(linuxPlan?.default_required, false);
     assert.equal(linuxPlan?.collection_mode, "cross_os_native_physical_gate");
     assert.equal(linuxPlan?.target_platform, "linux");
     assert.equal(linuxPlan?.next_command, "Run this plan on a linux GUI host");
     assert.equal(linuxPlan?.commands.template, "npm run proof:optional-live-template -- --id native-live-linux --write");
     assert.equal(linuxPlan?.commands.native_live_readiness, "npm run check:native-live");
     assert.match(linuxPlan?.commands.live_gate ?? "", /npm run proof:native-live/);
+    assert.equal(
+      linuxPlan?.commands.validate,
+      `TMWD_OPTIONAL_PROOF_DIR=${tmpDir} npm run check:optional-live-proofs -- --include-on-demand`,
+    );
     assert.equal(linuxPlan?.evidence_requirements.includes("actions include get_window_rect"), true);
     assert.equal(linuxPlan?.evidence_requirements.includes("evidence.window_rect_verified=true"), true);
     assert.equal(
@@ -350,27 +398,37 @@ async function assertOptionalLiveProofContract() {
     assert.equal(idpPlan?.evidence_requirements.includes("manual_required_verified=true"), true);
     assert.equal(idpPlan?.collection_steps.includes("Resume ensure_login and record sanitized proof JSON."), true);
 
-    const status = await buildOptionalLiveProofStatus({ proof_dir: tmpDir });
+    const status = await buildOptionalLiveProofStatus({
+      proof_dir: tmpDir,
+      current_platform: "contract-os",
+      native_pointer: deterministicHost,
+    });
     assert.equal(status.action, "optional-live-proof-status");
     assert.equal(status.status, "needs_local_action");
     assert.equal(status.summary.invalid_file_count, 0);
-    assert.equal(status.summary.rejected_candidate_count, 1);
+    assert.equal(status.summary.required_count, 5);
+    assert.equal(status.summary.rejected_candidate_count, 0);
     assert.equal(status.safe_defaults.includes("This status output does not execute any listed command."), true);
     assert.equal(status.accepted.some((item) => item.id === "native-live-win32"), true);
-    assert.equal(status.checklist.some((item) => item.id === "native-live-linux"), true);
-    const linuxChecklist = status.checklist.find((item) => item.id === "native-live-linux");
-    assert.equal(linuxChecklist?.owner, "linux_gui_operator");
-    assert.equal(linuxChecklist?.record_write_command, "npm run proof:optional-live-record -- --id native-live-linux --from-json <sanitized.json> --write");
+    assert.equal(status.checklist.some((item) => item.id === "native-live-linux"), false);
     const idpChecklist = status.checklist.find((item) => item.id === "idp-oauth-popup");
     assert.equal(idpChecklist?.scope, "external_approved_idp");
     assert.equal(idpChecklist?.owner, "oauth_popup_test_tenant_operator");
     assert.equal(status.completion_policy.forbidden.some((item) => item.includes("Do not fabricate")), true);
-    const filteredStatus = await buildOptionalLiveProofStatus({ proof_dir: tmpDir, id: "native-live-linux" });
+    const filteredStatus = await buildOptionalLiveProofStatus({
+      proof_dir: tmpDir,
+      id: "native-live-linux",
+      current_platform: "contract-os",
+      native_pointer: deterministicHost,
+    });
     assert.equal(filteredStatus.filter.id, "native-live-linux");
+    assert.equal(filteredStatus.filter.release_scope, "on_demand");
     assert.equal(filteredStatus.summary.required_count, 1);
     assert.equal(filteredStatus.accepted.length, 0);
     assert.equal(filteredStatus.checklist.length, 1);
     assert.equal(filteredStatus.checklist[0].id, "native-live-linux");
+    assert.equal(filteredStatus.checklist[0].owner, "linux_gui_operator");
+    assert.equal(filteredStatus.checklist[0].record_write_command, "npm run proof:optional-live-record -- --id native-live-linux --from-json <sanitized.json> --write");
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

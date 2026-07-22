@@ -86,9 +86,9 @@ function wrapPageFunction(body, input) {
   return `return await (async (input) => {\n${body}\n})(${JSON.stringify(input ?? {})});`;
 }
 
-async function executeBrowserScript(args, body, input = {}) {
+async function executeBrowserScript(args, body, input = {}, runtimeOptions = {}) {
   const script = wrapPageFunction(body, input);
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = runtimeOptions.preferred ?? await resolvePreferredBrowserContext(args ?? {});
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
     const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script);
     return {
@@ -104,10 +104,26 @@ async function executeBrowserScript(args, body, input = {}) {
     };
   }
   const result = await cdpEvaluateScript(args ?? {}, script);
+  const cdpValue = result.result.value;
+  if (cdpValue?.ok === false) {
+    throw createToolError(
+      "EXECUTION_ERROR",
+      String(cdpValue.error?.message ?? cdpValue.error ?? "CDP page script failed"),
+      {
+        retryable: false,
+        details: {
+          name: cdpValue.error?.name,
+          stack: cdpValue.error?.stack,
+        },
+      },
+    );
+  }
   return {
     transport: "cdp",
     transport_attempts: Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [],
-    value: result.result.value,
+    value: cdpValue?.ok === true && Object.prototype.hasOwnProperty.call(cdpValue, "data")
+      ? cdpValue.data
+      : cdpValue,
     raw: result.result,
     page: {
       id: result.target.id,
@@ -264,6 +280,28 @@ async function readBrowserTabById(args, preferred, tabId) {
   }
 }
 
+async function readRoutableBrowserTabById(args, tabId) {
+  const normalizedTabId = String(tabId ?? "").trim();
+  if (!normalizedTabId) {
+    return null;
+  }
+  try {
+    const preferred = await resolvePreferredBrowserContext({
+      ...args,
+      tab_id: normalizedTabId,
+      switch_tab_id: normalizedTabId,
+      session_id: normalizedTabId,
+      refresh_sessions: true,
+    });
+    const target = preferred.context?.target;
+    return String(target?.id ?? "").trim() === normalizedTabId
+      ? normalizeTabSummary(target)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}) {
   const waitOptions = normalizeWaitOptions(args ?? {});
   const startedAt = Date.now();
@@ -277,12 +315,13 @@ async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}) {
   }
   const poll = async (latestTab = null) => {
     if (Date.now() - startedAt > waitOptions.wait_timeout_ms) {
+      const readiness = latestTab ? "routable through the runtime session list" : "visible to the extension";
       return {
         ...waitOptions,
         ready: false,
         ready_after_ms: Date.now() - startedAt,
         tab: latestTab,
-        ready_warning: `created tab was not visible before timeout (${String(waitOptions.wait_timeout_ms)}ms)`,
+        ready_warning: `created tab was not ${readiness} before timeout (${String(waitOptions.wait_timeout_ms)}ms)`,
         fallback_url: fallback.url,
         fallback_title: fallback.title,
       };
@@ -290,22 +329,32 @@ async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}) {
     const tab = await readBrowserTabById(args, preferred, tabId);
     if (tab) {
       if (String(tab.url ?? "").trim().length > 0) {
-        return {
-          ...waitOptions,
-          ready: true,
-          ready_after_ms: Date.now() - startedAt,
-          tab,
-        };
+        const routableTab = await readRoutableBrowserTabById(args, tabId);
+        if (routableTab) {
+          return {
+            ...waitOptions,
+            ready: true,
+            ready_after_ms: Date.now() - startedAt,
+            ready_source: "runtime_session",
+            tab: {
+              ...tab,
+              ...routableTab,
+              url: routableTab.url || tab.url,
+              title: routableTab.title || tab.title,
+            },
+          };
+        }
       }
       latestTab = tab;
     }
     if (waitOptions.wait_timeout_ms === 0) {
+      const readiness = latestTab ? "routable through the runtime session list" : "visible to the extension";
       return {
         ...waitOptions,
         ready: false,
         ready_after_ms: Date.now() - startedAt,
         tab: latestTab,
-        ready_warning: `created tab was not visible before timeout (${String(waitOptions.wait_timeout_ms)}ms)`,
+        ready_warning: `created tab was not ${readiness} before timeout (${String(waitOptions.wait_timeout_ms)}ms)`,
         fallback_url: fallback.url,
         fallback_title: fallback.title,
       };

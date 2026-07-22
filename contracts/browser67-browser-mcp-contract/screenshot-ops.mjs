@@ -61,7 +61,7 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
   assert.equal(invalidFormatCall?.result?.isError, true);
   assertTextJsonContent(invalidFormatCall.result, "browser_screenshot_ops invalid format error");
   const invalidFormatPayload = firstJsonContent(invalidFormatCall.result);
-  assert.equal(invalidFormatPayload?.error_code, "INVALID_ARGUMENT");
+  assert.equal(invalidFormatPayload?.error_code, "INVALID_ARGUMENTS");
 
   const invalidViewportCall = await rpc.call(
     "tools/call",
@@ -81,7 +81,7 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
   );
   assert.equal(invalidViewportCall?.result?.isError, true);
   const invalidViewportPayload = firstJsonContent(invalidViewportCall.result);
-  assert.equal(invalidViewportPayload?.error_code, "INVALID_ARGUMENT");
+  assert.equal(invalidViewportPayload?.error_code, "INVALID_ARGUMENTS");
 
   const matchingViewportVerification = buildViewportOverrideVerification({
     target: "viewport",

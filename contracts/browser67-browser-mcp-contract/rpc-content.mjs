@@ -17,7 +17,7 @@ function parseJsonContentItem(item) {
   return null;
 }
 
-function firstJsonContent(result) {
+function firstOutcomeContent(result) {
   const content = Array.isArray(result?.content) ? result.content : [];
   for (const item of content) {
     const parsed = parseJsonContentItem(item);
@@ -26,6 +26,26 @@ function firstJsonContent(result) {
     }
   }
   return null;
+}
+
+function firstJsonContent(result) {
+  const parsed = firstOutcomeContent(result);
+  if (parsed?.schema !== "browser67.tool-outcome.v3") {
+    return parsed;
+  }
+  if (parsed.ok === true) {
+    return parsed.data;
+  }
+  return {
+    status: "error",
+    tool: parsed.meta?.tool,
+    error: parsed.error?.message,
+    error_code: parsed.error?.code,
+    retryable: parsed.error?.retryable,
+    details: parsed.error?.details,
+    transport_attempts: parsed.meta?.transport_attempts,
+    at: parsed.meta?.completed_at,
+  };
 }
 
 function assertTextJsonContent(result, label) {
@@ -45,5 +65,6 @@ function assertTextJsonContent(result, label) {
 
 export {
   assertTextJsonContent,
-  firstJsonContent
+  firstJsonContent,
+  firstOutcomeContent,
 };

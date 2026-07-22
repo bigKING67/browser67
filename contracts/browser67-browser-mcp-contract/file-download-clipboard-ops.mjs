@@ -57,7 +57,7 @@ export async function assertFileDownloadClipboardOpsContract({ rpc, timeoutMs })
     );
     assert.equal(fileUnsupportedCall?.result?.isError, true);
     const fileUnsupportedPayload = firstJsonContent(fileUnsupportedCall.result);
-    assert.equal(fileUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+    assert.equal(fileUnsupportedPayload?.error_code, "INVALID_ARGUMENTS");
 
     tmpDownloadDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-download-contract-"));
     const downloadPrepareCall = await rpc.call(
@@ -106,7 +106,7 @@ export async function assertFileDownloadClipboardOpsContract({ rpc, timeoutMs })
     );
     assert.equal(downloadUnsupportedCall?.result?.isError, true);
     const downloadUnsupportedPayload = firstJsonContent(downloadUnsupportedCall.result);
-    assert.equal(downloadUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+    assert.equal(downloadUnsupportedPayload?.error_code, "INVALID_ARGUMENTS");
 
     const clipboardDryRunCall = await rpc.call(
       "tools/call",
@@ -154,7 +154,7 @@ export async function assertFileDownloadClipboardOpsContract({ rpc, timeoutMs })
     );
     assert.equal(clipboardUnsupportedCall?.result?.isError, true);
     const clipboardUnsupportedPayload = firstJsonContent(clipboardUnsupportedCall.result);
-    assert.equal(clipboardUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+    assert.equal(clipboardUnsupportedPayload?.error_code, "INVALID_ARGUMENTS");
 
     return {
       filePlanPayload,

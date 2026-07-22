@@ -1,8 +1,57 @@
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import {
   assertTextJsonContent,
   firstJsonContent,
 } from "./rpc-content.mjs";
+
+async function registerExecuteErrorManagedTab(registryPath) {
+  const now = new Date().toISOString();
+  let registry = {};
+  try {
+    registry = JSON.parse(await fs.readFile(registryPath, "utf8"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const record = {
+    tab_id: "exec_error_session_1",
+    owner: "tmwd",
+    managed: true,
+    ownership_origin: "agent_created",
+    close_on_finalize: true,
+    ownership_generation: "fallback-contract-ownership",
+    source: "fallback-contract",
+    workspace_key: "fallback-contract",
+    task_id: "execute-error",
+    reuse_key: "https://example.invalid/exec-error",
+    url: "https://example.invalid/exec-error",
+    title: "ExecError Session",
+    origin: "https://example.invalid",
+    path_scope: "/",
+    keep: true,
+    dry_run: false,
+    status: "open",
+    created_at: now,
+    updated_at: now,
+    last_used_at: now,
+  };
+  const managedTabs = Array.isArray(registry?.managed_tabs)
+    ? registry.managed_tabs.filter((item) => item?.tab_id !== record.tab_id)
+    : [];
+  const payload = {
+    version: 2,
+    updated_at: now,
+    managed_tabs: [...managedTabs, record],
+  };
+  await fs.mkdir(path.dirname(registryPath), { recursive: true });
+  const tempPath = `${registryPath}.${process.pid}.fallback.tmp`;
+  await fs.writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`);
+  await fs.rename(tempPath, registryPath);
+}
 
 async function assertExecuteJsFallbackPolicy({
   rpc,
@@ -10,6 +59,7 @@ async function assertExecuteJsFallbackPolicy({
   wsEndpoint,
   hangingLinkEndpoint,
   executeErrorLinkEndpoint,
+  registryPath,
 }) {
   const toolCall = await rpc.call(
     "tools/call",
@@ -75,7 +125,7 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(toolCallWithAutoFallback?.result?.isError, undefined);
+  assert.equal(toolCallWithAutoFallback?.result?.isError, undefined, "balanced native auto fallback returns tool data");
   const autoFallbackPayload = firstJsonContent(toolCallWithAutoFallback.result);
   assert.equal(autoFallbackPayload?.status, "failed");
   assert.equal(typeof autoFallbackPayload?.error_code, "string");
@@ -106,7 +156,7 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(toolCallWithStrictAutoFallback?.result?.isError, undefined);
+  assert.equal(toolCallWithStrictAutoFallback?.result?.isError, undefined, "strict native auto fallback returns tool data");
   const strictAutoFallbackPayload = firstJsonContent(toolCallWithStrictAutoFallback.result);
   assert.equal(strictAutoFallbackPayload?.status, "failed");
   assert.equal(strictAutoFallbackPayload?.native_input_suggested, false);
@@ -136,7 +186,7 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(toolCallWithAggressiveAutoFallback?.result?.isError, undefined);
+  assert.equal(toolCallWithAggressiveAutoFallback?.result?.isError, undefined, "aggressive native auto fallback returns tool data");
   const aggressiveAutoFallbackPayload = firstJsonContent(toolCallWithAggressiveAutoFallback.result);
   assert.equal(aggressiveAutoFallbackPayload?.status, "failed");
   assert.equal(aggressiveAutoFallbackPayload?.native_input_suggested, true);
@@ -165,14 +215,14 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(toolCallWithInvalidPolicy?.result?.isError, undefined);
+  assert.equal(toolCallWithInvalidPolicy?.result?.isError, true);
   const invalidPolicyPayload = firstJsonContent(toolCallWithInvalidPolicy.result);
-  assert.equal(invalidPolicyPayload?.status, "failed");
-  assert.equal(invalidPolicyPayload?.native_input_suggested, true);
-  assert.equal(invalidPolicyPayload?.native_input_hint?.policy, "balanced");
-  assert.equal(invalidPolicyPayload?.native_input_hint?.reason, "transport_or_session_unavailable");
-  assert.equal(invalidPolicyPayload?.native_auto_fallback?.suggestion?.reason, "transport_or_session_unavailable");
-  assert.equal(invalidPolicyPayload?.native_auto_fallback?.policy, "balanced");
+  assert.equal(invalidPolicyPayload?.error_code, "INVALID_ARGUMENTS");
+  assert.equal(invalidPolicyPayload?.retryable, false);
+  assert.equal(
+    invalidPolicyPayload?.details?.validation_errors?.some((item) => item.keyword === "enum"),
+    true,
+  );
 
   const timeoutBalancedCall = await rpc.call(
     "tools/call",
@@ -191,7 +241,7 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(timeoutBalancedCall?.result?.isError, undefined);
+  assert.equal(timeoutBalancedCall?.result?.isError, undefined, "balanced timeout fallback returns tool data");
   const timeoutBalancedPayload = firstJsonContent(timeoutBalancedCall.result);
   assert.equal(timeoutBalancedPayload?.status, "failed");
   assert.equal(timeoutBalancedPayload?.error_code, "TIMEOUT");
@@ -219,7 +269,7 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(timeoutAggressiveCall?.result?.isError, undefined);
+  assert.equal(timeoutAggressiveCall?.result?.isError, undefined, "aggressive timeout fallback returns tool data");
   const timeoutAggressivePayload = firstJsonContent(timeoutAggressiveCall.result);
   assert.equal(timeoutAggressivePayload?.status, "failed");
   assert.equal(timeoutAggressivePayload?.error_code, "TIMEOUT");
@@ -231,6 +281,8 @@ async function assertExecuteJsFallbackPolicy({
   assert.equal(timeoutAggressivePayload?.native_auto_fallback?.attempted, true);
   assert.equal(timeoutAggressivePayload?.native_auto_fallback?.suggestion?.should_escalate, true);
   assert.equal(timeoutAggressivePayload?.native_auto_fallback?.policy, "aggressive");
+
+  await registerExecuteErrorManagedTab(registryPath);
 
   const executionErrorBalancedCall = await rpc.call(
     "tools/call",
@@ -249,7 +301,7 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(executionErrorBalancedCall?.result?.isError, undefined);
+  assert.equal(executionErrorBalancedCall?.result?.isError, undefined, "balanced execution fallback returns tool data");
   const executionErrorBalancedPayload = firstJsonContent(executionErrorBalancedCall.result);
   assert.equal(executionErrorBalancedPayload?.status, "failed");
   assert.equal(executionErrorBalancedPayload?.error_code, "EXECUTION_ERROR");
@@ -277,7 +329,7 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(executionErrorAggressiveCall?.result?.isError, undefined);
+  assert.equal(executionErrorAggressiveCall?.result?.isError, undefined, "aggressive execution fallback returns tool data");
   const executionErrorAggressivePayload = firstJsonContent(executionErrorAggressiveCall.result);
   assert.equal(executionErrorAggressivePayload?.status, "failed");
   assert.equal(executionErrorAggressivePayload?.error_code, "EXECUTION_ERROR");

@@ -27,7 +27,7 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
     );
     const preparePayload = firstJsonContent(prepareCall.result);
     assert.equal(preparePayload?.ok, true);
-    assert.equal(preparePayload?.run?.schema_version, "tmwd.run.v1");
+    assert.equal(preparePayload?.run?.schema_version, "browser67.run.v2");
     assert.equal(preparePayload?.run?.status, "running");
     assert.equal(typeof preparePayload?.run?.run_id, "string");
 
@@ -151,14 +151,14 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
           tmwd_ws_endpoint: "ws://127.0.0.1:9",
           timeout_ms: 200,
           output_mode: "compact",
-          code: "return 1;",
+          script: "return 1;",
         },
       },
       timeoutMs,
     );
     const jobStartPayload = firstJsonContent(jobStartCall.result);
     assert.equal(jobStartPayload?.ok, true);
-    assert.equal(jobStartPayload?.job?.schema_version, "tmwd.browser.job.v2");
+    assert.equal(jobStartPayload?.job?.schema_version, "browser67.browser-job.v3");
     assert.equal(jobStartPayload?.job?.durable, true);
     assert.equal(jobStartPayload?.job?.durability_reason, "run_backed_checkpoint");
     assert.equal(jobStartPayload?.job?.abort_supported, false);
@@ -214,7 +214,7 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
       `${jobId}.json`,
     );
     const persistedJob = JSON.parse(await readFile(jobStatePath, "utf8"));
-    assert.equal(persistedJob.schema_version, "tmwd.browser.job.v2");
+    assert.equal(persistedJob.schema_version, "browser67.browser-job.v3");
     assert.equal(persistedJob.status, "failed");
     assert.equal(persistedJob.durable, true);
 

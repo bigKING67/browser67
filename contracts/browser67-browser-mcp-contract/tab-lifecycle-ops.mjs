@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import {
   assertTextJsonContent,
   firstJsonContent,
+  firstOutcomeContent,
 } from "./rpc-content.mjs";
 
 async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
@@ -83,6 +84,13 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   );
   assert.equal(tabCreateDryRunCall?.result?.isError, undefined);
   assertTextJsonContent(tabCreateDryRunCall.result, "browser_tab_lifecycle create dry-run result");
+  const tabCreateDryRunOutcome = firstOutcomeContent(tabCreateDryRunCall.result);
+  assert.equal(tabCreateDryRunOutcome?.schema, "browser67.tool-outcome.v3");
+  assert.equal(tabCreateDryRunOutcome?.ok, true);
+  assert.equal(tabCreateDryRunOutcome?.status, "completed");
+  assert.equal(tabCreateDryRunOutcome?.meta?.tool, "browser_tab_lifecycle");
+  assert.equal(Array.isArray(tabCreateDryRunOutcome?.warnings), true);
+  assert.equal(Array.isArray(tabCreateDryRunOutcome?.artifacts), true);
   const tabCreateDryRunPayload = firstJsonContent(tabCreateDryRunCall.result);
   assert.equal(tabCreateDryRunPayload?.status, "success");
   assert.equal(tabCreateDryRunPayload?.created, false);
@@ -166,7 +174,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   );
   assert.equal(tabUnsupportedCall?.result?.isError, true);
   const tabUnsupportedPayload = firstJsonContent(tabUnsupportedCall.result);
-  assert.equal(tabUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+  assert.equal(tabUnsupportedPayload?.error_code, "INVALID_ARGUMENTS");
 
   const tabCloseMissingScopeCall = await rpc.call(
     "tools/call",
@@ -246,6 +254,149 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabFinalizeDryRunPayload?.cleanup_summary?.workspace_key, "contract-workspace");
   assert.equal(tabFinalizeDryRunPayload?.cleanup_summary?.remaining_unkept_count, 0);
   assert.match(tabFinalizeDryRunPayload?.delivery_summary ?? "", /browser67 cleanup: finalize_task workspace_key=contract-workspace/);
+
+  const adoptionNow = new Date().toISOString();
+  const adoptedRecord = {
+    tab_id: "user-adopted-contract-tab",
+    owner: "tmwd",
+    managed: true,
+    ownership_origin: "user_adopted",
+    close_on_finalize: false,
+    ownership_generation: "ownership-adopted-contract",
+    owning_runtime_id: "contract-runtime",
+    lease_id: "lease-adopted-contract",
+    lease_started_at: adoptionNow,
+    lease_renewed_at: adoptionNow,
+    lease_expires_at: new Date(Date.now() + 600_000).toISOString(),
+    management_policy: {
+      csp_override: "off",
+      dialog: "native",
+      badge: "managed",
+    },
+    suspended: false,
+    source: "contract",
+    workspace_key: "adoption-contract-workspace",
+    task_id: "adoption-contract-task",
+    reuse_key: "http://adopted.example/path",
+    url: "http://adopted.example/path",
+    title: "User adopted contract tab",
+    origin: "http://adopted.example",
+    path_scope: "/path",
+    keep: false,
+    dry_run: false,
+    status: "open",
+    created_at: adoptionNow,
+    updated_at: adoptionNow,
+    last_used_at: adoptionNow,
+  };
+  await writeFile(registryPath, `${JSON.stringify({
+    version: 2,
+    updated_at: adoptionNow,
+    managed_tabs: [adoptedRecord],
+  }, null, 2)}\n`);
+
+  const adoptedDryRunCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "finalize_task",
+        workspace_key: adoptedRecord.workspace_key,
+        task_id: adoptedRecord.task_id,
+        prune_stale: false,
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(adoptedDryRunCall?.result?.isError, undefined);
+  const adoptedDryRunPayload = firstJsonContent(adoptedDryRunCall.result);
+  assert.equal(adoptedDryRunPayload?.release_adopted?.length, 1);
+  assert.equal(adoptedDryRunPayload?.release_adopted?.[0]?.would_release, true);
+  assert.equal(adoptedDryRunPayload?.release_adopted?.[0]?.closed, false);
+  assert.equal(adoptedDryRunPayload?.finalizer_policy?.closes_user_adopted_tabs, false);
+
+  const adoptedCloseUnconfirmedCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "close_adopted",
+        tab_id: adoptedRecord.tab_id,
+        workspace_key: adoptedRecord.workspace_key,
+        task_id: adoptedRecord.task_id,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(adoptedCloseUnconfirmedCall?.result?.isError, true);
+  assert.equal(
+    firstJsonContent(adoptedCloseUnconfirmedCall.result)?.error_code,
+    "ADOPTED_CLOSE_NOT_CONFIRMED",
+  );
+
+  const crossScopeCloseInspectCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "inspect_close_adopted",
+        tab_id: adoptedRecord.tab_id,
+        workspace_key: "another-workspace",
+        task_id: adoptedRecord.task_id,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(crossScopeCloseInspectCall?.result?.isError, true);
+  assert.equal(
+    firstJsonContent(crossScopeCloseInspectCall.result)?.error_code,
+    "TAB_OWNED_BY_OTHER_SCOPE",
+  );
+
+  const adoptedCloseInspectCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "inspect_close_adopted",
+        tab_id: adoptedRecord.tab_id,
+        workspace_key: adoptedRecord.workspace_key,
+        task_id: adoptedRecord.task_id,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(adoptedCloseInspectCall?.result?.isError, undefined);
+  const adoptedCloseInspectPayload = firstJsonContent(adoptedCloseInspectCall.result);
+  assert.equal(typeof adoptedCloseInspectPayload?.close_token, "string");
+  assert.equal(adoptedCloseInspectPayload?.requires_user_confirmation, true);
+
+  const adoptedFinalizeCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "finalize_task",
+        workspace_key: adoptedRecord.workspace_key,
+        task_id: adoptedRecord.task_id,
+        prune_stale: false,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(adoptedFinalizeCall?.result?.isError, undefined);
+  const adoptedFinalizePayload = firstJsonContent(adoptedFinalizeCall.result);
+  assert.equal(adoptedFinalizePayload?.release_adopted?.length, 1);
+  assert.equal(adoptedFinalizePayload?.release_adopted?.[0]?.released, true);
+  assert.equal(adoptedFinalizePayload?.release_adopted?.[0]?.closed, false);
+  assert.equal(adoptedFinalizePayload?.remaining?.unkept_count, 0);
+
+  const registryAfterAdoptedFinalize = JSON.parse(await readFile(registryPath, "utf8"));
+  assert.equal(
+    registryAfterAdoptedFinalize.managed_tabs.some((row) => row.tab_id === adoptedRecord.tab_id),
+    false,
+  );
 
   const tabListManagedCall = await rpc.call(
     "tools/call",

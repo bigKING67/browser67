@@ -7,6 +7,7 @@ import { createRpcClient } from "./browser67-browser-mcp-contract/rpc-client.mjs
 import {
   assertTextJsonContent,
   firstJsonContent,
+  firstOutcomeContent,
 } from "./browser67-browser-mcp-contract/rpc-content.mjs";
 import {
   startExecuteErrorTmwdLinkServer,
@@ -62,14 +63,25 @@ function parseArgs(argv) {
   return parsed;
 }
 
+async function runContractCase(label, callback) {
+  try {
+    return await callback();
+  } catch (error) {
+    if (error instanceof Error) {
+      error.message = `[${label}] ${error.message}`;
+    }
+    throw error;
+  }
+}
+
 async function run() {
   const cli = parseArgs(process.argv.slice(2));
-  await assertNativeCapabilitySurface();
-  await assertNativeLiveProofGateContract();
-  await assertOptionalLiveProofContract();
-  await assertPhysicalLiveGateContract();
-  await assertReadinessLjqCtrlProbeContract();
-  await assertManagedTabCleanupBaselineContract();
+  await runContractCase("native-capability-surface", assertNativeCapabilitySurface);
+  await runContractCase("native-live-proof-gate", assertNativeLiveProofGateContract);
+  await runContractCase("optional-live-proofs", assertOptionalLiveProofContract);
+  await runContractCase("physical-live-gate", assertPhysicalLiveGateContract);
+  await runContractCase("readiness-ljqctrl", assertReadinessLjqCtrlProbeContract);
+  await runContractCase("managed-tab-cleanup-baseline", assertManagedTabCleanupBaselineContract);
 
   const previousTabRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
   const previousLoginProfileDir = process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR;
@@ -144,7 +156,7 @@ async function run() {
     assert.equal(init.result.serverInfo.name, "browser67-tmwd-browser");
     rpc.notify("notifications/initialized", {});
 
-    await assertToolSurface({ rpc, timeoutMs: cli.timeout_ms });
+    await runContractCase("tool-surface", () => assertToolSurface({ rpc, timeoutMs: cli.timeout_ms }));
 
     const missingScriptCall = await rpc.call(
       "tools/call",
@@ -159,56 +171,66 @@ async function run() {
     );
     assert.equal(missingScriptCall?.result?.isError, true);
     assertTextJsonContent(missingScriptCall.result, "browser_execute_js missing script error");
+    const missingScriptOutcome = firstOutcomeContent(missingScriptCall.result);
+    assert.equal(missingScriptOutcome?.schema, "browser67.tool-outcome.v3");
+    assert.equal(missingScriptOutcome?.ok, false);
+    assert.equal(missingScriptOutcome?.status, "failed");
+    assert.equal(missingScriptOutcome?.error?.code, "INVALID_ARGUMENT");
+    assert.equal(missingScriptOutcome?.error?.retryable, false);
+    assert.equal(missingScriptOutcome?.meta?.tool, "browser_execute_js");
+    assert.equal(Array.isArray(missingScriptOutcome?.warnings), true);
+    assert.equal(Array.isArray(missingScriptOutcome?.artifacts), true);
     const missingScriptPayload = firstJsonContent(missingScriptCall.result);
     assert.equal(missingScriptPayload?.error_code, "INVALID_ARGUMENT");
     assert.equal(missingScriptPayload?.retryable, false);
 
-    const nativeInputSummary = await assertNativeInputOpsContract({
+    const nativeInputSummary = await runContractCase("native-input-ops", () => assertNativeInputOpsContract({
       rpc,
       timeoutMs: cli.timeout_ms,
-    });
+    }));
 
-    const ioOpsSummary = await assertFileDownloadClipboardOpsContract({
+    const ioOpsSummary = await runContractCase("file-download-clipboard-ops", () => assertFileDownloadClipboardOpsContract({
       rpc,
       timeoutMs: cli.timeout_ms,
-    });
+    }));
 
-    const tabLifecycleSummary = await assertTabLifecycleOpsContract({
+    const tabLifecycleSummary = await runContractCase("tab-lifecycle-ops", () => assertTabLifecycleOpsContract({
       registryPath: tmpTabRegistryPath,
       rpc,
       timeoutMs: cli.timeout_ms,
-    });
+    }));
 
-    await assertAuthOpsContract({
+    await runContractCase("auth-ops", () => assertAuthOpsContract({
       rpc,
       timeoutMs: cli.timeout_ms,
       tmpLoginProfileDir,
       tmpTooManyLoginProfileDir,
-    });
+    }));
 
-    const runWaitHealthSummary = await assertRunWaitHealthOpsContract({
+    const runWaitHealthSummary = await runContractCase("run-wait-health-ops", () => assertRunWaitHealthOpsContract({
       rpc,
       timeoutMs: cli.timeout_ms,
       runRoot: tmpRunRoot,
-    });
+    }));
 
-    const screenshotSummary = await assertScreenshotOpsContract({
+    const screenshotSummary = await runContractCase("screenshot-ops", () => assertScreenshotOpsContract({
       rpc,
       timeoutMs: cli.timeout_ms,
-    });
+    }));
 
-    const evidenceBundleSummary = await assertEvidenceBundleOpsContract({
+    const evidenceBundleSummary = await runContractCase("evidence-bundle-ops", () => assertEvidenceBundleOpsContract({
       rpc,
       timeoutMs: cli.timeout_ms,
-    });
+    }));
 
-    const fallbackSummary = await assertExecuteJsFallbackPolicy({
+    const fallbackSummary = await runContractCase("execute-js-fallback-policy", () => assertExecuteJsFallbackPolicy({
       rpc,
       timeoutMs: cli.timeout_ms,
       wsEndpoint: cli.ws_endpoint,
       hangingLinkEndpoint: hangingTmwdLinkServer.endpoint,
       executeErrorLinkEndpoint: executeErrorTmwdLinkServer.endpoint,
-    });
+      registryPath: tmpTabRegistryPath,
+    }));
 
     process.stdout.write(
       `${JSON.stringify({

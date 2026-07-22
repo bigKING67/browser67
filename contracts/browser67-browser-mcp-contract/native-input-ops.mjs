@@ -157,7 +157,11 @@ async function assertNativeInputOpsContract({ rpc, timeoutMs }) {
   assert.equal(nativeUnsupportedCall?.result?.isError, true);
   const nativeUnsupportedPayload = firstJsonContent(nativeUnsupportedCall.result);
   assert.equal(nativeUnsupportedPayload?.tool, "browser_native_input");
-  assert.equal(nativeUnsupportedPayload?.error_code, "ACTION_NOT_SUPPORTED");
+  assert.equal(nativeUnsupportedPayload?.error_code, "INVALID_ARGUMENTS");
+  assert.equal(
+    nativeUnsupportedPayload?.details?.validation_errors?.some((item) => item.keyword === "enum"),
+    true,
+  );
 
   return {
     nativeCapabilitiesPayload,

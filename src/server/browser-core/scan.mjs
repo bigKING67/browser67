@@ -1,10 +1,13 @@
+import { clipContent } from "../../browser/content/output-limits.mjs";
 import {
-  applyMainOnlyGuardrail,
-  clipContent,
-  normalizeMaxChars,
-} from "../../common.mjs";
+  normalizeMainOnlyMinChars,
+  normalizeMainOnlyMinCoverage,
+} from "../../browser/content/main-only-policy.mjs";
+import { normalizeMaxChars } from "../../runtime/config/limits.mjs";
 import {
+  buildGuardedMainContentExpression,
   buildScanContentExpression,
+  cdpReadGuardedMainContent,
   cdpReadPageContent,
 } from "../../cdp-runtime.mjs";
 import {
@@ -49,12 +52,18 @@ async function handleBrowserScan(args) {
   const maxChars = normalizeMaxChars(args?.max_chars);
   let mainOnlyGuardrail;
   let content = "";
+  const guardrailOptions = {
+    fallback_to_full: args?.main_only_fallback_to_full !== false,
+    min_chars: normalizeMainOnlyMinChars(args?.main_only_min_chars),
+    min_coverage: normalizeMainOnlyMinCoverage(args?.main_only_min_coverage),
+  };
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
     const readTmwdContent = async (readTextOnly, readMainOnly) => {
       const tmwdScript = `return ${buildScanContentExpression(readTextOnly, readMainOnly)};`;
       const tmwdExec = await executeTmwdJs(
         {
           ...args,
+          no_monitor: true,
           session_id: selected.id,
         },
         resolved,
@@ -63,10 +72,17 @@ async function handleBrowserScan(args) {
       return String(tmwdExec.value ?? "");
     };
     if (textOnly && mainOnly) {
-      const mainContent = await readTmwdContent(true, true);
-      const fullContent = await readTmwdContent(true, false);
-      const guarded = applyMainOnlyGuardrail(mainContent, fullContent, args);
-      content = guarded.content;
+      const tmwdExec = await executeTmwdJs(
+        {
+          ...args,
+          no_monitor: true,
+          session_id: selected.id,
+        },
+        resolved,
+        `return ${buildGuardedMainContentExpression(guardrailOptions)};`,
+      );
+      const guarded = tmwdExec.value && typeof tmwdExec.value === "object" ? tmwdExec.value : {};
+      content = String(guarded.content ?? "");
       mainOnlyGuardrail = guarded.metadata;
     } else {
       content = await readTmwdContent(textOnly, mainOnly);
@@ -80,10 +96,14 @@ async function handleBrowserScan(args) {
       return String(contentResult.result.content ?? "");
     };
     if (textOnly && mainOnly) {
-      const mainContent = await readCdpContent(true, true);
-      const fullContent = await readCdpContent(true, false);
-      const guarded = applyMainOnlyGuardrail(mainContent, fullContent, args);
-      content = guarded.content;
+      const guardedResult = await cdpReadGuardedMainContent({
+        ...args,
+        switch_tab_id: selected.id,
+      }, guardrailOptions);
+      const guarded = guardedResult.result.value && typeof guardedResult.result.value === "object"
+        ? guardedResult.result.value
+        : {};
+      content = String(guarded.content ?? "");
       mainOnlyGuardrail = guarded.metadata;
     } else {
       content = await readCdpContent(textOnly, mainOnly);

@@ -31,6 +31,7 @@ import {
   scopedManagedRecords,
   summarizeFinalizeRemainder,
 } from "./tab-lifecycle-scope.mjs";
+import { releaseAdopted } from "../tab-workspace/adoption.mjs";
 
 function normalizeCloseVerifyTimeout(args = {}) {
   const raw = Number(args.close_verify_timeout_ms ?? args.closeVerifyTimeoutMs ?? 1_500);
@@ -100,7 +101,7 @@ async function closeOneManagedTab(args, record, preferred = null) {
       reason: "dry_run",
     };
   }
-  const resolved = preferred ?? await resolvePreferredBrowserContext(args ?? {});
+  const resolved = preferred ?? await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
   if (resolved.transport === "tmwd_ws" || resolved.transport === "tmwd_link") {
     const result = await executeTmwdCommandWithPreferred(args, resolved, {
       cmd: "tabs",
@@ -164,12 +165,12 @@ async function closeUnkeptManagedTabs(args) {
   const candidates = (await listManagedTabRecords(closeScope.all
     ? {}
     : { task_id: closeScope.taskId, workspace_key: closeScope.workspaceKey }))
-    .filter((record) => record.keep !== true);
+    .filter((record) => record.keep !== true && record.close_on_finalize === true);
   const closed = [];
   const errors = [];
   const preferred = args?.dry_run === true || candidates.length === 0
     ? null
-    : await resolvePreferredBrowserContext(args ?? {});
+    : await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
   const outcomes = await Promise.all(candidates.map(async (record) => {
     try {
       const result = await closeOneManagedTab(args, record, preferred);
@@ -243,6 +244,30 @@ async function finalizeManagedTask(args = {}) {
       error: String(error?.message ?? error),
     };
   }
+  const adoptedRecords = (await scopedManagedRecords(closeScope))
+    .filter((record) => record.ownership_origin === "user_adopted");
+  const releasedAdopted = [];
+  for (const record of adoptedRecords) {
+    if (dryRun) {
+      releasedAdopted.push({
+        status: "success",
+        action: "release_adopted",
+        released: false,
+        would_release: true,
+        closed: false,
+        tab_id: record.tab_id,
+      });
+    } else {
+      releasedAdopted.push(await releaseAdopted({
+        tab_id: record.tab_id,
+        workspace_key: record.workspace_key,
+        task_id: record.task_id,
+      }, {
+        scope: { workspace_key: record.workspace_key, task_id: record.task_id },
+        ignore_lease: true,
+      }));
+    }
+  }
   const remainingRecords = await scopedManagedRecords(closeScope);
   const remaining = summarizeFinalizeRemainder(remainingRecords, args);
   const cleanupSummary = buildFinalizeCleanupSummary({
@@ -264,11 +289,14 @@ async function finalizeManagedTask(args = {}) {
       closes_keep_false: true,
       preserves_keep_true: true,
       ignores_unmanaged_user_tabs: true,
+      releases_user_adopted_tabs: true,
+      closes_user_adopted_tabs: false,
       prunes_stale_registry_records: shouldPruneStale,
     },
     close_scope: closeScope,
     prune_stale: pruneStale,
     close_unkept: closeUnkept,
+    release_adopted: releasedAdopted,
     remaining,
     cleanup_summary: cleanupSummary,
     delivery_summary: formatFinalizeDeliverySummary(cleanupSummary, {
@@ -297,7 +325,7 @@ async function pruneStaleManagedTabs(args = {}) {
       ...sessionPointers(),
     };
   }
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
   const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
   const liveById = liveTabMap(liveTabs);
   const livenessRows = await Promise.all(records.map(async (record) => ({
@@ -348,6 +376,7 @@ async function pruneStaleManagedTabs(args = {}) {
 }
 
 export {
+  closeOneManagedTab,
   closeUnkeptManagedTabs,
   finalizeManagedTask,
   pruneStaleManagedTabs,

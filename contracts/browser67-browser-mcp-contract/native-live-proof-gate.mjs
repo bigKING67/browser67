@@ -17,7 +17,7 @@ import {
   runNativeLiveProofGate,
 } from "../../scripts/native-live-proof-gate.mjs";
 import {
-  OPTIONAL_LIVE_PROOF_REQUIREMENTS,
+  ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   validateProof,
 } from "../../scripts/optional-live-proof-audit.mjs";
 
@@ -79,7 +79,7 @@ function successfulPhysicalPayload(platform = "linux", overrides = {}) {
 }
 
 function requirement(id) {
-  const found = OPTIONAL_LIVE_PROOF_REQUIREMENTS.find((item) => item.id === id);
+  const found = ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.find((item) => item.id === id);
   assert.ok(found, `missing optional live proof requirement: ${id}`);
   return found;
 }

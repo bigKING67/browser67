@@ -58,6 +58,37 @@ async function writeLocalCaptchaPhysicalProof(dir) {
   return file;
 }
 
+async function writeWindowsNativeProof(dir) {
+  const file = path.join(dir, "native-live-win32.json");
+  await fs.writeFile(
+    file,
+    `${JSON.stringify({
+      type: "native_live",
+      ok: true,
+      platform: "win32",
+      provider_id: "native-os",
+      actions: ["get_window_rect", "click", "drag"],
+      checked_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+      command: '$env:TMWD_NATIVE_LIVE_PHYSICAL="1"; $env:TMWD_NATIVE_LIVE_CONFIRM="1"; npm run proof:native-live -- --write',
+      evidence: {
+        fixture: "local browser67-owned managed tab",
+        managed_tab_only: true,
+        fullscreen_screenshot: false,
+        secrets_redacted: true,
+        window_rect_verified: true,
+        window_rect_dimensions_positive: true,
+        drag_completed: true,
+        click_completed: true,
+        visible_completion_verified: true,
+        browser_private_state_access: false,
+        finalized_managed_tabs_closed: true,
+      },
+    }, null, 2)}\n`,
+  );
+  return file;
+}
+
 function runReadinessAudit(env = {}) {
   const result = spawnSync("node", ["scripts/readiness-audit.mjs", "--json"], {
     cwd: process.cwd(),
@@ -151,13 +182,15 @@ async function assertReadinessLjqCtrlProbeContract() {
     );
     const crossOsGap = findGap(defaultAudit, "cross_os_native_live_not_proven");
     assert.equal(crossOsGap?.proof_plan?.command, "npm run plan:optional-live-proofs -- --json");
-    assert.equal(crossOsGap?.proof_plan?.missing.includes("native-live-linux"), true);
+    assert.equal(crossOsGap?.proof_plan?.missing.includes("native-live-win32"), true);
+    assert.equal(crossOsGap?.proof_plan?.missing.includes("native-live-linux"), false);
     const idpGap = findGap(defaultAudit, "complex_idp_optional_live_not_proven");
     assert.equal(idpGap?.proof_plan?.missing.includes("idp-oauth-popup"), true);
 
     const proofDir = path.join(tmpDir, "proofs");
     await fs.mkdir(proofDir, { recursive: true });
     await writeLocalCaptchaPhysicalProof(proofDir);
+    await writeWindowsNativeProof(proofDir);
     const provenPhysicalAudit = runReadinessAudit({
       TMWD_OPTIONAL_PROOF_DIR: proofDir,
       TMWD_CAPTCHA_ASSIST_PHYSICAL: "",
@@ -172,6 +205,7 @@ async function assertReadinessLjqCtrlProbeContract() {
     assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_not_executed"), undefined);
     assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_blocked_by_native_pointer"), undefined);
     assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_proof_missing"), undefined);
+    assert.equal(findGap(provenPhysicalAudit, "cross_os_native_live_not_proven"), undefined);
 
     const emptyProofDir = path.join(tmpDir, "empty-proofs");
     await fs.mkdir(emptyProofDir, { recursive: true });

@@ -31,6 +31,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(executeJsTool?.inputSchema?.properties?.max_return_chars?.maximum, 300_000);
   assert.equal(executeJsTool?.inputSchema?.properties?.new_tab_wait_ms?.minimum, 0);
   assert.equal(executeJsTool?.inputSchema?.properties?.new_tab_wait_ms?.maximum, 5_000);
+  assert.equal(Object.hasOwn(executeJsTool?.inputSchema?.properties ?? {}, "code"), false);
 
   const waitTool = tools.find((entry) => entry?.name === "browser_wait");
   assert.equal(waitTool?.inputSchema?.properties?.type?.enum?.includes("selector"), true);
@@ -51,6 +52,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("cancel"), true);
   assert.equal(jobOpsTool?.inputSchema?.properties?.output_mode?.default, "compact");
   assert.equal(jobOpsTool?.inputSchema?.properties?.new_tab_wait_ms?.maximum, 5_000);
+  assert.equal(Object.hasOwn(jobOpsTool?.inputSchema?.properties ?? {}, "code"), false);
 
   assert.equal(
     executeJsTool?.inputSchema?.properties?.native_auto_fallback?.type,
@@ -191,6 +193,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
     ["Google Chrome", "Microsoft Edge"],
   );
   assert.equal(authTool?.inputSchema?.properties?.tmwd_mode?.default, "tmwd");
+  assert.equal(authTool?.inputSchema?.properties?.cdp_endpoint, undefined);
 
   return { tools, names };
 }
