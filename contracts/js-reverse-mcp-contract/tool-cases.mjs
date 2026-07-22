@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 
 import {
   assertTextJsonContent,
-  firstJsonContent,
 } from "../browser67-browser-mcp-contract/rpc-content.mjs";
+import {
+  jsReverseData,
+  jsReverseOutcome,
+} from "./outcome.mjs";
 
 async function runToolCases(rpc, cli) {
   const understandCall = await rpc.call(
@@ -18,7 +21,7 @@ async function runToolCases(rpc, cli) {
   );
   assert.equal(understandCall?.result?.isError, undefined);
   assertTextJsonContent(understandCall.result, "js-reverse understand_code result");
-  const understandPayload = firstJsonContent(understandCall.result);
+  const understandPayload = jsReverseData(understandCall.result, "understand_code");
   assert.equal(understandPayload?.ok, true);
   assert.equal(understandPayload?.suspicious_keywords?.includes("sign"), true);
 
@@ -32,7 +35,7 @@ async function runToolCases(rpc, cli) {
     },
     cli.timeout_ms,
   );
-  const cryptoPayload = firstJsonContent(cryptoCall.result);
+  const cryptoPayload = jsReverseData(cryptoCall.result, "detect_crypto");
   assert.equal(cryptoPayload?.ok, true);
   assert.equal(cryptoPayload?.detected?.includes("md5"), true);
   assert.equal(cryptoPayload?.detected?.includes("sha"), true);
@@ -49,7 +52,7 @@ async function runToolCases(rpc, cli) {
     },
     cli.timeout_ms,
   );
-  const hookPayload = firstJsonContent(hookCall.result);
+  const hookPayload = jsReverseData(hookCall.result, "create_hook");
   assert.equal(hookPayload?.ok, true);
   assert.equal(hookPayload?.hook?.id, "contract_fetch_hook");
 
@@ -61,7 +64,7 @@ async function runToolCases(rpc, cli) {
     },
     cli.timeout_ms,
   );
-  const unsupportedPayload = firstJsonContent(unsupportedCall.result);
+  const unsupportedPayload = jsReverseData(unsupportedCall.result, "set_breakpoint");
   assertTextJsonContent(unsupportedCall.result, "js-reverse unsupported debugger result");
   assert.equal(unsupportedPayload?.status, "not_supported");
   assert.equal(unsupportedPayload?.persistent_debugger_supported, false);
@@ -86,7 +89,7 @@ async function runToolCases(rpc, cli) {
     },
     cli.timeout_ms,
   );
-  const evidencePayload = firstJsonContent(evidenceCall.result);
+  const evidencePayload = jsReverseData(evidenceCall.result, "record_reverse_evidence");
   assert.equal(evidencePayload?.ok, true);
   assert.equal(typeof evidencePayload?.evidence_id, "string");
 
@@ -100,7 +103,7 @@ async function runToolCases(rpc, cli) {
     },
     cli.timeout_ms,
   );
-  const reportPayload = firstJsonContent(reportCall.result);
+  const reportPayload = jsReverseData(reportCall.result, "export_session_report");
   assert.equal(reportPayload?.ok, true);
   const foundEvidence = reportPayload?.evidence?.find((entry) => entry.channel === "evidence-schema");
   assert.equal(foundEvidence?.schema_version, "evidence.v1");
@@ -121,11 +124,23 @@ async function runToolCases(rpc, cli) {
     },
     cli.timeout_ms,
   );
-  const bundlePayload = firstJsonContent(bundleCall.result);
+  const bundlePayload = jsReverseData(bundleCall.result, "export_evidence_bundle");
   assert.equal(bundlePayload?.ok, true);
   assert.equal(bundlePayload?.summary?.schema_version, "js-reverse-evidence-bundle.v1");
   assert.equal(bundlePayload?.summary?.selected_frame, "top");
   assert.equal(Array.isArray(bundlePayload?.files), true);
+
+  const invalidCall = await rpc.call(
+    "tools/call",
+    {
+      name: "understand_code",
+      arguments: { code: "1", unsupported_argument: true },
+    },
+    cli.timeout_ms,
+  );
+  const invalidOutcome = jsReverseOutcome(invalidCall.result, "invalid arguments");
+  assert.equal(invalidOutcome.ok, false);
+  assert.equal(invalidOutcome.error.code, "INVALID_ARGUMENTS");
 }
 
 export {

@@ -1,9 +1,8 @@
-import { makeJsonTextContent } from "../mcp-result.mjs";
 import {
-  TOOL_SCHEMAS,
-  VERSION,
-} from "./tool-schemas.mjs";
-import { dispatchToolCall } from "./dispatch.mjs";
+  dispatchJsReverseTool,
+  listJsReverseTools,
+} from "../mcp/js-reverse/tool-registry.mjs";
+import { VERSION } from "./tool-schemas.mjs";
 
 function sendResponse(id, result) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
@@ -28,12 +27,7 @@ function handleRequest(request) {
     return;
   }
   if (method === "tools/list") {
-    const tools = Object.entries(TOOL_SCHEMAS).map(([name, schema]) => ({
-      name,
-      description: schema.description,
-      inputSchema: schema.inputSchema,
-    }));
-    sendResponse(id, { tools });
+    sendResponse(id, { tools: listJsReverseTools() });
     return;
   }
   if (method === "tools/call") {
@@ -43,20 +37,9 @@ function handleRequest(request) {
       sendError(id ?? null, -32602, "tools/call requires string params.name");
       return;
     }
-    dispatchToolCall(toolName, args)
+    dispatchJsReverseTool(toolName, args)
       .then((result) => sendResponse(id, result))
-      .catch((error) => {
-        sendResponse(id, {
-          isError: true,
-          content: [
-            makeJsonTextContent({
-              ok: false,
-              tool: toolName,
-              error: String(error?.message ?? error),
-            }),
-          ],
-        });
-      });
+      .catch((error) => sendError(id ?? null, -32603, String(error?.message ?? error)));
     return;
   }
   if (method === "notifications/initialized") return;

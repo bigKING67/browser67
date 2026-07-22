@@ -1,4 +1,3 @@
-import { makeResult } from "../mcp-result.mjs";
 import {
   handleAnalyzeTarget,
   handleCollectCode,
@@ -26,6 +25,7 @@ import {
   handleSearchStorage,
   handleWatchStorageChanges,
 } from "./artifacts.mjs";
+import { handleListFrames } from "./frames.mjs";
 import {
   handleBreakOnXhr,
   handleCreateHook,
@@ -40,7 +40,6 @@ import {
   handleUnhookFunction,
   unsupportedDebugger,
 } from "./hooks.mjs";
-import { handleListFrames } from "./frames.mjs";
 import {
   handleCheckBrowserHealth,
   handleFinalizeTask,
@@ -64,66 +63,81 @@ import {
   handleSearchInScripts,
 } from "./scripts.mjs";
 
-async function dispatchToolCall(name, args = {}) {
-  if (name === "check_browser_health") return makeResult(await handleCheckBrowserHealth(args));
-  if (name === "list_pages") return makeResult(await handleListPages(args));
-  if (name === "select_page") return makeResult(await handleSelectPage(args));
-  if (name === "new_page") return makeResult(await handleNewPage(args));
-  if (name === "finalize_task") return makeResult(await handleFinalizeTask(args));
-  if (name === "navigate_page") return makeResult(await handleNavigatePage(args));
-  if (name === "list_scripts") return makeResult(await handleListScripts(args));
-  if (name === "get_script_source") return makeResult(await handleGetScriptSource(args));
-  if (name === "search_in_scripts") return makeResult(await handleSearchInScripts(args));
-  if (name === "find_in_script") return makeResult(await handleFindInScript(args));
-  if (name === "list_network_requests") return makeResult(await handleListNetworkRequests(args));
-  if (name === "get_network_request") return makeResult(await handleGetNetworkRequest(args));
-  if (name === "get_request_initiator") return makeResult(await handleGetRequestInitiator(args));
-  if (name === "list_websocket_connections") return makeResult(await handleWebSockets(args));
-  if (name === "get_websocket_messages") return makeResult(await handleGetWebSocketMessages(args));
-  if (name === "get_dom_structure") return makeResult(await handleGetDomStructure(args));
-  if (name === "list_frames") return makeResult(await handleListFrames(args));
-  if (name === "detect_microfrontends") return makeResult(await handleDetectMicrofrontends(args));
-  if (name === "create_hook") return makeResult(await handleCreateHook(args));
-  if (name === "inject_hook") return makeResult(await handleInjectHook(args));
-  if (name === "get_hook_data") return makeResult(await handleGetHookData(args));
-  if (name === "remove_hook") return makeResult(await handleRemoveHook(args));
-  if (name === "list_hooks") return makeResult(handleListHooks(args));
-  if (name === "hook_function") return makeResult(await handleHookFunction(args));
-  if (name === "unhook_function") return makeResult(await handleUnhookFunction(args));
-  if (name === "monitor_events") return makeResult(await handleMonitorEvents(args));
-  if (name === "stop_monitor") return makeResult(await handleStopMonitor(args));
-  if (name === "trace_function") return makeResult(await handleHookFunction(args));
-  if (name === "inject_preload_script") return makeResult(await handleInjectPreloadScript(args));
-  if (["set_breakpoint", "set_breakpoint_on_text", "resume", "pause", "step_over", "step_into", "step_out", "evaluate_on_callframe"].includes(name)) return makeResult(unsupportedDebugger(name));
-  if (name === "break_on_xhr") return makeResult(await handleBreakOnXhr(args));
-  if (name === "analyze_target") return makeResult(await handleAnalyzeTarget(args));
-  if (name === "understand_code") return makeResult(handleUnderstandCode(args));
-  if (name === "deobfuscate_code") return makeResult(handleDeobfuscateCode(args));
-  if (name === "detect_crypto") return makeResult(handleDetectCrypto(args));
-  if (name === "summarize_code") return makeResult(handleSummarizeCode(args));
-  if (name === "risk_panel") return makeResult(handleRiskPanel(args));
-  if (name === "record_reverse_evidence") return makeResult(await handleRecordReverseEvidence(args));
-  if (name === "export_session_report") return makeResult(await handleExportSessionReport(args));
-  if (name === "export_evidence_bundle") return makeResult(await handleExportEvidenceBundle(args));
-  if (name === "export_rebuild_bundle") return makeResult(await handleExportRebuildBundle(args));
-  if (name === "diff_env_requirements") return makeResult(handleDiffEnvRequirements(args));
-  if (name === "collect_code") return makeResult(await handleCollectCode(args));
-  if (name === "collection_diff") return makeResult(handleCollectionDiff(args));
-  if (name === "inject_stealth") return makeResult(await handleInjectStealth(args));
-  if (name === "set_user_agent") return makeResult(await handleSetUserAgent(args));
-  if (name === "save_session_state") return makeResult(await handleSaveSessionState(args));
-  if (name === "restore_session_state") return makeResult(await handleRestoreSessionState(args));
-  if (name === "get_storage") return makeResult(await handleGetStorage(args));
-  if (name === "get_local_storage") return makeResult(await handleGetLocalStorage(args));
-  if (name === "get_session_storage") return makeResult(await handleGetSessionStorage(args));
-  if (name === "search_storage") return makeResult(await handleSearchStorage(args));
-  if (name === "watch_storage_changes") return makeResult(await handleWatchStorageChanges(args));
-  return {
-    isError: true,
-    content: [{ type: "text", text: `unknown tool: ${String(name)}` }],
-  };
+const JS_REVERSE_HANDLERS = {
+  check_browser_health: handleCheckBrowserHealth,
+  list_pages: handleListPages,
+  select_page: handleSelectPage,
+  new_page: handleNewPage,
+  finalize_task: handleFinalizeTask,
+  navigate_page: handleNavigatePage,
+  list_scripts: handleListScripts,
+  get_script_source: handleGetScriptSource,
+  search_in_scripts: handleSearchInScripts,
+  find_in_script: handleFindInScript,
+  list_network_requests: handleListNetworkRequests,
+  get_network_request: handleGetNetworkRequest,
+  get_request_initiator: handleGetRequestInitiator,
+  list_websocket_connections: handleWebSockets,
+  get_websocket_messages: handleGetWebSocketMessages,
+  get_dom_structure: handleGetDomStructure,
+  list_frames: handleListFrames,
+  detect_microfrontends: handleDetectMicrofrontends,
+  create_hook: handleCreateHook,
+  inject_hook: handleInjectHook,
+  get_hook_data: handleGetHookData,
+  remove_hook: handleRemoveHook,
+  list_hooks: handleListHooks,
+  hook_function: handleHookFunction,
+  unhook_function: handleUnhookFunction,
+  monitor_events: handleMonitorEvents,
+  stop_monitor: handleStopMonitor,
+  trace_function: handleHookFunction,
+  inject_preload_script: handleInjectPreloadScript,
+  break_on_xhr: handleBreakOnXhr,
+  analyze_target: handleAnalyzeTarget,
+  understand_code: handleUnderstandCode,
+  deobfuscate_code: handleDeobfuscateCode,
+  detect_crypto: handleDetectCrypto,
+  summarize_code: handleSummarizeCode,
+  risk_panel: handleRiskPanel,
+  record_reverse_evidence: handleRecordReverseEvidence,
+  export_session_report: handleExportSessionReport,
+  export_evidence_bundle: handleExportEvidenceBundle,
+  export_rebuild_bundle: handleExportRebuildBundle,
+  diff_env_requirements: handleDiffEnvRequirements,
+  collect_code: handleCollectCode,
+  collection_diff: handleCollectionDiff,
+  inject_stealth: handleInjectStealth,
+  set_user_agent: handleSetUserAgent,
+  save_session_state: handleSaveSessionState,
+  restore_session_state: handleRestoreSessionState,
+  get_storage: handleGetStorage,
+  get_local_storage: handleGetLocalStorage,
+  get_session_storage: handleGetSessionStorage,
+  search_storage: handleSearchStorage,
+  watch_storage_changes: handleWatchStorageChanges,
+};
+
+for (const name of [
+  "set_breakpoint",
+  "set_breakpoint_on_text",
+  "resume",
+  "pause",
+  "step_over",
+  "step_into",
+  "step_out",
+  "evaluate_on_callframe",
+]) {
+  JS_REVERSE_HANDLERS[name] = () => unsupportedDebugger(name);
+}
+
+async function handleJsReverseTool(name, args = {}) {
+  const handler = JS_REVERSE_HANDLERS[name];
+  if (typeof handler !== "function") throw new Error(`unknown tool: ${String(name)}`);
+  return handler(args);
 }
 
 export {
-  dispatchToolCall,
+  JS_REVERSE_HANDLERS,
+  handleJsReverseTool,
 };

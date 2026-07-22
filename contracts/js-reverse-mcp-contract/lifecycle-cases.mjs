@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 
 import {
   assertTextJsonContent,
-  firstJsonContent,
 } from "../browser67-browser-mcp-contract/rpc-content.mjs";
+import { jsReverseData } from "./outcome.mjs";
 
 async function runLifecycleCases(rpc, cli) {
   const newPageDryRunCall = await rpc.call(
@@ -20,7 +20,7 @@ async function runLifecycleCases(rpc, cli) {
   );
   assert.equal(newPageDryRunCall?.result?.isError, undefined);
   assertTextJsonContent(newPageDryRunCall.result, "js-reverse new_page dry-run result");
-  const newPageDryRunPayload = firstJsonContent(newPageDryRunCall.result);
+  const newPageDryRunPayload = jsReverseData(newPageDryRunCall.result, "new_page dry-run");
   assert.equal(newPageDryRunPayload?.ok, true);
   assert.equal(newPageDryRunPayload?.owner, "tmwd");
   assert.equal(newPageDryRunPayload?.created, false);
@@ -40,7 +40,7 @@ async function runLifecycleCases(rpc, cli) {
     cli.timeout_ms,
   );
   assert.equal(newPageReuseDryRunCall?.result?.isError, undefined);
-  const newPageReuseDryRunPayload = firstJsonContent(newPageReuseDryRunCall.result);
+  const newPageReuseDryRunPayload = jsReverseData(newPageReuseDryRunCall.result, "new_page reuse dry-run");
   assert.equal(newPageReuseDryRunPayload?.ok, true);
   assert.equal(newPageReuseDryRunPayload?.created, false);
   assert.equal(newPageReuseDryRunPayload?.reused, false);
@@ -62,7 +62,7 @@ async function runLifecycleCases(rpc, cli) {
     cli.timeout_ms,
   );
   assert.equal(finalizeMissingScopeCall?.result?.isError, undefined);
-  const finalizeMissingScopePayload = firstJsonContent(finalizeMissingScopeCall.result);
+  const finalizeMissingScopePayload = jsReverseData(finalizeMissingScopeCall.result, "finalize missing scope");
   assert.equal(finalizeMissingScopePayload?.ok, false);
   assert.match(finalizeMissingScopePayload?.error ?? "", /workspace_key or task_id/);
 
@@ -79,7 +79,7 @@ async function runLifecycleCases(rpc, cli) {
     cli.timeout_ms,
   );
   assert.equal(finalizeDryRunCall?.result?.isError, undefined);
-  const finalizeDryRunPayload = firstJsonContent(finalizeDryRunCall.result);
+  const finalizeDryRunPayload = jsReverseData(finalizeDryRunCall.result, "finalize dry-run");
   assert.equal(finalizeDryRunPayload?.ok, true);
   assert.equal(finalizeDryRunPayload?.action, "finalize_task");
   assert.equal(finalizeDryRunPayload?.dry_run, true);

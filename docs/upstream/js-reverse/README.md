@@ -39,9 +39,9 @@ These repositories are reference only:
 
 | Reference | Reviewed commit | Role |
 | --- | --- | --- |
-| `zhaoxuya520/reverse-skill` | `d34421c9491f1192ba801aa55d6917932041e006` | reverse/security/CTF skill router pack |
+| `zhaoxuya520/reverse-skill` | `b8ae07db073783597b11f60fa2e900e3f9b9163f` | reverse/security/CTF skill router pack |
 | `NoOne-hub/JSReverser-MCP` | `65e2e3cb70c10a79dfd1ba4410a2c876113e676c` | external JS reverse MCP reference candidate |
-| `zhizhuodemao/js-reverse-mcp` | `a850f3e6b81a5c566c06f41155f3607785445b90` | external JS reverse MCP reference candidate |
+| `zhizhuodemao/js-reverse-mcp` | `f45172a7b2a8d98daf29434e99baf35bc08bb959` | external JS reverse MCP reference candidate |
 
 Machine-readable details live in `references.json`.
 Per-reference absorption decisions live in `absorption-matrix.md`; keep it in

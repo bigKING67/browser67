@@ -21,9 +21,9 @@ async function resolveTmwd(args = {}) {
   return preferred;
 }
 
-async function pageEval(args, body, input = {}) {
+async function pageEval(args, body, input = {}, runtimeOptions = {}) {
   const callArgs = browserArgs(args);
-  const preferred = await resolveTmwd(callArgs);
+  const preferred = runtimeOptions.preferred ?? await resolveTmwd(callArgs);
   const code = `return await (async (input) => {\n${body}\n})(${JSON.stringify(input)});`;
   const result = await executeTmwdJsWithFallback(callArgs, preferred.context, code);
   return {

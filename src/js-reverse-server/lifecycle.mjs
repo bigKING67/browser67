@@ -13,8 +13,14 @@ import {
   updateManagedTab,
 } from "../tab-workspace.mjs";
 import {
+  assertManagedExecutionContext,
+  authorizeManagedExecutionNavigation,
+} from "../browser/execution/managed-context.mjs";
+import {
   bridgeCommand,
+  browserArgs,
   pageEval,
+  resolveTmwd,
 } from "./tmwd-adapter.mjs";
 import { handleFinalizeTask } from "./finalizer.mjs";
 
@@ -127,12 +133,26 @@ async function handleNewPage(args) {
     let record = reusable.record;
     let navigation;
     if (reusable.policy.navigate_reused && record.url !== reusable.policy.target.normalized_url) {
+      const navigationArgs = { ...args, session_id: record.tab_id, page_id: record.tab_id };
+      const preferred = await resolveTmwd(navigationArgs);
+      await assertManagedExecutionContext(preferred, browserArgs(navigationArgs));
+      const authorization = await authorizeManagedExecutionNavigation(
+        preferred,
+        browserArgs(navigationArgs),
+        "js_reverse_reuse_navigation",
+      );
       const nav = await pageEval(
-        { ...args, session_id: record.tab_id, page_id: record.tab_id },
+        navigationArgs,
         "if (location.href !== input.url) location.href = input.url; return { url: location.href, title: document.title };",
         { url },
+        { preferred },
       );
-      navigation = { requested_url: url, result: nav.value, transport: nav.transport };
+      navigation = {
+        requested_url: url,
+        result: nav.value,
+        transport: nav.transport,
+        authorization,
+      };
       record = await updateManagedTab(record.tab_id, {
         url,
         title: String(nav.value?.title ?? record.title ?? ""),
@@ -212,8 +232,28 @@ async function handleNavigatePage(args) {
   if (!url) {
     return { ok: false, error: "url is required" };
   }
-  const result = await pageEval(args, "location.href = input.url; return { url: location.href, title: document.title };", { url });
-  return { ok: true, transport: result.transport, page: result.page, result: result.value };
+  const preferred = await resolveTmwd(args);
+  const callArgs = browserArgs(args);
+  const management = await assertManagedExecutionContext(preferred, callArgs);
+  const authorization = await authorizeManagedExecutionNavigation(
+    preferred,
+    callArgs,
+    "js_reverse_navigate_page",
+  );
+  const result = await pageEval(
+    args,
+    "location.href = input.url; return { url: location.href, title: document.title };",
+    { url },
+    { preferred },
+  );
+  return {
+    ok: true,
+    transport: result.transport,
+    page: result.page,
+    result: result.value,
+    management,
+    navigation_authorization: authorization,
+  };
 }
 
 export {

@@ -1,4 +1,4 @@
-const VERSION = "0.1.0-tmwd-js-reverse";
+const VERSION = "0.3.0";
 
 const TOOL_DEFINITIONS = {
   check_browser_health: "Verify browser67-backed browser connectivity for JS reverse tasks.",
