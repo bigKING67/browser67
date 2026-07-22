@@ -39,6 +39,8 @@ function classifyBrowserErrorCode(message) {
   const normalized = String(message ?? "").toLowerCase();
   if (
     normalized.includes("tmwd ws connection failed")
+    || normalized.includes("tmwd ws error")
+    || normalized.includes("tmwd ws closed")
     || normalized.includes("no active extension websocket")
     || normalized.includes("tmwd ws is not connected")
     || normalized.includes("extension websocket closed")
@@ -54,7 +56,7 @@ function classifyBrowserErrorCode(message) {
   ) {
     return "NO_SESSION";
   }
-  if (normalized.includes("timeout")) {
+  if (normalized.includes("timeout") || normalized.includes("etimedout")) {
     return "TIMEOUT";
   }
   if (
@@ -73,6 +75,14 @@ function classifyBrowserErrorCode(message) {
     normalized.includes("tmwd context unavailable")
     || normalized.includes("no transport succeeded")
     || normalized.includes("transport unavailable")
+    || normalized.includes("econnrefused")
+    || normalized.includes("econnreset")
+    || normalized.includes("enetunreach")
+    || normalized.includes("ehostunreach")
+    || normalized.includes("enotfound")
+    || normalized.includes("eai_again")
+    || normalized.includes("socket hang up")
+    || normalized.includes("websocket was closed before the connection was established")
   ) {
     return "TRANSPORT_UNAVAILABLE";
   }

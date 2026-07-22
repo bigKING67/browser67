@@ -75,12 +75,12 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(toolCall?.result?.isError, true);
+  assert.equal(toolCall?.result?.isError, true, "forced transport failure returns an MCP error");
   assertTextJsonContent(toolCall.result, "browser_execute_js transport error");
   const errorPayload = firstJsonContent(toolCall.result);
   assert.equal(typeof errorPayload?.error_code, "string");
   assert.equal(typeof errorPayload?.retryable, "boolean");
-  assert.equal(Array.isArray(errorPayload?.transport_attempts), true);
+  assert.equal(Array.isArray(errorPayload?.transport_attempts), true, "transport attempts are exposed");
   assert.equal(errorPayload?.tool, "browser_execute_js");
   assert.equal(errorPayload?.native_auto_fallback, undefined);
   assert.equal(errorPayload?.native_input_hint, undefined);
@@ -102,7 +102,11 @@ async function assertExecuteJsFallbackPolicy({
     },
     timeoutMs,
   );
-  assert.equal(toolCallWithPolicyButNoAutoFallback?.result?.isError, true);
+  assert.equal(
+    toolCallWithPolicyButNoAutoFallback?.result?.isError,
+    true,
+    "policy alone does not enable native auto fallback",
+  );
   const policyIgnoredPayload = firstJsonContent(toolCallWithPolicyButNoAutoFallback.result);
   assert.equal(typeof policyIgnoredPayload?.error_code, "string");
   assert.equal(policyIgnoredPayload?.native_auto_fallback, undefined);
@@ -128,15 +132,27 @@ async function assertExecuteJsFallbackPolicy({
   assert.equal(toolCallWithAutoFallback?.result?.isError, undefined, "balanced native auto fallback returns tool data");
   const autoFallbackPayload = firstJsonContent(toolCallWithAutoFallback.result);
   assert.equal(autoFallbackPayload?.status, "failed");
-  assert.equal(typeof autoFallbackPayload?.error_code, "string");
+  assert.equal(
+    ["NO_EXTENSION", "TRANSPORT_UNAVAILABLE"].includes(autoFallbackPayload?.error_code),
+    true,
+    `closed WebSocket endpoint is classified as unavailable (error_code=${String(autoFallbackPayload?.error_code ?? "unknown")} error=${String(autoFallbackPayload?.error ?? "unknown")})`,
+  );
   assert.equal(typeof autoFallbackPayload?.retryable, "boolean");
-  assert.equal(autoFallbackPayload?.native_input_suggested, true);
+  assert.equal(
+    autoFallbackPayload?.native_input_suggested,
+    true,
+    `balanced transport failure suggests native input (error_code=${String(autoFallbackPayload?.error_code ?? "unknown")})`,
+  );
   assert.equal(autoFallbackPayload?.native_input_hint?.policy, "balanced");
   assert.equal(autoFallbackPayload?.native_input_hint?.reason, "transport_or_session_unavailable");
-  assert.equal(autoFallbackPayload?.native_auto_fallback?.suggestion?.should_escalate, true);
+  assert.equal(
+    autoFallbackPayload?.native_auto_fallback?.suggestion?.should_escalate,
+    true,
+    "balanced transport failure emits an escalation signal",
+  );
   assert.equal(autoFallbackPayload?.native_auto_fallback?.suggestion?.reason, "transport_or_session_unavailable");
   assert.equal(typeof autoFallbackPayload?.native_auto_fallback?.status, "string");
-  assert.equal(autoFallbackPayload?.native_auto_fallback?.attempted, true);
+  assert.equal(autoFallbackPayload?.native_auto_fallback?.attempted, true, "balanced native fallback is attempted");
   assert.equal(autoFallbackPayload?.native_auto_fallback?.policy, "balanced");
 
   const toolCallWithStrictAutoFallback = await rpc.call(
@@ -189,11 +205,23 @@ async function assertExecuteJsFallbackPolicy({
   assert.equal(toolCallWithAggressiveAutoFallback?.result?.isError, undefined, "aggressive native auto fallback returns tool data");
   const aggressiveAutoFallbackPayload = firstJsonContent(toolCallWithAggressiveAutoFallback.result);
   assert.equal(aggressiveAutoFallbackPayload?.status, "failed");
-  assert.equal(aggressiveAutoFallbackPayload?.native_input_suggested, true);
+  assert.equal(
+    aggressiveAutoFallbackPayload?.native_input_suggested,
+    true,
+    "aggressive transport failure suggests native input",
+  );
   assert.equal(aggressiveAutoFallbackPayload?.native_input_hint?.policy, "aggressive");
   assert.equal(aggressiveAutoFallbackPayload?.native_input_hint?.reason, "transport_or_session_unavailable");
-  assert.equal(aggressiveAutoFallbackPayload?.native_auto_fallback?.attempted, true);
-  assert.equal(aggressiveAutoFallbackPayload?.native_auto_fallback?.suggestion?.should_escalate, true);
+  assert.equal(
+    aggressiveAutoFallbackPayload?.native_auto_fallback?.attempted,
+    true,
+    "aggressive native fallback is attempted",
+  );
+  assert.equal(
+    aggressiveAutoFallbackPayload?.native_auto_fallback?.suggestion?.should_escalate,
+    true,
+    "aggressive transport failure emits an escalation signal",
+  );
   assert.equal(aggressiveAutoFallbackPayload?.native_auto_fallback?.suggestion?.reason, "transport_or_session_unavailable");
   assert.equal(aggressiveAutoFallbackPayload?.native_auto_fallback?.policy, "aggressive");
   assert.equal(typeof aggressiveAutoFallbackPayload?.native_auto_fallback?.status, "string");
@@ -222,6 +250,7 @@ async function assertExecuteJsFallbackPolicy({
   assert.equal(
     invalidPolicyPayload?.details?.validation_errors?.some((item) => item.keyword === "enum"),
     true,
+    "invalid fallback policy reports an enum validation error",
   );
 
   const timeoutBalancedCall = await rpc.call(
@@ -273,13 +302,21 @@ async function assertExecuteJsFallbackPolicy({
   const timeoutAggressivePayload = firstJsonContent(timeoutAggressiveCall.result);
   assert.equal(timeoutAggressivePayload?.status, "failed");
   assert.equal(timeoutAggressivePayload?.error_code, "TIMEOUT");
-  assert.equal(timeoutAggressivePayload?.native_input_suggested, true);
+  assert.equal(timeoutAggressivePayload?.native_input_suggested, true, "aggressive timeout suggests native input");
   assert.equal(timeoutAggressivePayload?.native_input_hint?.policy, "aggressive");
   assert.equal(timeoutAggressivePayload?.native_input_hint?.reason, "transport_or_session_unavailable");
   assert.equal(typeof timeoutAggressivePayload?.native_auto_fallback?.status, "string");
   assert.notEqual(timeoutAggressivePayload?.native_auto_fallback?.status, "skipped");
-  assert.equal(timeoutAggressivePayload?.native_auto_fallback?.attempted, true);
-  assert.equal(timeoutAggressivePayload?.native_auto_fallback?.suggestion?.should_escalate, true);
+  assert.equal(
+    timeoutAggressivePayload?.native_auto_fallback?.attempted,
+    true,
+    "aggressive timeout fallback is attempted",
+  );
+  assert.equal(
+    timeoutAggressivePayload?.native_auto_fallback?.suggestion?.should_escalate,
+    true,
+    "aggressive timeout emits an escalation signal",
+  );
   assert.equal(timeoutAggressivePayload?.native_auto_fallback?.policy, "aggressive");
 
   await registerExecuteErrorManagedTab(registryPath);
@@ -333,13 +370,25 @@ async function assertExecuteJsFallbackPolicy({
   const executionErrorAggressivePayload = firstJsonContent(executionErrorAggressiveCall.result);
   assert.equal(executionErrorAggressivePayload?.status, "failed");
   assert.equal(executionErrorAggressivePayload?.error_code, "EXECUTION_ERROR");
-  assert.equal(executionErrorAggressivePayload?.native_input_suggested, true);
+  assert.equal(
+    executionErrorAggressivePayload?.native_input_suggested,
+    true,
+    "aggressive execution error suggests native input",
+  );
   assert.equal(executionErrorAggressivePayload?.native_input_hint?.policy, "aggressive");
   assert.equal(executionErrorAggressivePayload?.native_input_hint?.reason, "browser_policy_blocked");
   assert.equal(typeof executionErrorAggressivePayload?.native_auto_fallback?.status, "string");
   assert.notEqual(executionErrorAggressivePayload?.native_auto_fallback?.status, "skipped");
-  assert.equal(executionErrorAggressivePayload?.native_auto_fallback?.attempted, true);
-  assert.equal(executionErrorAggressivePayload?.native_auto_fallback?.suggestion?.should_escalate, true);
+  assert.equal(
+    executionErrorAggressivePayload?.native_auto_fallback?.attempted,
+    true,
+    "aggressive execution fallback is attempted",
+  );
+  assert.equal(
+    executionErrorAggressivePayload?.native_auto_fallback?.suggestion?.should_escalate,
+    true,
+    "aggressive execution error emits an escalation signal",
+  );
   assert.equal(executionErrorAggressivePayload?.native_auto_fallback?.suggestion?.reason, "browser_policy_blocked");
   assert.equal(executionErrorAggressivePayload?.native_auto_fallback?.policy, "aggressive");
 
