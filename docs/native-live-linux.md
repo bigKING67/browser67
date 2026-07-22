@@ -1,9 +1,15 @@
 # Linux GUI native live proof
 
-`native-live-linux` must be collected on a real Linux graphical desktop. A
-physical Linux machine is not required; an Ubuntu Desktop VM is sufficient as
-long as the session is interactive, unlocked, and can display and foreground a
-real Chrome/Edge window.
+`native-live-linux` is an on-demand proof runbook for an actual Linux desktop
+deployment. It is not part of browser67's default self-use release/readiness
+target set, and Linux headless/SSH servers do not need this proof. Keep this
+runbook and the underlying provider/gate for a future desktop deployment rather
+than fabricating or continuously chasing GUI evidence on server-only Linux.
+
+When explicitly required, `native-live-linux` must be collected on a real Linux
+graphical desktop. A physical Linux machine is not required; an Ubuntu Desktop
+VM is sufficient as long as the session is interactive, unlocked, and can
+display and foreground a real Chrome/Edge window.
 
 ## Recommended host
 
@@ -145,7 +151,7 @@ npm run proof:native-live -- --write --replace --json
 Validate locally:
 
 ```bash
-npm run check:optional-live-proofs -- --json
+npm run check:optional-live-proofs -- --include-on-demand --json
 npm run proof:optional-live-status -- --id native-live-linux --json
 ```
 

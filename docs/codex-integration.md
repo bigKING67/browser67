@@ -125,6 +125,10 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
 
 ## Wrapper tools
 
+All `tmwd_browser` and `js-reverse` calls return JSON inside standard MCP text
+content using `browser67.tool-outcome.v3`. Read successful handler data from
+`outcome.data`; failures use `outcome.error.code/message/retryable/details`.
+
 - `browser_execute_js`: direct browser67/CDP JavaScript execution. Use
   `output_mode:"compact"` plus `max_return_chars` for large DOM/network payloads
   so tool results stay bounded and context-safe. Scripts that contain likely
@@ -132,8 +136,30 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   `new_tab_wait_ms` explicitly (`0..5000`), while `no_monitor:true` disables
   polling. This allows delayed OAuth popup targets to appear in `newTabs`
   without adding latency to ordinary read-only JavaScript.
+  v0.3 accepts only `script` for raw JavaScript; the `code` alias is removed.
+  Bridge commands must be strict JSON. Raw TMWD execution requires an
+  agent-created or explicitly adopted managed tab, while explicit
+  `remote_cdp` remains available for isolated debug/CI work. `tmwd_mode=auto`
+  does not grant that explicit-CDP exception when TMWD fails. Set
+  `network_observation:{enabled:true,ttl_ms,idle_ms,max_inflight,interval_ms}`
+  to observe requests from before a raw script or structured operation starts
+  through its bounded idle wait; optional ignore URL/resource-type patterns
+  are supported and the result includes the observation id and idle summary.
+- `browser_extract`: returns `browser67.actionable-snapshot.v2` NodeRefs with
+  accessibility, locator, frame, and open-shadow metadata. Inspect
+  `limitations` before concluding that a node is absent: cross-origin/denied
+  frames are opaque and closed shadow roots are unobservable. `marker_policy`
+  describes the `data-browser67-node-id` document lifetime plus snapshot TTL,
+  per-tab bound, and global bound; navigation or managed-policy release
+  invalidates that document scope.
+- `browser_diff`: compares actionable snapshots as
+  `browser67.semantic-diff.v2`, including node additions/removals and semantic
+  field changes rather than HTML line-set hashes.
 - `browser_wait`: first-class selector/text/function/DOM-stable/network-idle
-  wait helper. Prefer it over ad-hoc sleeps when a page needs readiness gating.
+  wait helper. `network_idle` uses in-flight request lifecycle observation; the
+  old resource-entry stability heuristic is `resource_quiet`. DOM stability
+  supports root/selector/attribute filters and a mutation threshold. Prefer it
+  over ad-hoc sleeps when a page needs readiness gating.
 - `browser_transport_health`: probes browser67 `ws` and/or `link` transports and
   returns `healthy`, `degraded`, or `broken` diagnostics with a preferred
   transport and actionable suggestion.
@@ -143,6 +169,9 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   to `evidence.v1`. Runtime artifacts are not stored in the source tree; use
   `npm run runtime:cleanup:dry-run` to audit retained runs and
   `npm run runtime:cleanup -- --write` to apply the safe retention policy.
+  v0.3 uses atomic throttled `run.json` checkpoints, append-only group indexes,
+  and bounded tail reads. Audit legacy state with
+  `npm run runtime:migrate -- --check --json` before `--write`.
 - `browser_job_ops`: starts background browser execution jobs backed by
   `browser_execute_js`, then exposes `status`, `result`, `cancel`, and `list`.
   Jobs with a valid run are `durable:true`: metadata/results are checkpointed
@@ -181,7 +210,20 @@ doctor + live checks against that temporary `remote_cdp` endpoint. Set
   `screenshots.json`.
 - `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
-- `browser_tab_lifecycle`: `select_or_create`, `create_managed`, `mark_keep`, `list_managed`, `prune_stale`, `close_unkept`, `finalize_task`. Prefer `select_or_create` for active work; it reuses only browser67-owned managed tabs (`ownership_policy="tmwd_only"` remains the compatibility enum) and ignores user-opened unmanaged tabs. `finalize_task` is the preferred task-end cleanup wrapper; it prunes stale registry records, closes only `keep:false` managed tabs in the requested scope, verifies closed tabs disappear from the live browser, preserves `keep:true`, and ignores unmanaged user tabs.
+- `browser_tab_lifecycle`: `select_or_create`, `create_managed`,
+  `inspect_adoption`, `adopt_existing`, `release_adopted`,
+  `inspect_close_adopted`, `close_adopted`, `mark_keep`, `list_managed`,
+  `prune_stale`, `close_unkept`, and `finalize_task`. Prefer
+  `select_or_create` for new active work. If the user already opened and logged
+  into a tab, inspect and adopt that exact tab in place; it becomes
+  `user_adopted` for the scoped lease. `finalize_task` releases adopted tabs
+  without closing them and closes only unkept `agent_created` tabs. Closing an
+  adopted user tab requires its separate two-stage close token. Navigating an
+  adopted tab through browser67 uses a short-lived one-shot authorization in
+  the extension. If the user navigates it independently, the extension
+  reconnects, or the ownership/lease generation changes, the record is
+  suspended and mutations return `ADOPTED_TAB_SUSPENDED`; run a fresh
+  `inspect_adoption -> adopt_existing` flow to resume from the new document.
 - `browser_auth_ops`: `list_profiles`, `validate_profile`, `inspect_login_page`, `suggest_profile`, `upsert_profile`, `ensure_login`. Use after `browser_tab_lifecycle.select_or_create` when a browser67-owned tab lands on a login page. Profiles are exact-origin allowlisted, stored only in repo-external local secret files, and outputs are redacted; unknown origins are reported as blocked and are never auto-filled. Profile lifecycle metadata is kept in a separate redacted sidecar file.
 - `browser_clipboard_ops`: `write_text`, `paste_text`. It does not expose clipboard reads; prefer DOM value setting for target fields and use native paste only when the page requires a real paste event.
 
@@ -257,6 +299,23 @@ Known-site operational pattern:
    popup. Explicit authenticated markers suppress stale provider-button noise
    only when no password/MFA/login surface or auth-continuation path is present.
 7. Finish with `browser_tab_lifecycle.finalize_task` for the same `workspace_key`.
+
+For a user-opened tab that is already authenticated, replace step 1 with
+`inspect_adoption` then `adopt_existing`; do not reopen the site or repeat the
+login. Ordinary unmanaged tabs remain readable through scan/list tools but raw
+script, click, input, navigation, and close operations are rejected until the
+tab is adopted.
+
+## Extension ordinary/managed isolation
+
+The v0.3 generated extension overlay leaves ordinary tabs with native dialogs,
+unchanged CSP, no badge/marker, no browser67 content bridge, and no browser67
+network observer. Managed policy is tab-scoped and removed on release or lease
+expiry. Adopted tabs additionally track navigation generation and accept only
+the matching one-shot Agent navigation authorization; out-of-band navigation
+suspends ownership until re-adoption. Source changes do not alter the currently
+installed extension until the operator explicitly runs setup, reloads the
+unpacked extension, and refreshes target tabs.
 
 Visual QA pattern:
 
@@ -470,17 +529,18 @@ sites to use the generic profile directory above.
 - Use `npm run runtime:cleanup:dry-run` as the repo-external run/screenshot artifact retention audit. It is non-destructive by default; use `npm run runtime:cleanup -- --write` only when intentionally deleting planned old run directories.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the browser67 websocket explicitly to avoid successful actions ending with a command timeout.
-- Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, reload the unpacked extension before expecting new bridge capabilities in a running Chrome/Edge profile.
+- Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, run `npm run setup` and `npm run extension:reload-live` before expecting new bridge capabilities in a running Chrome/Edge profile; use the browser extension page only when the existing bridge is not connected.
+- Run `npm run check:tmwd-performance-live` for bounded cold and p50/p95/p99 measurements of the real TMWD `tabs.get`, managed execution, actionable snapshot, and selector-wait paths. It uses an isolated local managed fixture and finalizes its own workspace.
 - Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, CAPTCHA assist dry-run planning, manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.
 - Run `npm run check:captcha-assist-live` after CAPTCHA assist changes. It opens isolated local slider/checkbox fixtures, validates dry-run coordinate transforms, region-only screenshot artifact creation, scroll-adjusted CDP clips, same-origin iframe coordinate conversion, cross-origin iframe degraded/manual handoff, first-pass slider/checkbox vision correction, synthetic slider visual movement, and finalizes the managed tabs. It is planning-only.
 - Run `npm run check:captcha-router`, `npm run check:captcha-provider-jfbym`, `npm run check:captcha-provider-jfbym-setup`, and `npm run check:captcha-provider-jfbym-coordinate` after CAPTCHA router/provider changes. These deterministic contracts validate default-off protocol routes, repo-external provider config redaction, setup permissions, origin/kind allowlists, coordinate response parsing, bounded artifact-to-screen conversion, slider target handling, and malformed/low-confidence blocking without a real provider token.
 - Run `npm run check:captcha-assist-physical-live` only for the optional local GUI gate. It is skipped by default and runs the physical slider drag plus checkbox click fixtures only when `TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1` are set. Add `TMWD_CAPTCHA_ASSIST_REQUIRE_PHYSICAL=1` when the local gate should fail instead of skip. Skipped/blocked paths explicitly report `physical_input_executed:false` and `pointer_moved:false` plus the exact `physical_gate_command`. The wrapper performs native pointer preflight before opening the GUI fixture or creating a managed tab; missing click/drag requirements return structured skipped/blocked output without foregrounding Chrome or attempting physical input. Native pointer actions must be genuinely available; run `npm run check:native-pointer` first for a no-input readiness check. On macOS, `cliclick` is treated as pointer-capable only when its diagnostic probe does not report missing Accessibility privileges for the current terminal/Codex host. A passing physical branch must report both the slider completion/visible movement (`slider_visual_offset` / `handle_transform`) and checkbox completion/inside-hotspot click before it writes a sanitized local CAPTCHA proof under `~/.browser67/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`; set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that write or `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail if proof persistence fails.
 - Run `npm run check:native-pointer` after native provider or local OS permission changes. It is diagnostic-only by default, does not move the mouse, and reports whether the current provider supports `click` and `drag`; add `-- --require-pointer` only for a local hard gate. On macOS, when `cliclick` is installed but Accessibility permission is missing, its JSON/text output includes a `permission_recovery` plan with the System Settings path, a copyable `open` command, the verification command, and the explicit physical CAPTCHA gate command to run after readiness passes.
-- Run `npm run check:native-live` on Linux/Windows GUI proof hosts for a no-input readiness result. The physical path is separate and requires `TMWD_NATIVE_LIVE_PHYSICAL=1`, `TMWD_NATIVE_LIVE_CONFIRM=1`, and `npm run proof:native-live -- --write`; it refuses unsupported platforms, missing confirmation, missing pointer support, and unintended overwrite before creating a tab or moving the pointer. A passing run forces the `native-os` provider, uses only browser67-owned local fixture tabs, verifies native `get_window_rect`, visible drag, and inside-hotspot click, finalizes its tabs, and records sanitized `native_live` JSON through the optional-proof validator. See `docs/native-live-linux.md` and `docs/native-live-windows.md`.
+- Run `npm run check:native-live` on the Windows GUI proof host, or on an explicitly scoped Linux desktop host, for a no-input readiness result. Linux headless/SSH servers do not require native GUI proof; `native-live-linux` is on-demand and excluded from default readiness/release counts. The physical path is separate and requires `TMWD_NATIVE_LIVE_PHYSICAL=1`, `TMWD_NATIVE_LIVE_CONFIRM=1`, and `npm run proof:native-live -- --write`; it refuses unsupported platforms, missing confirmation, missing pointer support, and unintended overwrite before creating a tab or moving the pointer. A passing run forces the `native-os` provider, uses only browser67-owned local fixture tabs, verifies native `get_window_rect`, visible drag, and inside-hotspot click, finalizes its tabs, and records sanitized `native_live` JSON through the optional-proof validator. See `docs/native-live-linux.md` and `docs/native-live-windows.md`.
 - Run `npm run check:ljqctrl` after `ljq-ctrl` provider changes. It is a diagnostic-only default gate and exits successfully when the local driver is not configured; use `TMWD_LJQCTRL_REQUIRE=1`, `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` for machine-local hard gates.
 - GenericAgent's newer macOS `macljqCtrl` / AX implementation is imported only as reference material under `docs/upstream/genericagent/`. On macOS, `check:ljqctrl -- --json` reports a `macljqctrl` informational diagnostic for `Quartz`, `AppKit`, `ApplicationServices`, `PIL`, `cv2`, and `numpy`, plus the physical-pixel `CropToScreen` coordinate model. This does not promote AX, screenshots, clicks, or window activation into the default path; `native-os` remains the default macOS provider unless a future guarded provider is explicitly enabled.
 - Run `npm run check:readiness` for the near-100 governance score. Its `ljqCtrl` row is platform-aware and uses the same diagnostic-only Python capability probe as `check:ljqctrl`; it distinguishes non-Windows not-applicable defaults, Windows/default not-configured, invalid configured interpreter, importable-but-execution-gated, and execution-bridge-available states without clicking, dragging, activating windows, capturing screenshots, reading cookies, or touching clipboard. It also reports an informational native pointer row when the OS provider lacks click/drag capability or required permissions, and the local CAPTCHA physical-proof row separately distinguishes native pointer blocked, not executed, and proof-missing states. When macOS Accessibility blocks `cliclick`, the affected readiness JSON gaps include the same structured `permission_recovery` plan as `check:native-pointer`, so callers can show the Settings path and copyable recovery commands directly. Optional proof gaps also include a compact `proof_plan` with the plan command, proof directory, and missing proof ids.
-- Run `npm run check:optional-live-proofs` when collecting near-100 optional evidence from the local CAPTCHA physical gate, Linux/Windows native-input hosts, or approved external OAuth/SSO/MFA providers. Proof files live outside the repo by default under `~/.browser67/optional-live-proofs`, must be sanitized, and are documented in `docs/optional-live-proofs.md`. Use `npm run plan:optional-live-proofs` for a no-input, no-browser proof collection runbook with per-proof status, accepted proof freshness, host/provider requirements, blockers, `next_command`, `collection_steps`, commands, and evidence fields. Use `npm run proof:optional-live-status` for an operator-facing accepted/missing checklist with owner, next command, record/write/replace commands, validation command, and the no-fabricated-proof completion policy. Use `npm run proof:optional-live-template` to generate safe `ok:false` starter templates instead of hand-writing proof JSON; after a real host/provider gate produces sanitized JSON, use `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` for dry-run validation and redaction checklist output. The record validator rejects obvious Bearer/JWT/cookie-like values and unredacted IdP tenant/account/provider identifiers. Add `--write` only to persist canonical proof repo-externally, and add `--replace` only for an intentional audited refresh of an existing proof.
+- Run `npm run check:optional-live-proofs` when collecting near-100 default evidence from the local CAPTCHA physical gate, the Windows native-input host, or approved external OAuth/SSO/MFA providers. Proof files live outside the repo by default under `~/.browser67/optional-live-proofs`, must be sanitized, and are documented in `docs/optional-live-proofs.md`. Linux desktop proof remains available through `--id native-live-linux` and `--include-on-demand`; it is not a default self-use requirement. Use `npm run plan:optional-live-proofs` for a no-input, no-browser proof collection runbook with per-proof status, accepted proof freshness, host/provider requirements, blockers, `next_command`, `collection_steps`, commands, and evidence fields. Use `npm run proof:optional-live-status` for an operator-facing accepted/missing checklist with owner, next command, record/write/replace commands, validation command, and the no-fabricated-proof completion policy. Use `npm run proof:optional-live-template` to generate safe `ok:false` starter templates instead of hand-writing proof JSON; after a real host/provider gate produces sanitized JSON, use `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` for dry-run validation and redaction checklist output. The record validator rejects obvious Bearer/JWT/cookie-like values and unredacted IdP tenant/account/provider identifiers. Add `--write` only to persist canonical proof repo-externally, and add `--replace` only for an intentional audited refresh of an existing proof.
 
 ## Codex host hard-finally contract
 

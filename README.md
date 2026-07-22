@@ -45,7 +45,8 @@ runtime, contracts, skills, docs, and agent integration surface.
 - JS reverse docs and skill material under `docs/js-reverse/` and `skills/js-reverse/`
 - Canonical naming, compatibility, runtime-home, and quality-governance docs:
   `docs/naming-and-compatibility.md`, `docs/migration-browser67.md`,
-  `docs/project-structure.md`, and `docs/maintenance-quality-model.md`
+  `docs/migration-v0.3.md`, `docs/project-structure.md`, and
+  `docs/maintenance-quality-model.md`
 - Auth/profile lifecycle modules under `src/auth/`:
   profile storage, login/manual-required detection, DOM submit/wait logic, and
   MCP action handlers are kept separate so login behavior can evolve without a
@@ -81,6 +82,33 @@ tmwd_transport=auto
 
 Use `tmwd_mode=remote_cdp` only for explicit debug Chrome, CI, or deep JS reverse
 work that needs Network/Debugger/Script source.
+
+## v0.3 execution model
+
+- Both MCP surfaces return `browser67.tool-outcome.v3` envelopes.
+- `browser_execute_js` and `browser_job_ops.start` accept `script`; the legacy
+  `code` aliases are removed.
+- TMWD raw execution and NodeRef mutations require an agent-created or
+  explicitly adopted managed tab. A user-opened logged-in tab can be adopted in
+  place and released without closing it.
+- Adopted-tab navigation uses a short-lived one-shot extension authorization.
+  A user/manual navigation or connection/lease change during the adopted lease
+  suspends the tab; the Agent must run `inspect_adoption -> adopt_existing`
+  again before continuing mutations.
+- Ordinary tabs keep native CSP/dialog behavior and receive no browser67 badge,
+  marker, content bridge, or network observer.
+- `browser_extract`/`browser_diff` use actionable snapshot and semantic diff
+  v2; `network_idle` uses request lifecycle tracking and the old heuristic is
+  named `resource_quiet`.
+- Raw scripts and structured NodeRef operations can opt into bounded
+  `network_observation`; snapshots declare opaque cross-origin frames, closed
+  shadow-root limits, document-scoped marker lifetime, and bounded retention.
+- `tmwd_mode=auto` never turns a failed login-state TMWD route into an implicit
+  remote-CDP permission. Only explicit `tmwd_mode=remote_cdp`/`cdp` can bypass
+  managed-tab ownership for isolated debug or CI browsers.
+
+See `docs/migration-v0.3.md` for the exact adoption, runtime-store migration,
+extension reload, and consumer-output changes.
 
 ## Install dependencies
 
@@ -231,6 +259,19 @@ target, ignores the install-local generated `config.js`, and reports
 When drift is reported, run `npm run setup`, reload the unpacked extension from
 the reported target directory, then refresh old target tabs so content scripts
 are reinjected.
+
+For an already loaded and connected browser67 extension, use the deterministic
+self-reload path instead of relying on an extension-page coordinate click:
+
+```bash
+npm run extension:reload-live
+npm run check:live:doctor
+```
+
+The command reloads only the connected browser67 extension. First installation,
+a disabled extension, or a disconnected bridge still requires loading/reloading
+the reported unpacked directory from `chrome://extensions` or
+`edge://extensions`.
 
 For manual Chrome extension loading from this repository, prepare the
 project-local runtime copy:
@@ -499,6 +540,8 @@ protocol route as executable.
 
 ```bash
 npm run verify
+npm run gate -- --tier fast
+npm run gate -- --tier check --changed
 npm run verify:manifest
 npm run coverage:contracts
 npm run verify:ci
@@ -507,8 +550,13 @@ npm run verify:platform
 npm run verify:all
 npm run check:syntax
 npm run check:job-persistence
+npm run check:run-store
+npm run lint
+npm run type-check
+npm run check:dependency-boundaries
 npm run check:project-structure
 npm run check:performance-smoke
+npm run check:tmwd-performance-live
 npm run check:task-templates
 npm run check:regression-matrix
 npm run check:change-set
@@ -538,11 +586,21 @@ npm run check:js-reverse-mcp
 npm run check:js-reverse-live
 ```
 
+Audit existing run/job state with `npm run runtime:migrate -- --check --json`.
+Use `--write` only after reviewing the repo-external runtime root.
+
 `npm run check` runs deterministic MCP/schema/hub-control contracts plus the
 project-structure, performance smoke, task-template, and regression-matrix
 gates. `check:live:*`
 uses the current local browser environment and can fail when the extension or hub
-is not connected. `check:captcha-assist-live` is planning-only by default and now
+is not connected. `check:tmwd-performance-live` creates an isolated local
+managed fixture, records cold and p50/p95/p99 latency for real extension
+`tabs.get`, managed execution, actionable extraction, and selector waits, then
+verifies scoped cleanup. Its default guardrails are intentionally below the old
+200 ms per-execution grace-period regression while retaining substantial local
+machine headroom; all budgets can be overridden with the
+`BROWSER67_TMWD_PERF_*` environment variables. `check:captcha-assist-live`
+is planning-only by default and now
 also validates region-only screenshot artifact creation, scroll-adjusted CDP
 clips, same-origin iframe coordinate conversion, first-pass slider vision
 and checkbox vision correction, synthetic slider visual movement, and cross-origin iframe
@@ -580,14 +638,15 @@ required permissions. On macOS, when `cliclick` is installed but Accessibility
 permission is missing, the report includes a `permission_recovery` plan with the
 System Settings path, a copyable `open` command, explicit verification command,
 and the physical CAPTCHA gate command to run only after pointer readiness passes.
-`check:native-live` is the no-input readiness entrypoint for Linux/Windows GUI
-proof hosts. On macOS and other non-target platforms it reports
-`not_applicable`; on Linux/Windows it reports whether the host is ready for the
-explicit physical run. The physical path requires both target-OS environment
-confirmations and `--write`, then creates only browser67-managed local fixture
-tabs, forces the `native-os` provider, verifies `get_window_rect`, drag, and
-click, finalizes its tabs, and records sanitized `native_live` JSON through the
-existing proof validator:
+`check:native-live` is the no-input readiness entrypoint for Windows GUI proof
+hosts and on-demand Linux desktop proof hosts. Linux headless/SSH servers do not
+need native GUI proof. On macOS and other non-target platforms it reports
+`not_applicable`; on Linux/Windows it reports whether an interactive desktop is
+ready for the explicit physical run. The physical path requires both target-OS
+environment confirmations and `--write`, then creates only browser67-managed
+local fixture tabs, forces the `native-os` provider, verifies
+`get_window_rect`, drag, and click, finalizes its tabs, and records sanitized
+`native_live` JSON through the existing proof validator:
 
 ```bash
 TMWD_NATIVE_LIVE_PHYSICAL=1 \
@@ -619,17 +678,23 @@ bounded artifact-to-viewport-to-screen conversion, slider target interpretation,
 origin allowlist blocking, malformed/low-confidence response blocking, and
 redaction of fake tokens/image base64.
 `check:optional-live-proofs` validates sanitized JSON proof artifacts under
-`~/.browser67/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. It is
-non-blocking by default and exists for optional local CAPTCHA physical proof,
-cross-OS native-input proof, and approved external IdP live coverage; use
-`--strict` only when a local release gate should require every optional proof.
+`~/.browser67/optional-live-proofs` or `TMWD_OPTIONAL_PROOF_DIR`. Its default
+self-use acceptance set is the local CAPTCHA physical proof, Windows native
+proof, and approved external IdP coverage. Linux desktop native proof is
+`release_scope:"on_demand"` and is omitted from default audit/readiness/release
+counts; headless Linux servers do not need it. Use `--strict` only when a local
+release gate should require every default optional proof, or add
+`--include-on-demand` when an actual Linux desktop deployment also requires its
+native proof.
 Use `plan:optional-live-proofs` to print the current proof collection runbook:
 per-proof status, required host/platform, safe commands, blockers, and evidence
 requirements. The plan also surfaces accepted proof freshness
 (`expires_at`/`expires_in_days`), `next_command`, `collection_steps`, and
 `commands.record_replace` so agents can continue from readiness gaps without
-recomputing the collection path. Add `--id <proof-id>` to print a single-proof
-handoff packet for one Linux/Windows/IdP operator. Use
+recomputing the collection path. The default plan/status omits
+`native-live-linux`; add `--id native-live-linux` to produce its on-demand
+desktop handoff packet. Other `--id <proof-id>` values produce a single-proof
+handoff for one Windows/IdP operator. Use
 `proof:optional-live-status` for the
 operator-facing summary: accepted proofs, missing checklist, owner/host, next
 command, record/write commands, validation command, optional `--id <proof-id>`
@@ -664,8 +729,9 @@ stages files.
 readiness audit: it verifies required governance/docs/skill gates, reports a
 score, prints a `score_breakdown`, and lists optional hardening gaps such as
 pending scoped commits, unconfigured or invalid `ljqCtrl`, unavailable native
-pointer actions, local physical CAPTCHA proof states, cross-OS native live
-proof, and provider-specific OAuth/SSO/MFA live gates. The
+pointer actions, local physical CAPTCHA proof states, default Windows native
+live proof, and provider-specific OAuth/SSO/MFA live gates. On-demand Linux
+desktop proof never creates a default readiness deduction. The
 `ljqCtrl` readiness row is platform-aware and based on the same diagnostic-only
 Python capability probe as `npm run check:ljqctrl`, not just the presence of
 environment variables. The bundled GenericAgent `ljqCtrl` implementation is
@@ -690,12 +756,14 @@ pointer with `npm run plan:optional-live-proofs -- --json`, the active proof
 directory, and the missing proof ids, so callers can render the next collection
 command without recomputing the audit. It is read-only; use `--strict` when a
 local release gate should fail on optional gaps too.
-The headline `score` keeps the historical all-in optional-proof model. The
+The headline `score` uses the default self-use optional-proof set; on-demand
+Linux desktop proof is excluded unless explicitly audited. The
 `score_breakdown` additionally separates `local_release_score` from
 `external_optional_score`, and reports whether `external_proofs_required` and
 `blocking` are true. Normal local release work should read
 `local_release_score=100.000` with `external_proofs_required=false` as local
-release-ready even when cross-OS or approved-IdP proof collection remains open.
+release-ready even when default Windows or approved-IdP proof collection remains
+open. Linux desktop proof is evaluated only when explicitly requested.
 
 `npm run check:release-readiness` validates release metadata and release
 governance without requiring a clean worktree. It checks package/package-lock
@@ -709,11 +777,15 @@ ids, proof directory, and status/plan commands in the text output. Use
 `origin/main`, requires GenericAgent and JS reverse reference reviews to match
 their current remotes, and requires non-empty `Unreleased` notes when commits
 exist after the current package-version anchor. Use
-`npm run release:ready:strict` only when cross-OS native and approved external
-IdP optional live proofs are part of the release acceptance criteria. See
+`npm run release:ready:strict` only when the default Windows native and approved
+external IdP optional live proofs are part of the release acceptance criteria.
+For a real Linux desktop deployment, additionally run
+`npm run check:optional-live-proofs -- --include-on-demand --strict`. See
 `docs/release-governance.md`.
 
-`npm run verify:manifest` prints the machine-readable verification tier model.
+`npm run verify:manifest` prints the machine-readable verification tier model;
+`scripts/verification/manifest.mjs` is the single command source of truth used
+by `check`, `verify`, CI/live/platform aliases, and `gate --changed`.
 Use `coverage:contracts` to generate the current deterministic `src/`/`scripts/`
 coverage baseline under ignored `runtime/coverage/`; the initial baseline is
 observability, not a fabricated release threshold. Use `verify:ci` for deterministic cross-platform CI, `verify:live` for real TMWD

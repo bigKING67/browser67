@@ -1,14 +1,21 @@
 # Optional live proof artifacts
 
 `npm run check:optional-live-proofs` validates sanitized, repo-external JSON
-proofs for near-100 optional gates that cannot be completed on every machine:
+proofs for near-100 optional gates that cannot be completed on every machine.
+
+The default self-use acceptance set is:
 
 - Local CAPTCHA physical-input live proof.
-- Linux native physical-input live proof.
 - Windows native physical-input live proof.
 - External OAuth popup handoff/resume live proof.
 - External cross-domain SSO handoff/resume live proof.
 - External MFA handoff/resume live proof.
+
+`native-live-linux` is retained as an on-demand Linux desktop proof. It is not
+included in default audit, plan, status, readiness, release, or strict-release
+counts. Headless Linux servers and SSH-only Linux hosts do not need native GUI
+proof. An actual Linux desktop deployment can opt in explicitly without
+removing or weakening the provider/gate.
 
 The default proof directory is:
 
@@ -22,12 +29,19 @@ Override it when needed:
 TMWD_OPTIONAL_PROOF_DIR=/path/to/proofs npm run check:optional-live-proofs
 ```
 
-By default the check is non-blocking and reports missing optional proofs. Use
-`--strict` only for a local release gate that should fail until all optional
+By default the check is non-blocking and reports missing default proofs. Use
+`--strict` only for a local release gate that should fail until all default
 proofs are present:
 
 ```bash
 npm run check:optional-live-proofs -- --strict
+```
+
+For an actual Linux desktop acceptance target, include the on-demand proof:
+
+```bash
+npm run check:optional-live-proofs -- --include-on-demand
+npm run check:optional-live-proofs -- --include-on-demand --strict
 ```
 
 Print the current proof collection plan without opening Chrome, creating tabs,
@@ -36,8 +50,13 @@ moving the mouse, or writing proof files:
 ```bash
 npm run plan:optional-live-proofs
 npm run plan:optional-live-proofs -- --id idp-oauth-popup
+npm run plan:optional-live-proofs -- --id native-live-linux
 npm run plan:optional-live-proofs -- --json
 ```
+
+The unfiltered plan contains only the default acceptance set. The explicit
+Linux id returns a single on-demand desktop runbook with
+`release_scope:"on_demand"` and `default_required:false`.
 
 The plan reports each proof id, current satisfaction status, required host or
 provider kind, safe commands, blockers such as macOS Accessibility permission,
@@ -64,14 +83,17 @@ npm run proof:optional-live-status -- --id native-live-linux
 npm run proof:optional-live-status -- --json
 ```
 
+The unfiltered status contains only the default acceptance set; use the
+explicit Linux id when a desktop deployment is actually in scope.
+
 The status output is optimized for near-100 proof collection handoff. It groups
 accepted proofs and missing checklist entries, assigns each missing item to the
 required host/provider owner, repeats the dry-run/write/replace record commands,
 and includes a completion policy that explicitly forbids fabricated cross-OS or
 external IdP proofs. Like the plan command, it does not move the mouse, open
 Chrome, create tabs, read browser private state, or write proof files.
-Use `--id <proof-id>` when sending only one checklist item to an external
-Linux/Windows/IdP operator.
+Use `--id <proof-id>` when sending only one checklist item to a Windows/IdP
+operator or to an explicitly scoped Linux desktop operator.
 
 Generate safe starter templates instead of hand-writing JSON:
 
@@ -81,6 +103,10 @@ npm run proof:optional-live-template -- --id native-live-linux
 npm run proof:optional-live-template -- --all --write
 ```
 
+Without arguments, template generation follows the default acceptance set.
+`--all` includes on-demand requirements; `--id native-live-linux` selects only
+the Linux desktop template.
+
 `--write` stores `*.template.json` files under the proof directory using
 `ok:false` and `template_only:true`, so templates do not satisfy the audit. Do
 not edit native templates into passing artifacts. The local CAPTCHA physical
@@ -89,9 +115,9 @@ automatically after successful real-host runs. External IdP proofs must replace
 `template_only:true` and placeholder commands only with sanitized results from
 an approved real provider gate.
 
-After a Linux/Windows host or approved external IdP live gate produces a
-sanitized JSON proof, record it through the validator instead of copying files
-by hand:
+After a Windows host, explicitly scoped Linux desktop, or approved external IdP
+live gate produces a sanitized JSON proof, record it through the validator
+instead of copying files by hand:
 
 ```bash
 npm run proof:optional-live-record -- --id native-live-linux --from-json /path/to/sanitized.json
@@ -118,8 +144,8 @@ TMWD_CAPTCHA_ASSIST_CONFIRM=1 \
 npm run check:captcha-assist-physical-live
 ```
 
-For Linux/Windows target-OS proof collection, use the dedicated gate instead of
-converting the CAPTCHA proof by hand:
+For Windows target-OS proof collection, or an explicitly scoped Linux desktop
+proof, use the dedicated gate instead of converting the CAPTCHA proof by hand:
 
 ```bash
 TMWD_NATIVE_LIVE_PHYSICAL=1 \
@@ -138,7 +164,8 @@ npm run proof:native-live -- --write --json
 The native gate runs only on `linux` or `win32`, requires a real interactive GUI
 session, refuses to run without explicit confirmation and `--write`, blocks
 before pointer input when an existing proof would be overwritten, and forces the
-`native-os` provider. It creates browser67-owned local fixture tabs, verifies a
+`native-os` provider. Linux availability here does not make it a default release
+requirement. The gate creates browser67-owned local fixture tabs, verifies a
 positive-size native window rectangle plus visible drag/click completion,
 finalizes the fixture tabs, and writes only sanitized JSON. Complete host setup
 instructions are in `docs/native-live-linux.md` and
@@ -165,11 +192,12 @@ When macOS `cliclick` is installed but Accessibility permission is missing, the
 - `safe_defaults`: confirmation that the readiness report does not move the
   mouse, open Chrome, create managed tabs, or read browser private state.
 
-Readiness optional proof gaps also include a compact `proof_plan` object with
-the active proof directory, missing proof ids, and the copyable
+Default readiness optional proof gaps also include a compact `proof_plan`
+object with the active proof directory, missing proof ids, and the copyable
 `npm run plan:optional-live-proofs -- --json` command. This keeps agent/UI
 callers on the same collection path as the CLI without embedding the full plan
-in every readiness response.
+in every readiness response. `native-live-linux` appears only in an explicit
+on-demand plan/audit and never creates a default readiness deduction.
 
 Set `TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0` to disable that automatic proof write, or
 `TMWD_CAPTCHA_ASSIST_REQUIRE_PROOF=1` to fail the gate if the sanitized proof
@@ -282,6 +310,8 @@ The dedicated gate creates `native-live-linux.json` or
 `native-live-win32.json` automatically on the matching target OS. Transfer only
 that sanitized JSON file to the release host, then use
 `proof:optional-live-record` for dry validation and canonical persistence.
+The Linux artifact remains on-demand unless the audit is run with
+`--include-on-demand`.
 
 ## External IdP proof example
 

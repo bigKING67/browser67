@@ -347,19 +347,21 @@ no-input readiness check. On macOS, missing Accessibility permission keeps
 `cliclick` click/drag capability disabled. A successful physical run writes a
 sanitized repo-external local CAPTCHA proof by default; set
 TMWD_CAPTCHA_ASSIST_WRITE_PROOF=0 to disable that persistence.
-For the separate Linux/Windows portability proofs, run
-`npm run check:native-live` on the matching target GUI host, then explicitly set
+For the default Windows portability proof, or an on-demand Linux desktop proof,
+run `npm run check:native-live` on the matching target GUI host, then explicitly set
 `TMWD_NATIVE_LIVE_PHYSICAL=1` and `TMWD_NATIVE_LIVE_CONFIRM=1` and run
 `npm run proof:native-live -- --write`. This dedicated gate forces `native-os`,
 verifies `get_window_rect` plus physical drag/click on managed local fixtures,
 finalizes its tabs, and records sanitized `native_live` JSON automatically.
-Follow `docs/native-live-linux.md` or `docs/native-live-windows.md`; headless
-hosts and locked/disconnected desktop sessions do not qualify.
+Follow `docs/native-live-linux.md` or `docs/native-live-windows.md`. Headless or
+SSH-only Linux servers do not require GUI proof; locked/disconnected desktop
+sessions do not qualify when a GUI proof is explicitly in scope.
 For near-100 external coverage, run `npm run check:optional-live-proofs` after
-collecting sanitized local CAPTCHA physical, Linux/Windows native-input, or
-approved OAuth/SSO/MFA proof JSON under
+collecting sanitized local CAPTCHA physical, Windows native-input, or approved
+OAuth/SSO/MFA proof JSON under
 `~/.browser67/optional-live-proofs`; use `--strict` only when those
 optional proofs are required for a local release gate. Use
+`--include-on-demand` only for an actual Linux desktop acceptance target. Use
 `npm run proof:optional-live-template` for safe `ok:false` starter templates,
 then `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>`
 to dry-run validate a real sanitized proof before adding `--write`.
