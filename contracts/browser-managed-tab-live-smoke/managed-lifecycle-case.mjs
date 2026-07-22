@@ -21,6 +21,12 @@ async function runManagedLifecycleCase(context) {
   context.openedTabIds.add(managedTabId);
   assert.equal(firstManaged.created, true, "first select_or_create should create a managed tab");
   assert.equal(firstManaged.ready, true, "managed tab should become visible before timeout");
+  assert.equal(
+    firstManaged.policy_application?.applied,
+    true,
+    `managed extension policy was not applied: ${JSON.stringify(firstManaged.policy_application)}`,
+  );
+  assert.equal(firstManaged.managed_tab?.management_policy_applied, true, "managed registry did not persist policy application");
   assert.equal(firstManaged.finalize_hint?.required, true, "created managed tab should carry a required finalize hint");
   assert.equal(
     firstManaged.finalize_hint?.suggested_arguments?.workspace_key,
@@ -71,6 +77,7 @@ async function runManagedLifecycleCase(context) {
   return {
     first_created: firstManaged.created === true,
     first_ready: firstManaged.ready === true,
+    policy_applied: firstManaged.policy_application?.applied === true,
     second_reused: secondManaged.reused === true,
     tab_id: managedTabId,
     closed_count: managedFinalize.close_unkept.closed.length,

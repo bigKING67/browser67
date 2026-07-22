@@ -164,7 +164,7 @@ async function persistRegistry() {
 
     await fs.mkdir(dirname(registryPath), { recursive: true });
     const payload = {
-      version: 1,
+      version: 2,
       updated_at: nowIso(),
       managed_tabs: Array.from(merged.values()).map((record) => managedTabPayload(record)),
     };

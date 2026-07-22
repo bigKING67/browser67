@@ -28,3 +28,11 @@ export {
   managedTabGroups,
   summarizeUnmanagedMatches,
 } from "./tab-workspace/reuse.mjs";
+export {
+  NAVIGATION_AUTHORIZATION_TTL_MS,
+  browserConnectionGeneration,
+  browserDocumentIdentity,
+  createNavigationAuthorization,
+  navigationStatusFromPolicy,
+  reconcileAdoptedNavigation,
+} from "./tab-workspace/navigation-guard.mjs";

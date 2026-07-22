@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 
+import {
+  executeBrowserScript,
+  executeTmwdCommand,
+} from "../../src/browser-wrappers/shared.mjs";
+import { disposeTmwdRuntime } from "../../src/tmwd-runtime.mjs";
 import { createRpcClient } from "../browser67-browser-mcp-contract/rpc-client.mjs";
 import { firstJsonContent } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 import { commonArgs } from "./cli.mjs";
@@ -24,26 +29,33 @@ async function initializeRpc(rpc, cli) {
 
 function createToolHelpers({ cli, rpc }) {
   const baseArgs = commonArgs(cli);
-  const callTool = async (name, args) => {
+  const requestTool = async (name, args) => {
     const response = await rpc.call("tools/call", { name, arguments: args }, cli.timeout_ms);
+    return {
+      payload: firstJsonContent(response?.result),
+      response,
+    };
+  };
+  const callTool = async (name, args) => {
+    const { payload, response } = await requestTool(name, args);
     if (response?.result?.isError === true) {
-      const payload = firstJsonContent(response.result);
-      throw new Error(`${name} failed: ${String(payload?.error ?? payload?.message ?? "tool error")}`);
+      const details = payload?.details ? ` details=${JSON.stringify(payload.details)}` : "";
+      throw new Error(`${name} failed: ${String(payload?.error ?? payload?.message ?? "tool error")}${details}`);
     }
-    const payload = firstJsonContent(response.result);
     if (payload?.status === "failed") {
       throw new Error(`${name} failed: ${String(payload.error ?? "unknown error")}`);
     }
     return payload;
   };
+  const callToolError = async (name, args) => {
+    const { payload, response } = await requestTool(name, args);
+    assert.equal(response?.result?.isError, true, `${name} should return a tool error`);
+    return payload;
+  };
 
   const bridgeCommand = async (command) => {
-    const payload = await callTool("browser_execute_js", {
-      ...baseArgs,
-      no_monitor: true,
-      script: JSON.stringify(command),
-    });
-    return payload.js_return;
+    const result = await executeTmwdCommand(baseArgs, command);
+    return result.value;
   };
 
   const listTabs = async () => normalizeTabs(await bridgeCommand({
@@ -52,11 +64,23 @@ function createToolHelpers({ cli, rpc }) {
     includeUnscriptable: true,
   }));
 
+  const readPage = async (tabId, body, input = {}) => {
+    const result = await executeBrowserScript({
+      ...baseArgs,
+      tab_id: tabId,
+      switch_tab_id: tabId,
+      session_id: tabId,
+    }, body, input);
+    return result.value;
+  };
+
   return {
     baseArgs,
     bridgeCommand,
     callTool,
+    callToolError,
     listTabs,
+    readPage,
   };
 }
 
@@ -104,6 +128,7 @@ async function cleanupPartialContext({ fixture, previousRegistryPath, registryDi
   } catch {
     // ignore
   }
+  await disposeTmwdRuntime({ reason: "managed tab live smoke partial cleanup" });
   restoreRegistryPath(previousRegistryPath);
   await rm(registryDir, { recursive: true, force: true });
 }
@@ -132,6 +157,7 @@ async function cleanupManagedSmokeContext({ context, previousRegistryPath, regis
   }
   await context.rpc?.close?.();
   await context.fixture.close();
+  await disposeTmwdRuntime({ reason: "managed tab live smoke cleanup" });
   restoreRegistryPath(previousRegistryPath);
   await rm(registryDir, { recursive: true, force: true });
 }
