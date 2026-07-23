@@ -1,4 +1,4 @@
-import { nowIso, randomId } from "../common.mjs";
+import { nowIso, randomId } from "../runtime/identity.mjs";
 import {
   normalizeReuseKey,
   normalizeWorkspaceKey,

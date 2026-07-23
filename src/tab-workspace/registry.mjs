@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { nowIso } from "../common.mjs";
+import { nowIso } from "../runtime/identity.mjs";
 import {
   REGISTRY_LOCK_STALE_MS,
   REGISTRY_LOCK_TIMEOUT_MS,
@@ -204,7 +204,7 @@ async function updateManagedTab(tabId, patch = {}) {
   if (!existing) {
     return null;
   }
-  const { touch, ...recordPatch } = patch;
+  const { touch, ...recordPatch } = /** @type {Record<string, any>} */ (patch);
   const nextUrl = Object.prototype.hasOwnProperty.call(recordPatch, "url")
     ? String(recordPatch.url ?? "").trim()
     : existing.url;

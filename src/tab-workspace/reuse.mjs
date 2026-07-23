@@ -1,4 +1,4 @@
-import { compactText } from "../common.mjs";
+import { compactText } from "../browser/content/output-limits.mjs";
 import { RECENT_MANAGED_TAB_LIVE_GRACE_MS } from "./constants.mjs";
 import {
   buildReusePolicy,

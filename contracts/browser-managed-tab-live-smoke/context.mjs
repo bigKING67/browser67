@@ -7,7 +7,7 @@ import {
   executeBrowserScript,
   executeTmwdCommand,
 } from "../../src/browser-wrappers/shared.mjs";
-import { disposeTmwdRuntime } from "../../src/tmwd-runtime.mjs";
+import { disposeTmwdRuntime } from "../../src/tmwd-runtime/index.mjs";
 import { createRpcClient } from "../browser67-browser-mcp-contract/rpc-client.mjs";
 import { firstJsonContent } from "../browser67-browser-mcp-contract/rpc-content.mjs";
 import { commonArgs } from "./cli.mjs";

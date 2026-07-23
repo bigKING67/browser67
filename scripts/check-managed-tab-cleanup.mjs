@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { listManagedTabRecords, managedTabPayload } from "../src/tab-workspace.mjs";
+import { listManagedTabRecords, managedTabPayload } from "../src/tab-workspace/index.mjs";
 
 function parseArgs(argv) {
   const parsed = {

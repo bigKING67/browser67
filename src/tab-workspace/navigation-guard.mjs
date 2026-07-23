@@ -1,4 +1,4 @@
-import { hashText, randomId } from "../common.mjs";
+import { hashText, randomId } from "../runtime/identity.mjs";
 
 const NAVIGATION_AUTHORIZATION_TTL_MS = 5_000;
 

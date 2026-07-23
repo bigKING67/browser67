@@ -4,30 +4,30 @@ export {
   normalizeReuseKey,
   normalizeReuseScope,
   normalizeWorkspaceKey,
-} from "./tab-workspace/policy.mjs";
+} from "./policy.mjs";
 export {
   managedTabFinalizeHint,
   managedTabPayload,
   planManagedTab,
-} from "./tab-workspace/records.mjs";
+} from "./records.mjs";
 export {
   buildFinalizeCleanupSummary,
   formatFinalizeDeliverySummary,
-} from "./tab-workspace/finalizer-summary.mjs";
+} from "./finalizer-summary.mjs";
 export {
   deleteManagedTab,
   getManagedTab,
   listManagedTabRecords,
   recordManagedTab,
   updateManagedTab,
-} from "./tab-workspace/registry.mjs";
+} from "./registry.mjs";
 export {
   extractCreatedTabId,
   findReusableManagedTab,
   isManagedTabWithinLiveGrace,
   managedTabGroups,
   summarizeUnmanagedMatches,
-} from "./tab-workspace/reuse.mjs";
+} from "./reuse.mjs";
 export {
   NAVIGATION_AUTHORIZATION_TTL_MS,
   browserConnectionGeneration,
@@ -35,4 +35,4 @@ export {
   createNavigationAuthorization,
   navigationStatusFromPolicy,
   reconcileAdoptedNavigation,
-} from "./tab-workspace/navigation-guard.mjs";
+} from "./navigation-guard.mjs";

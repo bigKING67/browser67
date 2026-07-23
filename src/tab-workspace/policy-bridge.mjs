@@ -1,5 +1,5 @@
-import { createToolError } from "../errors.mjs";
-import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import { executeTmwdCommandWithPreferred } from "../browser-wrappers/shared.mjs";
 import {
   createNavigationAuthorization,
@@ -34,7 +34,7 @@ async function applyManagedTabPolicy(args, preferred, record, options = {}) {
     previousOwnershipGeneration: options.previous_record?.ownership_generation,
     previousLeaseId: options.previous_record?.lease_id,
     policy: normalizeManagementPolicy(record.management_policy),
-  });
+  }, options);
   if (command.value?.managed !== true) {
     throw createToolError("MANAGED_POLICY_UNAVAILABLE", "extension did not confirm managed policy application", {
       retryable: true,
@@ -53,7 +53,7 @@ async function applyManagedTabPolicy(args, preferred, record, options = {}) {
   };
 }
 
-async function readManagedTabPolicyStatus(args, preferred, record) {
+async function readManagedTabPolicyStatus(args, preferred, record, options = {}) {
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw createToolError("MANAGED_POLICY_UNAVAILABLE", "managed policy status requires TMWD transport", {
       retryable: true,
@@ -64,7 +64,7 @@ async function readManagedTabPolicyStatus(args, preferred, record) {
     cmd: "policy",
     method: "status",
     tabId: record.tab_id,
-  });
+  }, options);
   if (command.value?.managed !== true) {
     throw createToolError("MANAGED_POLICY_UNAVAILABLE", "extension has no active policy for adopted tab", {
       retryable: true,
@@ -92,7 +92,7 @@ async function authorizeManagedTabNavigation(args, preferred, record, reason, op
     authorizationId: authorization.navigation_authorization_id,
     authorizedUntil: authorization.navigation_authorized_until,
     reason: authorization.navigation_authorized_reason,
-  });
+  }, options);
   if (
     command.value?.navigation_authorization_id !== authorization.navigation_authorization_id
     || command.value?.ownership_generation !== record.ownership_generation
@@ -112,7 +112,7 @@ async function authorizeManagedTabNavigation(args, preferred, record, reason, op
   };
 }
 
-async function releaseManagedTabPolicy(args, record) {
+async function releaseManagedTabPolicy(args, record, options = {}) {
   if (record.management_policy_applied !== true) {
     return {
       status: "not_applied",
@@ -125,7 +125,7 @@ async function releaseManagedTabPolicy(args, record) {
       ...args,
       switch_tab_id: record.tab_id,
       session_id: record.tab_id,
-    });
+    }, options);
     if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
       return {
         status: "not_applicable",
@@ -139,7 +139,7 @@ async function releaseManagedTabPolicy(args, record) {
       tabId: record.tab_id,
       ownershipGeneration: record.ownership_generation,
       leaseId: record.lease_id,
-    });
+    }, options);
     if (command.value?.managed !== false) {
       throw new Error("extension did not confirm managed=false");
     }

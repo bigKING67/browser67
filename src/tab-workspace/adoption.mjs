@@ -1,7 +1,8 @@
-import { nowIso, randomId } from "../common.mjs";
-import { cdpRunCommand } from "../cdp-runtime.mjs";
-import { createToolError } from "../errors.mjs";
-import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+import { randomId } from "../runtime/identity.mjs";
+import { cdpRunCommand } from "../cdp-runtime/index.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { createAdoptionRuntime } from "../runtime/adoption/state.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
   executeTmwdCommandWithPreferred,
   readBrowserTabById,
@@ -16,7 +17,7 @@ import {
   managedTabPayload,
   recordManagedTab,
   updateManagedTab,
-} from "../tab-workspace.mjs";
+} from "./index.mjs";
 import {
   applyManagedTabPolicy,
   normalizeManagementPolicy,
@@ -27,9 +28,32 @@ const ADOPTION_TOKEN_TTL_MS = 60_000;
 const CLOSE_TOKEN_TTL_MS = 30_000;
 const ADOPTION_LEASE_MS = 10 * 60_000;
 const ADOPTION_RENEW_MS = 60_000;
-const RUNTIME_ID = randomId("runtime");
-const adoptionTokens = new Map();
-const closeTokens = new Map();
+
+const defaultAdoptionRuntime = createAdoptionRuntime();
+
+function configureAdoptionRuntime(state) {
+  return state.configure({
+    renew: () => renewOwnedAdoptions({
+      adoptionRuntime: state,
+      runtime: state.getRuntime() ?? undefined,
+    }),
+    dispose: () => disposeAdoptionState(state),
+  });
+}
+
+function adoptionRuntimeFor(options = {}) {
+  return configureAdoptionRuntime(
+    options.adoptionRuntime ?? options.runtime?.adoptionRuntime ?? defaultAdoptionRuntime,
+  );
+}
+
+function nowMs(state) {
+  return Number(state.now());
+}
+
+function stateNowIso(state) {
+  return new Date(nowMs(state)).toISOString();
+}
 
 function normalizedScope(args = {}) {
   const workspaceKey = String(args.workspace_key ?? "").trim();
@@ -66,28 +90,30 @@ function routeArguments(args = {}) {
   )));
 }
 
-function purgeExpiredTokens() {
-  const now = Date.now();
-  for (const [token, entry] of adoptionTokens) {
-    if (entry.expires_at_ms <= now) adoptionTokens.delete(token);
+function purgeExpiredTokens(options = {}) {
+  const state = adoptionRuntimeFor(options);
+  const now = nowMs(state);
+  for (const [token, entry] of state.adoptionTokens) {
+    if (entry.expires_at_ms <= now) state.adoptionTokens.delete(token);
   }
-  for (const [token, entry] of closeTokens) {
-    if (entry.expires_at_ms <= now) closeTokens.delete(token);
+  for (const [token, entry] of state.closeTokens) {
+    if (entry.expires_at_ms <= now) state.closeTokens.delete(token);
   }
+  return state;
 }
 
-async function closeAdoptedTab(routeArgs, record) {
+async function closeAdoptedTab(routeArgs, record, options = {}) {
   const preferred = await resolvePreferredBrowserContext({
     ...routeArgs,
     switch_tab_id: record.tab_id,
-  });
+  }, options);
   let transport = "cdp";
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
     const result = await executeTmwdCommandWithPreferred(routeArgs, preferred, {
       cmd: "tabs",
       method: "close",
       tabId: record.tab_id,
-    });
+    }, options);
     if (result.value?.closed !== true) {
       throw createToolError("EXECUTION_ERROR", "tabs.close did not confirm closed=true", {
         retryable: true,
@@ -97,11 +123,11 @@ async function closeAdoptedTab(routeArgs, record) {
   } else {
     await cdpRunCommand({ ...routeArgs, switch_tab_id: record.tab_id }, "Target.closeTarget", {
       targetId: record.tab_id,
-    });
+    }, options);
   }
   const startedAt = Date.now();
   do {
-    const live = await readBrowserTabById(routeArgs, preferred, record.tab_id);
+    const live = await readBrowserTabById(routeArgs, preferred, record.tab_id, options);
     if (!live) {
       return { closed: true, close_verified: true, transport };
     }
@@ -112,8 +138,8 @@ async function closeAdoptedTab(routeArgs, record) {
   });
 }
 
-async function inspectAdoption(args = {}) {
-  purgeExpiredTokens();
+async function inspectAdoption(args = {}, options = {}) {
+  const state = purgeExpiredTokens(options);
   const scope = normalizedScope(args);
   const tabId = String(args.tab_id ?? "").trim();
   if (!tabId) {
@@ -131,7 +157,7 @@ async function inspectAdoption(args = {}) {
       retryable: false,
     });
   }
-  const preferred = await resolvePreferredBrowserContext({ ...args, switch_tab_id: tabId });
+  const preferred = await resolvePreferredBrowserContext({ ...args, switch_tab_id: tabId }, options);
   const target = findTarget(preferred, tabId);
   if (!target) {
     throw createToolError("TAB_NOT_AVAILABLE", "adoption target is not present in the live browser", {
@@ -140,8 +166,8 @@ async function inspectAdoption(args = {}) {
     });
   }
   const token = randomId("adopt");
-  const expiresAtMs = Date.now() + ADOPTION_TOKEN_TTL_MS;
-  adoptionTokens.set(token, {
+  const expiresAtMs = nowMs(state) + state.token_ttl_ms;
+  state.putAdoptionToken(token, {
     token,
     tab_id: tabId,
     scope,
@@ -173,22 +199,22 @@ async function inspectAdoption(args = {}) {
   };
 }
 
-async function adoptExisting(args = {}) {
-  purgeExpiredTokens();
+async function adoptExisting(args = {}, options = {}) {
+  const state = purgeExpiredTokens(options);
   if (args.confirm_adopt !== true) {
     throw createToolError("ADOPTION_NOT_CONFIRMED", "adopt_existing requires confirm_adopt=true", {
       retryable: false,
     });
   }
   const tokenValue = String(args.adoption_token ?? "").trim();
-  const token = adoptionTokens.get(tokenValue);
+  const token = state.adoptionTokens.get(tokenValue);
   if (!token) {
     throw createToolError("ADOPTION_TOKEN_EXPIRED", "adoption token is missing or expired", {
       retryable: false,
     });
   }
-  adoptionTokens.delete(tokenValue);
-  if (token.expires_at_ms <= Date.now()) {
+  state.adoptionTokens.delete(tokenValue);
+  if (token.expires_at_ms <= nowMs(state)) {
     throw createToolError("ADOPTION_TOKEN_EXPIRED", "adoption token expired", { retryable: false });
   }
   const existing = await getManagedTab(token.tab_id);
@@ -205,7 +231,7 @@ async function adoptExisting(args = {}) {
   const preferred = await resolvePreferredBrowserContext({
     ...token.route_args,
     switch_tab_id: token.tab_id,
-  });
+  }, options);
   const target = findTarget(preferred, token.tab_id);
   if (
     !target
@@ -216,7 +242,7 @@ async function adoptExisting(args = {}) {
       retryable: false,
     });
   }
-  const now = nowIso();
+  const now = stateNowIso(state);
   const leaseId = randomId("lease");
   const candidate = {
     tab_id: token.tab_id,
@@ -227,11 +253,11 @@ async function adoptExisting(args = {}) {
     source: "user_adoption",
     ownership_origin: "user_adopted",
     close_on_finalize: false,
-    owning_runtime_id: RUNTIME_ID,
+    owning_runtime_id: state.runtime_id,
     lease_id: leaseId,
     lease_started_at: now,
     lease_renewed_at: now,
-    lease_expires_at: new Date(Date.now() + ADOPTION_LEASE_MS).toISOString(),
+    lease_expires_at: new Date(nowMs(state) + state.lease_ms).toISOString(),
     management_policy: normalizeManagementPolicy(args.policy),
     suspended: false,
     suspension_reason: "",
@@ -245,13 +271,14 @@ async function adoptExisting(args = {}) {
   let policyApplication;
   try {
     policyApplication = await applyManagedTabPolicy(token.route_args, preferred, candidate, {
+      ...options,
       previous_record: existing,
     });
   } catch (error) {
     await releaseManagedTabPolicy(token.route_args, {
       ...candidate,
       management_policy_applied: true,
-    });
+    }, options);
     throw error;
   }
   const record = await recordManagedTab({
@@ -271,7 +298,7 @@ async function adoptExisting(args = {}) {
     lease: {
       lease_id: leaseId,
       expires_at: record.lease_expires_at,
-      renew_interval_ms: ADOPTION_RENEW_MS,
+      renew_interval_ms: state.renew_ms,
     },
     policy_application: {
       ...policyApplication,
@@ -303,7 +330,7 @@ async function releaseAdopted(args = {}, options = {}) {
       retryable: false,
     });
   }
-  const policyRelease = await releaseManagedTabPolicy(args, record);
+  const policyRelease = await releaseManagedTabPolicy(args, record, options);
   await deleteManagedTab(tabId);
   return {
     status: "success",
@@ -316,8 +343,8 @@ async function releaseAdopted(args = {}, options = {}) {
   };
 }
 
-async function inspectCloseAdopted(args = {}) {
-  purgeExpiredTokens();
+async function inspectCloseAdopted(args = {}, _options = {}) {
+  const state = purgeExpiredTokens(_options);
   const scope = normalizedScope(args);
   const tabId = String(args.tab_id ?? "").trim();
   const record = await getManagedTab(tabId);
@@ -330,8 +357,8 @@ async function inspectCloseAdopted(args = {}) {
     });
   }
   const closeToken = randomId("close_adopted");
-  const expiresAtMs = Date.now() + CLOSE_TOKEN_TTL_MS;
-  closeTokens.set(closeToken, {
+  const expiresAtMs = nowMs(state) + state.close_token_ttl_ms;
+  state.putCloseToken(closeToken, {
     tab_id: tabId,
     scope,
     ownership_generation: record.ownership_generation,
@@ -349,8 +376,8 @@ async function inspectCloseAdopted(args = {}) {
   };
 }
 
-async function closeAdopted(args = {}) {
-  purgeExpiredTokens();
+async function closeAdopted(args = {}, options = {}) {
+  const state = purgeExpiredTokens(options);
   if (args.close_adopted !== true || args.confirm_close_adopted !== true) {
     throw createToolError(
       "ADOPTED_CLOSE_NOT_CONFIRMED",
@@ -359,14 +386,14 @@ async function closeAdopted(args = {}) {
     );
   }
   const tokenValue = String(args.close_token ?? "").trim();
-  const token = closeTokens.get(tokenValue);
-  if (!token || token.expires_at_ms <= Date.now()) {
-    closeTokens.delete(tokenValue);
+  const token = state.closeTokens.get(tokenValue);
+  if (!token || token.expires_at_ms <= nowMs(state)) {
+    state.closeTokens.delete(tokenValue);
     throw createToolError("CLOSE_TOKEN_EXPIRED", "adopted close token is missing or expired", {
       retryable: false,
     });
   }
-  closeTokens.delete(tokenValue);
+  state.closeTokens.delete(tokenValue);
   const record = await getManagedTab(token.tab_id);
   if (
     !record
@@ -379,7 +406,7 @@ async function closeAdopted(args = {}) {
       retryable: false,
     });
   }
-  const result = await closeAdoptedTab(token.route_args, record);
+  const result = await closeAdoptedTab(token.route_args, record, options);
   await deleteManagedTab(record.tab_id);
   return {
     status: "success",
@@ -391,8 +418,9 @@ async function closeAdopted(args = {}) {
   };
 }
 
-async function releaseExpiredAdoptions() {
-  const now = Date.now();
+async function releaseExpiredAdoptions(options = {}) {
+  const state = adoptionRuntimeFor(options);
+  const now = nowMs(state);
   const records = await listManagedTabRecords();
   const released = [];
   for (const record of records) {
@@ -401,7 +429,7 @@ async function releaseExpiredAdoptions() {
       && record.lease_expires_at
       && Date.parse(record.lease_expires_at) <= now
     ) {
-      const policyRelease = await releaseManagedTabPolicy({}, record);
+      const policyRelease = await releaseManagedTabPolicy({}, record, options);
       await deleteManagedTab(record.tab_id);
       released.push({
         tab_id: record.tab_id,
@@ -416,44 +444,44 @@ async function releaseExpiredAdoptions() {
   return released;
 }
 
-async function renewOwnedAdoptions() {
+async function renewOwnedAdoptions(options = {}) {
+  const state = adoptionRuntimeFor(options);
+  if (state.disposed) return [];
   const records = await listManagedTabRecords();
-  const now = nowIso();
+  const now = stateNowIso(state);
+  const renewed = [];
   for (const record of records.filter((record) => (
       record.ownership_origin === "user_adopted"
-      && record.owning_runtime_id === RUNTIME_ID
+      && record.owning_runtime_id === state.runtime_id
     ))) {
     const updated = await updateManagedTab(record.tab_id, {
       lease_renewed_at: now,
-      lease_expires_at: new Date(Date.now() + ADOPTION_LEASE_MS).toISOString(),
+      lease_expires_at: new Date(nowMs(state) + state.lease_ms).toISOString(),
       touch: false,
     });
     if (!updated || updated.management_policy_applied !== true) continue;
     try {
-      const preferred = await resolvePreferredBrowserContext({ switch_tab_id: updated.tab_id });
-      await applyManagedTabPolicy({}, preferred, updated, { renew: true });
+      const preferred = await resolvePreferredBrowserContext({ switch_tab_id: updated.tab_id }, options);
+      await applyManagedTabPolicy({}, preferred, updated, { ...options, renew: true });
       await updateManagedTab(updated.tab_id, { management_policy_status: "renewed", touch: false });
+      renewed.push({ tab_id: updated.tab_id, status: "renewed" });
     } catch {
       await updateManagedTab(updated.tab_id, {
         management_policy_status: "renewal_failed",
         suspended: true,
         touch: false,
       });
+      renewed.push({ tab_id: updated.tab_id, status: "renewal_failed" });
     }
   }
+  return renewed;
 }
 
-const renewalTimer = setInterval(() => {
-  renewOwnedAdoptions().catch(() => {});
-}, ADOPTION_RENEW_MS);
-renewalTimer.unref?.();
-
-async function disposeAdoptionRuntime() {
-  clearInterval(renewalTimer);
+async function disposeAdoptionState(state) {
   const records = await listManagedTabRecords();
   const owned = records.filter((record) => (
     record.ownership_origin === "user_adopted"
-    && record.owning_runtime_id === RUNTIME_ID
+    && record.owning_runtime_id === state.runtime_id
   ));
   const released = [];
   for (const record of owned) {
@@ -464,11 +492,16 @@ async function disposeAdoptionRuntime() {
     }, {
       scope: { workspace_key: record.workspace_key, task_id: record.task_id },
       ignore_lease: true,
+      adoptionRuntime: state,
+      runtime: state.getRuntime() ?? undefined,
     }));
   }
-  adoptionTokens.clear();
-  closeTokens.clear();
   return released;
+}
+
+async function disposeAdoptionRuntime() {
+  configureAdoptionRuntime(defaultAdoptionRuntime);
+  return defaultAdoptionRuntime.dispose();
 }
 
 export {
@@ -477,9 +510,12 @@ export {
   ADOPTION_TOKEN_TTL_MS,
   adoptExisting,
   closeAdopted,
+  createAdoptionRuntime,
+  defaultAdoptionRuntime,
   disposeAdoptionRuntime,
   inspectAdoption,
   inspectCloseAdopted,
   releaseAdopted,
   releaseExpiredAdoptions,
+  renewOwnedAdoptions,
 };
