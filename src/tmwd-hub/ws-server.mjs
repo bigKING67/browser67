@@ -2,6 +2,11 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 
 import {
+  markExtensionDisconnected,
+  registerExtensionHandshake,
+  updateExtensionIdentity,
+} from "./extension-identity.mjs";
+import {
   clearPendingByControllerSocket,
   clearPendingExec,
   handleControllerRequest,
@@ -26,7 +31,13 @@ function handleSocketMessage(hub, config, socket, raw) {
 
   const type = String(message.type ?? "").trim();
   if (type === "ext_ready" || type === "tabs_update") {
+    const newExtensionSocket = socket !== hub.extensionSocket;
     hub.extensionSocket = socket;
+    if (type === "ext_ready" || newExtensionSocket) {
+      registerExtensionHandshake(hub, message.extension_identity);
+    } else if (Object.prototype.hasOwnProperty.call(message, "extension_identity")) {
+      updateExtensionIdentity(hub, message.extension_identity);
+    }
     registerTabs(hub, message.tabs ?? [], config.sessionTtlMs);
     return;
   }
@@ -63,6 +74,7 @@ function createWsHubServer(hub, config) {
       clearPendingByControllerSocket(hub, socket, "tmwd controller websocket closed");
       if (socket === hub.extensionSocket) {
         hub.extensionSocket = null;
+        markExtensionDisconnected(hub);
         markAllExtensionSessionsDisconnected(hub);
         clearPendingExec(hub, "tmwd extension websocket closed");
       }

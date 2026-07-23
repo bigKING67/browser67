@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { extensionRuntimeInfo } from "./extension-identity.mjs";
 import { listActiveSessions } from "./sessions.mjs";
 import {
   isSocketOpen,
@@ -146,6 +147,14 @@ function handleControllerRequest(hub, config, socket, message) {
       id: requestId,
       success: true,
       result: tabs,
+    });
+    return;
+  }
+  if (bridgeCmd === "browser67_runtime_info") {
+    sendWsPayload(socket, {
+      id: requestId,
+      success: true,
+      result: extensionRuntimeInfo(hub),
     });
     return;
   }

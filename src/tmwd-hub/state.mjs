@@ -6,6 +6,11 @@ function createHubState() {
     pendingExec: new Map(),
     clientSockets: new Set(),
     extensionSocket: null,
+    extensionIdentity: null,
+    extensionIdentityStatus: "missing",
+    extensionIdentityReceivedAt: null,
+    extensionConnectedAt: null,
+    extensionDisconnectedAt: null,
   };
 }
 

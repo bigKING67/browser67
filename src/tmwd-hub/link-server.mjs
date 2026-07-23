@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 
+import { extensionRuntimeInfo } from "./extension-identity.mjs";
 import { relayExecToExtension } from "./relay.mjs";
 import {
   findSessions,
@@ -47,6 +48,11 @@ async function handleLinkCommand(hub, config, res, chunks) {
 
   if (cmd === "get_all_sessions") {
     respondJson(res, 200, { r: listActiveSessions(hub, config.sessionTtlMs) });
+    return;
+  }
+
+  if (cmd === "get_runtime_info") {
+    respondJson(res, 200, { r: extensionRuntimeInfo(hub) });
     return;
   }
 

@@ -1,11 +1,25 @@
 import assert from "node:assert/strict";
 
+import { compareExtensionRuntimeIdentity } from "../browser67-live-doctor/extension-identity.mjs";
 import { sleep } from "./ports.mjs";
 import { sendControllerRequest, waitForWsMessage } from "./ws-client.mjs";
+
+const extensionIdentity = {
+  schema: "browser67.extension-identity.v1",
+  product: "browser67",
+  extension_version: "0.4.0",
+  manifest_version: "0.4.0",
+  build_revision: "0123456789abcdef0123456789abcdef01234567",
+  build_revision_source: "git",
+  build_inputs_dirty: false,
+  source_digest: "b".repeat(64),
+  protocol_revision: 1,
+};
 
 async function runTabsListCase(extensionWs, controllerWs) {
   extensionWs.send(JSON.stringify({
     type: "ext_ready",
+    extension_identity: extensionIdentity,
     tabs: [
       { id: 123, url: "http://127.0.0.1/fake", title: "Fake Tab" },
     ],
@@ -18,6 +32,57 @@ async function runTabsListCase(extensionWs, controllerWs) {
   assert.equal(listResponse?.success, true);
   assert.equal(Array.isArray(listResponse?.result), true);
   assert.equal(listResponse.result[0]?.id, "123");
+}
+
+async function runRuntimeIdentityCase(controllerWs, linkUrl) {
+  const wsResponse = await sendControllerRequest(controllerWs, {
+    id: "runtime_info",
+    code: { cmd: "browser67_runtime_info" },
+  });
+  assert.equal(wsResponse?.success, true);
+  assert.equal(wsResponse?.result?.schema, "browser67.hub-runtime-info.v1");
+  assert.equal(wsResponse?.result?.extension_connected, true);
+  assert.equal(wsResponse?.result?.extension_identity_status, "valid");
+  assert.deepEqual(wsResponse?.result?.extension_identity, extensionIdentity);
+  const verified = compareExtensionRuntimeIdentity({
+    endpoint: "ws://127.0.0.1:fixture",
+    ok: true,
+    latency_ms: 1,
+    detail: "ws_runtime_info_ok",
+    runtime_info: wsResponse.result,
+  }, {
+    available: true,
+    path: "/fixture/build-identity.json",
+    identity: extensionIdentity,
+    error: "",
+  });
+  assert.equal(verified.ok, true);
+  assert.equal(verified.identity_match, true);
+  const mismatch = compareExtensionRuntimeIdentity({
+    endpoint: "ws://127.0.0.1:fixture",
+    ok: true,
+    latency_ms: 1,
+    detail: "ws_runtime_info_ok",
+    runtime_info: wsResponse.result,
+  }, {
+    available: true,
+    path: "/fixture/build-identity.json",
+    identity: { ...extensionIdentity, source_digest: "c".repeat(64) },
+    error: "",
+  });
+  assert.equal(mismatch.ok, false);
+  assert.deepEqual(mismatch.mismatches, ["source_digest"]);
+
+  const linkResponse = await fetch(linkUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cmd: "get_runtime_info" }),
+  });
+  assert.equal(linkResponse.ok, true);
+  const linkPayload = await linkResponse.json();
+  assert.equal(linkPayload?.r?.extension_connected, true);
+  assert.equal(linkPayload?.r?.extension_identity_status, "valid");
+  assert.deepEqual(linkPayload?.r?.extension_identity, extensionIdentity);
 }
 
 async function runTabsCreateRelayCase(extensionWs, controllerWs) {
@@ -162,6 +227,7 @@ async function runNoExtensionCase(extensionWs, controllerWs) {
 export {
   runNewTabMonitoringRelayCase,
   runNoExtensionCase,
+  runRuntimeIdentityCase,
   runTabsCreateRelayCase,
   runTabsListCase,
 };
