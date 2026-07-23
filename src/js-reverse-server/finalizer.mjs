@@ -1,10 +1,10 @@
-import { sessionPointers } from "../session-registry.mjs";
+import { sessionPointers } from "../runtime/sessions/registry.mjs";
 import {
   buildFinalizeCleanupSummary,
   deleteManagedTab,
   formatFinalizeDeliverySummary,
   listManagedTabRecords,
-} from "../tab-workspace.mjs";
+} from "../tab-workspace/index.mjs";
 import { bridgeCommand } from "./tmwd-adapter.mjs";
 
 function resolveFinalizeScope(args = {}) {

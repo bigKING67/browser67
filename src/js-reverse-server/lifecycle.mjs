@@ -1,7 +1,7 @@
 import {
   markSessionSelected,
   sessionPointers,
-} from "../session-registry.mjs";
+} from "../runtime/sessions/registry.mjs";
 import {
   extractCreatedTabId,
   findReusableManagedTab,
@@ -11,7 +11,7 @@ import {
   recordManagedTab,
   summarizeUnmanagedMatches,
   updateManagedTab,
-} from "../tab-workspace.mjs";
+} from "../tab-workspace/index.mjs";
 import {
   assertManagedExecutionContext,
   authorizeManagedExecutionNavigation,

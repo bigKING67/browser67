@@ -6,7 +6,7 @@ import {
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { normalizeEvidenceRecord } from "../evidence-schema.mjs";
+import { normalizeEvidenceRecord } from "../runtime/evidence/schema.mjs";
 import { runtimeRoot } from "./paths.mjs";
 import { runtimeScript } from "./runtime-script.mjs";
 import { serverEvidence, serverHooks } from "./state.mjs";

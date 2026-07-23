@@ -1,7 +1,7 @@
 import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
-} from "../tmwd-runtime.mjs";
+} from "../tmwd-runtime/index.mjs";
 import { normalizeTransport } from "./utils.mjs";
 
 function browserArgs(args = {}) {
