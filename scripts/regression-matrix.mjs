@@ -147,7 +147,13 @@ const MATRIX = [
     id: "live-doctor",
     command: "npm run check:live:doctor",
     tier: "live",
-    covers: ["tmwd-hub", "extension-connectivity", "real-browser-readiness"],
+    covers: ["tmwd-hub", "extension-connectivity", "extension-build-identity", "real-browser-readiness"],
+  },
+  {
+    id: "browser-live",
+    command: "npm run check:live",
+    tier: "live",
+    covers: ["managed-fixture-tab", "scan-execute-target-parity", "scoped-finalize-cleanup"],
   },
   {
     id: "js-reverse-live",
