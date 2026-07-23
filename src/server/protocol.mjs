@@ -3,7 +3,7 @@ import {
   listRegisteredTools,
 } from "../mcp/browser/tool-registry.mjs";
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 const SERVER_NAME = "browser67-tmwd-browser";
 
 function sendResponse(id, result, output = process.stdout) {

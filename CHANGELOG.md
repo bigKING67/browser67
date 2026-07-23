@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-07-23
+
 - Add top-level confirmed page context to `browser67.tool-outcome.v3`, including
   page title, redacted URL, tab id, and managed/adopted policy state.
 - Add `full`/`compact` output mode to all 17 `tmwd_browser` tools while keeping
