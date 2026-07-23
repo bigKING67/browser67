@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 
-import { createToolError } from "../../errors.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
 import {
   DEFAULT_PROFILE_DIR,
   PROJECT_ROOT,

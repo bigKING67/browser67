@@ -1,4 +1,4 @@
-import { normalizeTimeoutMs } from "../common.mjs";
+import { normalizeTimeoutMs } from "../runtime/config/limits.mjs";
 import { executeBrowserScript } from "./login-detect.mjs";
 import {
   MANUAL_CHALLENGE_DETECTOR_JS,
@@ -7,7 +7,7 @@ import {
 
 const DEFAULT_LOGIN_TIMEOUT_MS = 12_000;
 
-async function submitLoginForm(args, profile) {
+async function submitLoginForm(args, profile, options = {}) {
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms ?? DEFAULT_LOGIN_TIMEOUT_MS);
   const result = await executeBrowserScript(args, `
     const profile = input.profile;
@@ -170,7 +170,7 @@ async function submitLoginForm(args, profile) {
       success_path_not: profile.success_path_not,
       success_text: profile.success_text,
     },
-  });
+  }, options);
   return {
     transport: result.transport,
     transport_attempts: result.transport_attempts,

@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { createToolError } from "../../errors.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
 import { readProfileMetadata } from "../profile-metadata.mjs";
 import {
   DEFAULT_MAX_PROFILE_FILES,

@@ -24,7 +24,7 @@ import {
 } from "../login-detect.mjs";
 import { pageStateWithPage } from "./shared.mjs";
 
-async function handleListProfiles(args) {
+async function handleListProfiles(args, _options = {}) {
   const loaded = await loadLoginProfiles(args);
   const profiles = loaded.profiles.map((profile) => ({
     ...redactProfile(profile),
@@ -41,7 +41,7 @@ async function handleListProfiles(args) {
   };
 }
 
-async function handleValidateProfile(args) {
+async function handleValidateProfile(args, _options = {}) {
   const loaded = await loadLoginProfiles(args);
   const urlState = args?.url ? parseUrlState(args.url) : null;
   const profileId = String(args?.profile_id ?? "").trim();
@@ -84,7 +84,7 @@ async function handleValidateProfile(args) {
   };
 }
 
-async function handleInspectLoginPage(args) {
+async function handleInspectLoginPage(args, options = {}) {
   const loaded = await loadLoginProfiles(args);
   if (args?.dry_run === true && args?.url) {
     const urlState = parseUrlState(args.url);
@@ -102,10 +102,10 @@ async function handleInspectLoginPage(args) {
       secrets_redacted: true,
     };
   }
-  const firstState = await inspectCurrentPage(args, null);
+  const firstState = await inspectCurrentPage(args, null, options);
   const resolved = resolveProfileForOrigin(loaded.profiles, args, firstState.origin);
   const profile = resolved.profile;
-  const pageState = profile ? await inspectCurrentPage(args, profile) : firstState;
+  const pageState = profile ? await inspectCurrentPage(args, profile, options) : firstState;
   const detection = detectLoginPage(pageState, profile);
   const manualReason = manualRequirementFromPageState(pageState);
   return {
@@ -134,7 +134,7 @@ async function handleInspectLoginPage(args) {
   };
 }
 
-async function handleSuggestProfile(args) {
+async function handleSuggestProfile(args, options = {}) {
   if (args?.dry_run === true && args?.url) {
     const urlState = parseUrlState(args.url);
     const originValidation = validateExactHttpOrigin(urlState.origin);
@@ -168,7 +168,7 @@ async function handleSuggestProfile(args) {
     };
   }
 
-  const pageState = await suggestProfileFromCurrentPage(args);
+  const pageState = await suggestProfileFromCurrentPage(args, options);
   const originValidation = validateExactHttpOrigin(pageState.origin);
   if (!originValidation.ok) {
     return {
@@ -212,7 +212,7 @@ async function handleSuggestProfile(args) {
   };
 }
 
-async function handleUpsertProfile(args) {
+async function handleUpsertProfile(args, _options = {}) {
   const profile = buildProfileFromUpsertArgs(args);
   const writeResult = await writeProfileAtomic(args, profile);
   const lifecycle = await writeProfileMetadata(writeResult.filePath, {

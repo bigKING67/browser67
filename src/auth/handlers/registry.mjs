@@ -34,9 +34,9 @@ const AUTH_ACTION_HANDLERS = {
   assist_captcha: handleAssistCaptcha,
 };
 
-async function handleBrowserAuthOps(args) {
+async function handleBrowserAuthOps(args, options = {}) {
   const action = normalizeAction(args, SUPPORTED_BROWSER_AUTH_ACTIONS);
-  return AUTH_ACTION_HANDLERS[action](args);
+  return AUTH_ACTION_HANDLERS[action](args, options);
 }
 
 export {

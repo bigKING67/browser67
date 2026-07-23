@@ -19,7 +19,7 @@ import {
 import { submitLoginForm } from "../login-submit.mjs";
 import { pageStateWithPage } from "./shared.mjs";
 
-async function handleEnsureLogin(args) {
+async function handleEnsureLogin(args, options = {}) {
   const loaded = await loadLoginProfiles(args);
   if (args?.dry_run === true && args?.url) {
     const urlState = parseUrlState(args.url);
@@ -56,7 +56,7 @@ async function handleEnsureLogin(args) {
     };
   }
 
-  const firstState = await inspectCurrentPage(args, null);
+  const firstState = await inspectCurrentPage(args, null, options);
   const genericDetection = detectLoginPage(firstState, null);
   const firstManualRequiredReason = manualRequirementFromPageState(firstState);
   if (!genericDetection.login_detected && !firstManualRequiredReason) {
@@ -153,7 +153,7 @@ async function handleEnsureLogin(args) {
     };
   }
 
-  const pageState = await inspectCurrentPage(args, profile);
+  const pageState = await inspectCurrentPage(args, profile, options);
   const detection = detectLoginPage(pageState, profile);
   const manualRequiredReason = manualRequirementFromPageState(pageState);
   if (!detection.login_detected && !manualRequiredReason) {
@@ -245,7 +245,7 @@ async function handleEnsureLogin(args) {
     };
   }
 
-  const submitted = await submitLoginForm(args, profile);
+  const submitted = await submitLoginForm(args, profile, options);
   const payload = submitted.result ?? {};
   const reason = String(payload.reason ?? (payload.ok === true ? "logged_in" : "login_failed"));
   const lifecycle = payload.ok === true

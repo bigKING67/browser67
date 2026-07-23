@@ -1,6 +1,6 @@
-import { normalizeTimeoutMs } from "../common.mjs";
-import { createToolError } from "../errors.mjs";
-import { executeTmwdJsWithFallback, resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+import { normalizeTimeoutMs } from "../runtime/config/limits.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { executeTmwdJsWithFallback, resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
   MANUAL_CHALLENGE_DETECTOR_JS,
   SSO_CHALLENGE_DETECTOR_JS,
@@ -143,7 +143,7 @@ function wrapPageFunction(body, input) {
   return `return await (async (input) => {\n${body}\n})(${JSON.stringify(input ?? {})});`;
 }
 
-async function resolveAuthBrowserContext(args) {
+async function resolveAuthBrowserContext(args, options = {}) {
   const explicitTarget = String(args?.tab_id ?? args?.switch_tab_id ?? args?.session_id ?? args?.sessionId ?? "").trim();
   const timeoutMs = explicitTarget
     ? Math.min(10_000, normalizeTimeoutMs(args?.timeout_ms))
@@ -151,7 +151,7 @@ async function resolveAuthBrowserContext(args) {
   const started = Date.now();
   const attemptResolve = async () => {
     try {
-      const preferred = await resolvePreferredBrowserContext(args ?? {});
+      const preferred = await resolvePreferredBrowserContext(args ?? {}, options);
       const selectionWarning = String(preferred.context?.selection?.warning ?? "").trim();
       if (selectionWarning) {
         throw createToolError("NO_SESSION", `browser_auth_ops target unavailable: ${selectionWarning}`, {
@@ -173,9 +173,9 @@ async function resolveAuthBrowserContext(args) {
   return attemptResolve();
 }
 
-async function executeBrowserScript(args, body, input = {}) {
+async function executeBrowserScript(args, body, input = {}, options = {}) {
   const script = wrapPageFunction(body, input);
-  const preferred = await resolveAuthBrowserContext(args ?? {});
+  const preferred = await resolveAuthBrowserContext(args ?? {}, options);
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw createToolError(
       "TRANSPORT_UNAVAILABLE",
@@ -183,7 +183,7 @@ async function executeBrowserScript(args, body, input = {}) {
       { retryable: true },
     );
   }
-  const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script);
+  const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script, options);
   return {
     transport: result.context.tmwd_transport === "ws" ? "tmwd_ws" : "tmwd_link",
     transport_attempts: result.transport_attempts,
@@ -197,7 +197,7 @@ async function executeBrowserScript(args, body, input = {}) {
   };
 }
 
-async function inspectCurrentPage(args, profile = null) {
+async function inspectCurrentPage(args, profile = null, options = {}) {
   const result = await executeBrowserScript(args, `
     const profile = input.profile || {};
     const hasSelector = (selector) => {
@@ -234,7 +234,7 @@ async function inspectCurrentPage(args, profile = null) {
         submit: hasSelector(profile.submit_selector)
       }
     };
-  `, { profile: profile ? redactProfile(profile) : null });
+  `, { profile: profile ? redactProfile(profile) : null }, options);
   return {
     ...result.value,
     transport: result.transport,
@@ -243,7 +243,7 @@ async function inspectCurrentPage(args, profile = null) {
   };
 }
 
-async function suggestProfileFromCurrentPage(args) {
+async function suggestProfileFromCurrentPage(args, options = {}) {
   const result = await executeBrowserScript(args, `
     const cssEscape = (value) => {
       if (globalThis.CSS && typeof CSS.escape === "function") {
@@ -337,7 +337,7 @@ async function suggestProfileFromCurrentPage(args) {
       mfa_input_count: mfaInputs.length,
       ...ssoChallenge
     };
-  `);
+  `, {}, options);
   return {
     ...result.value,
     transport: result.transport,
