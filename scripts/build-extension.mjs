@@ -11,6 +11,9 @@ import {
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { extensionBatchReferenceSource } from "../src/browser/execution/batch-references.mjs";
+import { extensionPageExecutionSource } from "../src/browser/execution/page-script.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const defaultSourceDir = resolve(repoRoot, "extension");
@@ -45,6 +48,50 @@ function patchWsNewTabMonitoring(source) {
     );
 }
 
+function patchSharedExecutionRuntime(source) {
+  const pageStart = source.indexOf("// --- Shared page/CDP script builder core ---");
+  const pageEnd = source.indexOf("// --- WebSocket Client for TMWebDriver ---");
+  if (pageStart < 0 || pageEnd < 0 || pageEnd <= pageStart) {
+    throw new Error("upstream page execution anchors changed; review the browser67 overlay transform");
+  }
+  let next = [
+    source.slice(0, pageStart),
+    `${extensionPageExecutionSource()}\n\n`,
+    source.slice(pageEnd),
+  ].join("");
+
+  const handleBatchAnchor = "async function handleBatch(msg, sender) {";
+  const batchStart = next.indexOf(handleBatchAnchor);
+  if (batchStart < 0) {
+    throw new Error("upstream batch handler anchor changed; review the browser67 overlay transform");
+  }
+  next = [
+    next.slice(0, batchStart),
+    `${extensionBatchReferenceSource()}\n\n`,
+    next.slice(batchStart),
+  ].join("");
+  const resolverStart = next.indexOf("  const resolve$N =", next.indexOf(handleBatchAnchor));
+  const resolverEnd = next.indexOf("  try {", resolverStart);
+  if (resolverStart < 0 || resolverEnd < 0) {
+    throw new Error("upstream batch resolver anchors changed; review the browser67 overlay transform");
+  }
+  next = `${next.slice(0, resolverStart)}${next.slice(resolverEnd)}`;
+  const loopAnchor = "    for (const c of msg.commands) {";
+  const loopReplacement = [
+    "    for (const rawCommand of msg.commands) {",
+    "      const c = globalThis.browser67ResolveBatchReferences(rawCommand, R, { command_index: R.length });",
+  ].join("\n");
+  const commandAnchor = "chrome.debugger.sendCommand({ tabId }, c.method, resolve$N(c.params))";
+  const errorAnchor = "return { ok: false, error: e.message, results: R };";
+  if (!next.includes(loopAnchor) || !next.includes(commandAnchor) || !next.includes(errorAnchor)) {
+    throw new Error("upstream batch execution anchors changed; review the browser67 overlay transform");
+  }
+  return next
+    .replace(loopAnchor, loopReplacement)
+    .replace(commandAnchor, "chrome.debugger.sendCommand({ tabId }, c.method, c.params || {})")
+    .replace(errorAnchor, "return { ok: false, error: e.message, errorCode: e.code, errorDetails: e.details, results: R };");
+}
+
 function buildBackground(source) {
   const installStart = source.indexOf("chrome.runtime.onInstalled.addListener(() => {");
   const handlerStart = source.indexOf("async function handleExtMessage(msg, sender) {");
@@ -66,7 +113,7 @@ function buildBackground(source) {
   if (routed === withoutGlobalCsp) {
     throw new Error("failed to inject browser67 command routing into background.js");
   }
-  return patchWsNewTabMonitoring(routed);
+  return patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed));
 }
 
 function buildManifest(source) {
@@ -176,5 +223,6 @@ export {
   buildBackground,
   buildExtension,
   buildManifest,
+  patchSharedExecutionRuntime,
   patchWsNewTabMonitoring,
 };
