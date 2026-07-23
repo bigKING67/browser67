@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 const EVIDENCE_SCHEMA_VERSION = "evidence.v1";
+// Keep normalization deterministic so records remain readable across transports.
 const EVIDENCE_SOURCES = new Set([
   "browser",
   "network",
@@ -30,7 +31,12 @@ function normalizeEvidenceConfidence(raw) {
   return EVIDENCE_CONFIDENCE.has(value) ? value : "unknown";
 }
 
+/**
+ * @param {Record<string, any>} input
+ * @param {Record<string, any>} defaults
+ */
 function normalizeEvidenceRecord(input = {}, defaults = {}) {
+  /** @type {Record<string, any>} */
   const data = input && typeof input === "object" ? input : {};
   return {
     schema_version: EVIDENCE_SCHEMA_VERSION,

@@ -1,12 +1,9 @@
-import { randomId } from "../../common.mjs";
-import { createCdpNetworkObserver } from "../../cdp-runtime.mjs";
-import { createToolError } from "../../errors.mjs";
-import { resolvePreferredBrowserContext } from "../../tmwd-runtime.mjs";
+import { randomId } from "../../runtime/identity.mjs";
+import { createCdpNetworkObserver } from "../../cdp-runtime/index.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
+import { defaultNetworkObservationStore } from "../../runtime/network/observation-store.mjs";
+import { resolvePreferredBrowserContext } from "../../tmwd-runtime/index.mjs";
 import { executeTmwdCommandWithPreferred } from "../../browser-wrappers/shared.mjs";
-
-const MAX_NETWORK_OBSERVATIONS = 64;
-const NETWORK_OBSERVATION_TTL_MS = 5 * 60_000;
-const completedObservations = new Map();
 
 function normalizeOptions(args = {}) {
   return {
@@ -23,33 +20,16 @@ function normalizeOptions(args = {}) {
   };
 }
 
-function rememberObservation(observation) {
-  const now = Date.now();
-  for (const [id, entry] of completedObservations) {
-    if (entry.expires_at_ms <= now) completedObservations.delete(id);
-  }
-  while (completedObservations.size >= MAX_NETWORK_OBSERVATIONS) {
-    completedObservations.delete(completedObservations.keys().next().value);
-  }
-  completedObservations.set(observation.network_observation_id, {
-    value: Object.freeze(observation),
-    expires_at_ms: now + NETWORK_OBSERVATION_TTL_MS,
-  });
-  return observation;
+function observationStore(runtimeOptions = {}) {
+  return runtimeOptions.runtime?.networkObservations ?? defaultNetworkObservationStore;
 }
 
-function getNetworkObservation(observationId) {
-  const entry = completedObservations.get(String(observationId ?? ""));
-  if (!entry || entry.expires_at_ms <= Date.now()) {
-    if (entry) completedObservations.delete(String(observationId ?? ""));
-    throw createToolError("NETWORK_OBSERVATION_NOT_FOUND", "network observation is missing or expired", {
-      retryable: false,
-    });
-  }
-  return entry.value;
+function getNetworkObservation(observationId, runtimeOptions = {}) {
+  return observationStore(runtimeOptions).get(observationId);
 }
 
-async function beginTmwdNetworkObservation(args, preferred, options) {
+async function beginTmwdNetworkObservation(args, preferred, options, runtimeOptions = {}) {
+  const store = observationStore(runtimeOptions);
   const tabId = String(preferred.context?.target?.id ?? "");
   const observationId = randomId("network_observation");
   const observed = await executeTmwdCommandWithPreferred(args, preferred, {
@@ -59,12 +39,12 @@ async function beginTmwdNetworkObservation(args, preferred, options) {
     observationId,
     ignorePatterns: options.ignore_patterns,
     ignoreResourceTypes: options.ignore_resource_types,
-  });
+  }, runtimeOptions);
   if (observed.value?.observing !== true) {
     throw createToolError("NETWORK_OBSERVATION_UNAVAILABLE", "TMWD extension did not start network observation", {
       retryable: true,
       details: observed.value,
-    });
+    }, runtimeOptions);
   }
 
   async function snapshot() {
@@ -73,7 +53,7 @@ async function beginTmwdNetworkObservation(args, preferred, options) {
       method: "status",
       tabId,
       observationId,
-    });
+    }, runtimeOptions);
     return {
       schema: "browser67.network-observation.v1",
       network_observation_id: observationId,
@@ -117,7 +97,7 @@ async function beginTmwdNetworkObservation(args, preferred, options) {
       tabId,
       observationId,
     });
-    return rememberObservation({
+    return store.remember({
       schema: "browser67.network-observation.v1",
       network_observation_id: observationId,
       tab_id: tabId,
@@ -132,31 +112,32 @@ async function beginTmwdNetworkObservation(args, preferred, options) {
 
 async function beginNetworkObservation(args = {}, runtimeOptions = {}) {
   const options = normalizeOptions(args);
-  const preferred = runtimeOptions.preferred ?? await resolvePreferredBrowserContext(args);
+  const preferred = runtimeOptions.preferred ?? await resolvePreferredBrowserContext(args, runtimeOptions);
   if (preferred.transport === "cdp") {
+    const store = observationStore(runtimeOptions);
     const observer = await createCdpNetworkObserver({
       ...args,
       switch_tab_id: preferred.context.target.id,
-    }, options);
+    }, { ...options, ...runtimeOptions });
     return Object.freeze({
       network_observation_id: observer.network_observation_id,
       snapshot: observer.snapshot,
       waitForIdle: observer.waitForIdle,
       async stop() {
-        return rememberObservation(await observer.stop());
+        return store.remember(await observer.stop());
       },
     });
   }
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    return beginTmwdNetworkObservation(args, preferred, options);
+    return beginTmwdNetworkObservation(args, preferred, options, runtimeOptions);
   }
   throw createToolError("NETWORK_OBSERVATION_UNAVAILABLE", "selected transport cannot observe requests", {
     retryable: true,
   });
 }
 
-async function waitForNetworkIdle(args = {}) {
-  const observer = await beginNetworkObservation(args);
+async function waitForNetworkIdle(args = {}, runtimeOptions = {}) {
+  const observer = await beginNetworkObservation(args, runtimeOptions);
   try {
     return await observer.waitForIdle(args);
   } finally {

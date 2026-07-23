@@ -14,4 +14,16 @@ const TOOL_SCHEMAS = {
   ...AUTH_TOOL_SCHEMAS,
 };
 
+for (const schema of Object.values(TOOL_SCHEMAS)) {
+  const inputSchema = schema.inputSchema ?? {};
+  inputSchema.properties = {
+    ...(inputSchema.properties ?? {}),
+    output_mode: inputSchema.properties?.output_mode ?? {
+      type: "string",
+      enum: ["full", "compact"],
+      description: "Controls diagnostic verbosity only; tool-specific content limits remain authoritative.",
+    },
+  };
+}
+
 export { TOOL_SCHEMAS };

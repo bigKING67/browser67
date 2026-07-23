@@ -2,19 +2,11 @@ import {
   mergeTransportAttempts,
   normalizeTmwdTransportLabel,
 } from "../../runtime/transport-attempts.mjs";
-import {
-  asShortTabs,
-  getActiveTargetId,
-  listSessionsSnapshot,
-  markSessionSelected,
-  normalizeIdToken,
-  resolveSessionByPattern,
-  sessionPointers,
-} from "../../session-registry.mjs";
+import { defaultSessionRegistry, normalizeIdToken } from "../../runtime/sessions/registry.mjs";
 import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
-} from "../../tmwd-runtime.mjs";
+} from "../../tmwd-runtime/index.mjs";
 
 function wantsUnscriptableTabs(args = {}) {
   return args.include_unscriptable === true
@@ -49,16 +41,17 @@ function normalizeBridgeTabRows(raw) {
     .filter((row) => row !== null);
 }
 
-async function handleBrowserTabOps(args) {
+async function handleBrowserTabOps(args, options = {}) {
+  const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
   const op = String(args?.op ?? "").trim().toLowerCase();
   if (op === "current" || op === "current_session") {
     return {
       status: "ok",
-      active_tab: getActiveTargetId() || null,
-      ...sessionPointers(),
+      active_tab: sessionStore.getActiveTargetId() || null,
+      ...sessionStore.sessionPointers(),
     };
   }
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = await resolvePreferredBrowserContext(args ?? {}, options);
   const tabs = preferred.context.targets;
   const transportAttempts = Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [];
   if (op === "set_session") {
@@ -69,23 +62,23 @@ async function handleBrowserTabOps(args) {
         msg: "url_pattern is required for op=set_session",
       };
     }
-    const matched = resolveSessionByPattern(tabs, pattern);
+    const matched = sessionStore.resolveByPattern(tabs, pattern);
     if (matched.length === 0) {
       return {
         status: "error",
         msg: `no session matched pattern: ${pattern}`,
-        ...sessionPointers(),
+        ...sessionStore.sessionPointers(),
       };
     }
-    markSessionSelected(matched[0].id, { make_default: true });
+    sessionStore.select(matched[0].id, { make_default: true });
     return {
       status: "ok",
       selected: matched[0].id,
-      matched: asShortTabs(matched),
+      matched: sessionStore.asShortTabs(matched),
       transport: preferred.transport,
       transport_attempts: transportAttempts,
       selection_source: "url_pattern",
-      ...sessionPointers(),
+      ...sessionStore.sessionPointers(),
     };
   }
   if (op === "find_session") {
@@ -93,10 +86,10 @@ async function handleBrowserTabOps(args) {
     return {
       status: "ok",
       pattern,
-      matched: asShortTabs(resolveSessionByPattern(tabs, pattern)),
+      matched: sessionStore.asShortTabs(sessionStore.resolveByPattern(tabs, pattern)),
       transport: preferred.transport,
       transport_attempts: transportAttempts,
-      ...sessionPointers(),
+      ...sessionStore.sessionPointers(),
     };
   }
   if (op === "list_sessions") {
@@ -104,10 +97,10 @@ async function handleBrowserTabOps(args) {
       status: "ok",
       transport: preferred.transport,
       transport_attempts: transportAttempts,
-      sessions: listSessionsSnapshot({
+      sessions: sessionStore.list({
         include_disconnected: args?.include_disconnected === true,
       }),
-      ...sessionPointers(),
+      ...sessionStore.sessionPointers(),
     };
   }
   if (op === "switch") {
@@ -124,14 +117,14 @@ async function handleBrowserTabOps(args) {
         msg: `tab not found: ${tabId}`,
       };
     }
-    markSessionSelected(tabId, { make_default: false });
+    sessionStore.select(tabId, { make_default: false });
     return {
       status: "ok",
       active_tab: tabId,
       transport: preferred.transport,
       transport_attempts: transportAttempts,
       selection_source: "session_id",
-      ...sessionPointers(),
+      ...sessionStore.sessionPointers(),
     };
   }
   if (op === "list") {
@@ -146,6 +139,7 @@ async function handleBrowserTabOps(args) {
             method: "list",
             includeUnscriptable: true,
           },
+          options,
         );
         const allTabs = normalizeBridgeTabRows(allTabsResult.executed.value);
         return {
@@ -159,11 +153,11 @@ async function handleBrowserTabOps(args) {
           tabs_count: allTabs.length,
           tabs: allTabs,
           scriptable_tabs_count: tabs.length,
-          scriptable_tabs: asShortTabs(tabs),
+          scriptable_tabs: sessionStore.asShortTabs(tabs),
           internal_tabs: allTabs.filter((tab) => tab.scriptable !== true),
-          active_tab: getActiveTargetId() || null,
-          sessions: listSessionsSnapshot(),
-          ...sessionPointers(),
+          active_tab: sessionStore.getActiveTargetId() || null,
+          sessions: sessionStore.list(),
+          ...sessionStore.sessionPointers(),
         };
       } catch (error) {
         return {
@@ -173,10 +167,10 @@ async function handleBrowserTabOps(args) {
           include_unscriptable: false,
           include_unscriptable_warning: String(error?.message ?? error),
           tabs_count: tabs.length,
-          tabs: asShortTabs(tabs),
-          active_tab: getActiveTargetId() || null,
-          sessions: listSessionsSnapshot(),
-          ...sessionPointers(),
+          tabs: sessionStore.asShortTabs(tabs),
+          active_tab: sessionStore.getActiveTargetId() || null,
+          sessions: sessionStore.list(),
+          ...sessionStore.sessionPointers(),
         };
       }
     }
@@ -185,10 +179,10 @@ async function handleBrowserTabOps(args) {
       transport: preferred.transport,
       transport_attempts: transportAttempts,
       tabs_count: tabs.length,
-      tabs: asShortTabs(tabs),
-      active_tab: getActiveTargetId() || null,
-      sessions: listSessionsSnapshot(),
-      ...sessionPointers(),
+      tabs: sessionStore.asShortTabs(tabs),
+      active_tab: sessionStore.getActiveTargetId() || null,
+      sessions: sessionStore.list(),
+      ...sessionStore.sessionPointers(),
     };
   }
   return {

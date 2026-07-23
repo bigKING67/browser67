@@ -1,9 +1,7 @@
-import { CAPABILITIES } from "../capabilities.mjs";
-import { cdpRunCommand } from "../cdp-runtime.mjs";
-import { createToolError } from "../errors.mjs";
-import {
-  sessionPointers,
-} from "../session-registry.mjs";
+import { CAPABILITIES } from "../tab-workspace/capabilities.mjs";
+import { cdpRunCommand } from "../cdp-runtime/index.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { defaultSessionRegistry } from "../runtime/sessions/registry.mjs";
 import {
   deleteManagedTab,
   getManagedTab,
@@ -12,8 +10,8 @@ import {
   listManagedTabRecords,
   managedTabPayload,
   updateManagedTab,
-} from "../tab-workspace.mjs";
-import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+} from "../tab-workspace/index.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
   executeTmwdCommandWithPreferred,
   liveTabMap,
@@ -49,7 +47,7 @@ function normalizeCloseVerifyPoll(args = {}) {
   return Math.max(50, Math.min(1_000, Math.floor(raw)));
 }
 
-async function verifyTabClosed(args, preferred, tabId) {
+async function verifyTabClosed(args, preferred, tabId, options = {}) {
   const timeoutMs = normalizeCloseVerifyTimeout(args);
   const pollMs = normalizeCloseVerifyPoll(args);
   const startedAt = Date.now();
@@ -57,7 +55,7 @@ async function verifyTabClosed(args, preferred, tabId) {
   let lastTab = null;
   do {
     polls += 1;
-    lastTab = await readBrowserTabById(args, preferred, tabId);
+    lastTab = await readBrowserTabById(args, preferred, tabId, options);
     if (!lastTab) {
       return {
         verified: true,
@@ -92,7 +90,7 @@ async function verifyTabClosed(args, preferred, tabId) {
   };
 }
 
-async function closeOneManagedTab(args, record, preferred = null) {
+async function closeOneManagedTab(args, record, preferred = null, options = {}) {
   if (record.dry_run === true || args?.dry_run === true) {
     return {
       tab_id: record.tab_id,
@@ -101,20 +99,23 @@ async function closeOneManagedTab(args, record, preferred = null) {
       reason: "dry_run",
     };
   }
-  const resolved = preferred ?? await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
+  const resolved = preferred ?? await resolvePreferredBrowserContext(
+    { ...args, refresh_sessions: true },
+    options,
+  );
   if (resolved.transport === "tmwd_ws" || resolved.transport === "tmwd_link") {
     const result = await executeTmwdCommandWithPreferred(args, resolved, {
       cmd: "tabs",
       method: "close",
       tabId: record.tab_id,
-    });
+    }, options);
     if (result.value?.closed !== true) {
       throw createToolError(
         "EXECUTION_ERROR",
         "tabs.close did not confirm closed=true; reload the TMWD browser extension if it is still running old bridge code",
       );
     }
-    const closeVerification = await verifyTabClosed(args, resolved, record.tab_id);
+    const closeVerification = await verifyTabClosed(args, resolved, record.tab_id, options);
     if (closeVerification.verified !== true) {
       throw createToolError(
         "EXECUTION_ERROR",
@@ -136,8 +137,8 @@ async function closeOneManagedTab(args, record, preferred = null) {
   }
   await cdpRunCommand({ ...args, switch_tab_id: record.tab_id }, "Target.closeTarget", {
     targetId: record.tab_id,
-  });
-  const closeVerification = await verifyTabClosed(args, resolved, record.tab_id);
+  }, options);
+  const closeVerification = await verifyTabClosed(args, resolved, record.tab_id, options);
   if (closeVerification.verified !== true) {
     throw createToolError(
       "EXECUTION_ERROR",
@@ -157,7 +158,7 @@ async function closeOneManagedTab(args, record, preferred = null) {
   };
 }
 
-async function closeUnkeptManagedTabs(args) {
+async function closeUnkeptManagedTabs(args, options = {}) {
   const closeScope = resolveCloseScope(args ?? {});
   const unmanagedTabId = String(args?.tab_id ?? args?.session_id ?? "").trim();
   const unmanagedRecord = unmanagedTabId ? await getManagedTab(unmanagedTabId) : null;
@@ -170,10 +171,10 @@ async function closeUnkeptManagedTabs(args) {
   const errors = [];
   const preferred = args?.dry_run === true || candidates.length === 0
     ? null
-    : await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
+    : await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, options);
   const outcomes = await Promise.all(candidates.map(async (record) => {
     try {
-      const result = await closeOneManagedTab(args, record, preferred);
+      const result = await closeOneManagedTab(args, record, preferred, options);
       return { record, result };
     } catch (error) {
       return {
@@ -214,7 +215,7 @@ async function closeUnkeptManagedTabs(args) {
   };
 }
 
-async function finalizeManagedTask(args = {}) {
+async function finalizeManagedTask(args = {}, options = {}) {
   const closeScope = resolveCloseScope(args);
   const dryRun = args?.dry_run === true;
   const shouldPruneStale = args?.prune_stale !== false;
@@ -225,7 +226,7 @@ async function finalizeManagedTask(args = {}) {
         ...args,
         dry_run: dryRun,
         summary_only: args?.summary_only ?? true,
-      });
+      }, options);
     } catch (error) {
       pruneStale = {
         status: "error",
@@ -236,7 +237,7 @@ async function finalizeManagedTask(args = {}) {
   }
   let closeUnkept;
   try {
-    closeUnkept = await closeUnkeptManagedTabs(args);
+    closeUnkept = await closeUnkeptManagedTabs(args, options);
   } catch (error) {
     closeUnkept = {
       status: "error",
@@ -263,6 +264,7 @@ async function finalizeManagedTask(args = {}) {
         workspace_key: record.workspace_key,
         task_id: record.task_id,
       }, {
+        ...options,
         scope: { workspace_key: record.workspace_key, task_id: record.task_id },
         ignore_lease: true,
       }));
@@ -308,7 +310,8 @@ async function finalizeManagedTask(args = {}) {
   };
 }
 
-async function pruneStaleManagedTabs(args = {}) {
+async function pruneStaleManagedTabs(args = {}, options = {}) {
+  const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
   const summaryOnly = args?.summary_only === true;
   const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
   const records = await listManagedTabRecords();
@@ -322,15 +325,15 @@ async function pruneStaleManagedTabs(args = {}) {
       pruned: [],
       kept: [],
       capabilities: CAPABILITIES,
-      ...sessionPointers(),
+      ...sessionStore.sessionPointers(),
     };
   }
-  const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
+  const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, options);
   const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
   const liveById = liveTabMap(liveTabs);
   const livenessRows = await Promise.all(records.map(async (record) => ({
     record,
-    liveness: await resolveManagedRecordLiveness(args, preferred, record, liveById),
+    liveness: await resolveManagedRecordLiveness(args, preferred, record, liveById, options),
   })));
   const pruned = [];
   const kept = [];
@@ -371,7 +374,7 @@ async function pruneStaleManagedTabs(args = {}) {
       kept_truncated: keptLimit.truncated,
     },
     capabilities: CAPABILITIES,
-    ...sessionPointers(),
+    ...sessionStore.sessionPointers(),
   };
 }
 

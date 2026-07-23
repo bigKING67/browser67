@@ -1,7 +1,7 @@
 import { captureBrowserScreenshot } from "../../browser-screenshot/capture.mjs";
-import { createToolError } from "../../errors.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
 
-async function handleBrowserScreenshotOps(args = {}) {
+async function handleBrowserScreenshotOps(args = {}, options = {}) {
   const action = String(args.action ?? "capture").trim() || "capture";
   if (action !== "capture") {
     throw createToolError("INVALID_ARGUMENT", `unknown browser_screenshot_ops action: ${action}`, {
@@ -12,7 +12,7 @@ async function handleBrowserScreenshotOps(args = {}) {
   return captureBrowserScreenshot({
     ...args,
     action,
-  });
+  }, options);
 }
 
 export {

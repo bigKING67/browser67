@@ -1,11 +1,11 @@
 import { hashText } from "../../runtime/identity.mjs";
-import { createToolError } from "../../errors.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
 import {
   getManagedTab,
   updateManagedTab,
-} from "../../tab-workspace.mjs";
+} from "../../tab-workspace/index.mjs";
 import { executeBrowserScript } from "../../browser-wrappers/shared.mjs";
-import { resolvePreferredBrowserContext } from "../../tmwd-runtime.mjs";
+import { resolvePreferredBrowserContext } from "../../tmwd-runtime/index.mjs";
 import { browserSnapshotStore } from "../content/snapshot-store.mjs";
 import { beginNetworkObservation } from "../network/observation.mjs";
 import {
@@ -158,7 +158,8 @@ function operationError(result) {
   });
 }
 
-async function executeStructuredNodeOperation(args = {}) {
+async function executeStructuredNodeOperation(args = {}, runtimeOptions = {}) {
+  const snapshotStore = runtimeOptions.runtime?.snapshotStore ?? browserSnapshotStore;
   const operation = String(args.operation ?? "").trim();
   if (!SUPPORTED_NODE_OPERATIONS.includes(operation)) {
     throw createToolError("INVALID_ARGUMENT", `unsupported structured operation: ${operation}`, {
@@ -173,7 +174,7 @@ async function executeStructuredNodeOperation(args = {}) {
       retryable: false,
     });
   }
-  const snapshot = browserSnapshotStore.get(snapshotId, args, { require_scope: true });
+  const snapshot = snapshotStore.get(snapshotId, args, { require_scope: true });
   const managed = await getManagedTab(snapshot.tab_id);
   if (!managed) {
     throw createToolError("TAB_NOT_MANAGED", "snapshot tab is no longer managed", { retryable: false });
@@ -193,10 +194,10 @@ async function executeStructuredNodeOperation(args = {}) {
     switch_tab_id: snapshot.tab_id,
     session_id: snapshot.tab_id,
   };
-  const preferred = await resolvePreferredBrowserContext(routeArgs);
-  const management = await assertManagedExecutionContext(preferred, routeArgs);
+  const preferred = await resolvePreferredBrowserContext(routeArgs, runtimeOptions);
+  const management = await assertManagedExecutionContext(preferred, routeArgs, runtimeOptions);
   const navigationAuthorization = operation === "click"
-    ? await authorizeManagedExecutionNavigation(preferred, routeArgs, "structured_click")
+    ? await authorizeManagedExecutionNavigation(preferred, routeArgs, "structured_click", runtimeOptions)
     : { status: "not_required", authorized: false };
   const observationOptions = args.network_observation?.enabled === true
     ? args.network_observation
@@ -206,7 +207,7 @@ async function executeStructuredNodeOperation(args = {}) {
       ...routeArgs,
       ...observationOptions,
       timeout_ms: observationOptions.ttl_ms ?? args.timeout_ms,
-    }, { preferred })
+    }, { ...runtimeOptions, preferred })
     : null;
   let executed;
   let result;
@@ -222,7 +223,7 @@ async function executeStructuredNodeOperation(args = {}) {
       },
       expected: args.expected ?? {},
       value: args.value,
-    }, { preferred });
+    }, { ...runtimeOptions, preferred });
     result = executed.value;
     if (result?.ok !== true) throw operationError(result);
     const currentDocumentId = hashText(`${snapshot.tab_id}|${result.page?.url}|${result.page?.navigation_start}`);

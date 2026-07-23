@@ -3,12 +3,13 @@ import path from "node:path";
 
 import {
   nowIso,
-  normalizeTimeoutMs,
   randomId,
-} from "../common.mjs";
-import { cdpRunCommand } from "../cdp-runtime.mjs";
-import { createToolError } from "../errors.mjs";
-import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+} from "../runtime/identity.mjs";
+import { normalizeTimeoutMs } from "../runtime/config/limits.mjs";
+import { cdpRunCommand } from "../cdp-runtime/index.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { defaultDownloadSessionStore } from "../runtime/downloads/store.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
   executeTmwdCommand,
   normalizeAction,
@@ -17,7 +18,6 @@ import {
 } from "./shared.mjs";
 
 const PARTIAL_DOWNLOAD_SUFFIXES = [".crdownload", ".download", ".part", ".tmp"];
-const downloadSessions = new Map();
 
 async function ensureDownloadDir(downloadDir, createDir) {
   if (createDir === true) {
@@ -69,14 +69,14 @@ async function listDownloadFiles(downloadDir, sinceMs) {
   return rows;
 }
 
-async function maybeSetDownloadBehavior(args, downloadDir) {
+async function maybeSetDownloadBehavior(args, downloadDir, options = {}) {
   if (args?.set_behavior !== true) {
     return {
       attempted: false,
       reason: "set_behavior_not_requested",
     };
   }
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = await resolvePreferredBrowserContext(args ?? {}, options);
   const params = {
     behavior: "allow",
     downloadPath: downloadDir,
@@ -86,7 +86,7 @@ async function maybeSetDownloadBehavior(args, downloadDir) {
       cmd: "cdp",
       method: "Page.setDownloadBehavior",
       params,
-    });
+    }, options);
     return {
       attempted: true,
       transport: commandResult.transport,
@@ -94,7 +94,7 @@ async function maybeSetDownloadBehavior(args, downloadDir) {
       result: commandResult.value,
     };
   }
-  const cdp = await cdpRunCommand(args ?? {}, "Page.setDownloadBehavior", params);
+  const cdp = await cdpRunCommand(args ?? {}, "Page.setDownloadBehavior", params, options);
   return {
     attempted: true,
     transport: "cdp",
@@ -102,13 +102,14 @@ async function maybeSetDownloadBehavior(args, downloadDir) {
   };
 }
 
-async function handleDownloadPrepare(args) {
+async function handleDownloadPrepare(args, options = {}) {
+  const downloadStore = options.runtime?.downloadStore ?? defaultDownloadSessionStore;
   const downloadDir = resolveDownloadDir(args?.download_dir);
   await ensureDownloadDir(downloadDir, args?.create_dir === true);
   const token = randomId("download");
   const sinceMs = Date.now();
-  const behavior = await maybeSetDownloadBehavior(args, downloadDir);
-  downloadSessions.set(token, {
+  const behavior = await maybeSetDownloadBehavior(args, downloadDir, options);
+  downloadStore.put({
     token,
     download_dir: downloadDir,
     since_ms: sinceMs,
@@ -125,10 +126,10 @@ async function handleDownloadPrepare(args) {
   };
 }
 
-function resolveDownloadSession(args) {
+function resolveDownloadSession(args, store = defaultDownloadSessionStore) {
   const token = String(args?.token ?? "").trim();
   if (token) {
-    const session = downloadSessions.get(token);
+    const session = store.get(token);
     if (!session) {
       throw createToolError("INVALID_ARGUMENT", `download token not found: ${token}`);
     }
@@ -146,8 +147,8 @@ function resolveDownloadSession(args) {
   };
 }
 
-async function handleDownloadListRecent(args) {
-  const session = resolveDownloadSession(args);
+async function handleDownloadListRecent(args, options = {}) {
+  const session = resolveDownloadSession(args, options.runtime?.downloadStore ?? defaultDownloadSessionStore);
   await ensureDownloadDir(session.download_dir, false);
   const files = await listDownloadFiles(session.download_dir, Number(session.since_ms ?? Date.now()));
   return {
@@ -202,8 +203,8 @@ async function waitForStableDownloads(session, args) {
   return poll();
 }
 
-async function handleDownloadWait(args) {
-  const session = resolveDownloadSession(args);
+async function handleDownloadWait(args, options = {}) {
+  const session = resolveDownloadSession(args, options.runtime?.downloadStore ?? defaultDownloadSessionStore);
   await ensureDownloadDir(session.download_dir, false);
   const waited = await waitForStableDownloads(session, args);
   return {
@@ -217,7 +218,7 @@ async function handleDownloadWait(args) {
   };
 }
 
-async function handleAllowAutomaticDownloads(args) {
+async function handleAllowAutomaticDownloads(args, options = {}) {
   const pattern = String(args?.pattern ?? "https://*/*").trim() || "https://*/*";
   const setting = String(args?.setting ?? "allow").trim().toLowerCase() || "allow";
   if (!["allow", "block", "ask"].includes(setting)) {
@@ -238,7 +239,7 @@ async function handleAllowAutomaticDownloads(args) {
     type: "automaticDownloads",
     pattern,
     setting,
-  });
+  }, options);
   return {
     status: "success",
     action: "allow_automatic_downloads",
@@ -251,7 +252,7 @@ async function handleAllowAutomaticDownloads(args) {
   };
 }
 
-async function handleBrowserDownloadOps(args) {
+async function handleBrowserDownloadOps(args, options = {}) {
   const action = normalizeAction(args, [
     "allow_automatic_downloads",
     "prepare",
@@ -259,15 +260,15 @@ async function handleBrowserDownloadOps(args) {
     "list_recent",
   ]);
   if (action === "allow_automatic_downloads") {
-    return handleAllowAutomaticDownloads(args);
+    return handleAllowAutomaticDownloads(args, options);
   }
   if (action === "prepare") {
-    return handleDownloadPrepare(args);
+    return handleDownloadPrepare(args, options);
   }
   if (action === "wait") {
-    return handleDownloadWait(args);
+    return handleDownloadWait(args, options);
   }
-  return handleDownloadListRecent(args);
+  return handleDownloadListRecent(args, options);
 }
 
 export { handleBrowserDownloadOps };

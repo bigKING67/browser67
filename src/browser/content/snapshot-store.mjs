@@ -1,5 +1,5 @@
-import { randomId } from "../../common.mjs";
-import { createToolError } from "../../errors.mjs";
+import { randomId } from "../../runtime/identity.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
 
 const DEFAULT_SNAPSHOT_TTL_MS = 5 * 60_000;
 const MAX_SNAPSHOTS_PER_TAB = 8;

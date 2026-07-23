@@ -1,7 +1,7 @@
-import { hashText, nowIso } from "../../common.mjs";
-import { createToolError } from "../../errors.mjs";
-import { getManagedTab } from "../../tab-workspace.mjs";
-import { resolvePreferredBrowserContext } from "../../tmwd-runtime.mjs";
+import { hashText, nowIso } from "../../runtime/identity.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
+import { getManagedTab } from "../../tab-workspace/index.mjs";
+import { resolvePreferredBrowserContext } from "../../tmwd-runtime/index.mjs";
 import { executeBrowserScript } from "../../browser-wrappers/shared.mjs";
 import { assertManagedExecutionContext } from "../execution/managed-context.mjs";
 import { browserSnapshotStore } from "./snapshot-store.mjs";
@@ -200,7 +200,8 @@ function snapshotFingerprint(nodes, fields) {
   return hashText(JSON.stringify(nodes.map((node) => fields.map((field) => node[field]))));
 }
 
-async function captureActionableSnapshot(args = {}) {
+async function captureActionableSnapshot(args = {}, runtimeOptions = {}) {
+  const snapshotStore = runtimeOptions.runtime?.snapshotStore ?? browserSnapshotStore;
   if (typeof args.html === "string" && args.html.length > 0) {
     throw createToolError(
       "OFFLINE_HTML_NOT_SUPPORTED_V3",
@@ -208,7 +209,7 @@ async function captureActionableSnapshot(args = {}) {
       { retryable: false },
     );
   }
-  const preferred = await resolvePreferredBrowserContext(args);
+  const preferred = await resolvePreferredBrowserContext(args, runtimeOptions);
   const tabId = String(preferred.context?.target?.id ?? "").trim();
   const managed = await getManagedTab(tabId);
   if (!managed) {
@@ -222,7 +223,7 @@ async function captureActionableSnapshot(args = {}) {
       retryable: false,
     });
   }
-  await assertManagedExecutionContext(preferred, args);
+  await assertManagedExecutionContext(preferred, args, runtimeOptions);
   const limitRaw = Number(args.selector_limit ?? 1000);
   const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(5000, Math.floor(limitRaw))) : 1000;
   const executed = await executeBrowserScript({
@@ -231,10 +232,10 @@ async function captureActionableSnapshot(args = {}) {
     tab_id: tabId,
     switch_tab_id: tabId,
     session_id: tabId,
-  }, ACTIONABLE_SNAPSHOT_BODY, { limit }, { preferred });
+  }, ACTIONABLE_SNAPSHOT_BODY, { limit }, { ...runtimeOptions, preferred });
   const value = executed.value && typeof executed.value === "object" ? executed.value : {};
   const documentId = hashText(`${tabId}|${value.url}|${value.navigation_start}`);
-  const snapshot = browserSnapshotStore.put({
+  const snapshot = snapshotStore.put({
     tab_id: tabId,
     document_id: documentId,
     captured_at: nowIso(),
@@ -254,8 +255,8 @@ async function captureActionableSnapshot(args = {}) {
   return snapshot;
 }
 
-function publicSnapshot(snapshot) {
-  const storePolicy = browserSnapshotStore.stats();
+function publicSnapshot(snapshot, store = browserSnapshotStore) {
+  const storePolicy = store.stats();
   return {
     schema: "browser67.actionable-snapshot.v2",
     snapshot_id: snapshot.snapshot_id,

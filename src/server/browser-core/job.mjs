@@ -6,16 +6,17 @@ import {
   handleBrowserRunOps,
   runDirFor,
   runRoot,
-} from "../../run-lifecycle.mjs";
-import { getDefaultJobStore } from "../../runtime/jobs/store.mjs";
+} from "../../runtime/runs/lifecycle.mjs";
+import { defaultJobRuntimeState } from "../../runtime/jobs/state.mjs";
 import { atomicWriteJson } from "../../runtime/storage/atomic-file.mjs";
 import { handleBrowserExecuteJs } from "./execute-js.mjs";
 
 const JOB_SCHEMA_VERSION = "browser67.browser-job.v3";
 const MAX_RETAINED_JOBS = 200;
-const jobs = new Map();
-let recoveryPromise = null;
-let recoveryRunRoot = "";
+
+function jobRuntimeState(options = {}) {
+  return options.runtime?.jobState ?? defaultJobRuntimeState;
+}
 
 const EXECUTE_ARG_KEYS = [
   "script",
@@ -112,20 +113,20 @@ function jobStatePath(job) {
   return path.join(job.run_dir, "jobs", `${job.job_id}.json`);
 }
 
-async function persistJob(job) {
+async function persistJob(job, state = defaultJobRuntimeState, options = {}) {
   if (job.durable !== true) return false;
   const statePath = jobStatePath(job);
   if (!statePath) return false;
   const checkpointAt = nowIso();
   job.checkpoint_at = checkpointAt;
   await atomicWriteJson(statePath, persistedJob(job));
-  await getDefaultJobStore(runRoot()).index(job, statePath);
+  await state.getStore(runRoot(options)).index(job, statePath);
   return true;
 }
 
-async function persistJobSafe(job) {
+async function persistJobSafe(job, state = defaultJobRuntimeState, options = {}) {
   try {
-    return await persistJob(job);
+    return await persistJob(job, state, options);
   } catch (error) {
     job.persistence_error = String(error?.message ?? error);
     job.durable = false;
@@ -146,10 +147,10 @@ function restoredJob(payload, statePath) {
   };
 }
 
-async function readIndexedJob(reference) {
+async function readIndexedJob(reference, options = {}) {
   const statePath = path.resolve(String(reference?.state_path ?? ""));
   if (!statePath) return null;
-  const relative = path.relative(runRoot(), statePath);
+  const relative = path.relative(runRoot(options), statePath);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
   let payload;
   try {
@@ -163,12 +164,13 @@ async function readIndexedJob(reference) {
   return restoredJob(payload, statePath);
 }
 
-async function recoverJobsFromDisk() {
+async function recoverJobsFromDisk(state = defaultJobRuntimeState, options = {}) {
+  const jobs = state.jobs;
   const recoveredAt = nowIso();
-  const store = getDefaultJobStore(runRoot());
+  const store = state.getStore(runRoot(options));
   const activeReferences = await store.activeReferences();
   for (const reference of activeReferences) {
-    const job = await readIndexedJob(reference);
+    const job = await readIndexedJob(reference, options);
     if (!job || jobs.has(job.job_id)) continue;
     if (["pending", "running", "cancel_requested"].includes(job.status)) {
       job.status = "interrupted";
@@ -182,33 +184,34 @@ async function recoverJobsFromDisk() {
       job.cancel_outcome = job.cancel_requested === true
         ? "interrupted_after_cancel_request"
         : "not_requested";
-      await persistJobSafe(job);
+      await persistJobSafe(job, state, options);
     }
     jobs.set(job.job_id, job);
   }
   const recentReferences = await store.recentReferences(MAX_RETAINED_JOBS);
   for (const reference of recentReferences) {
     if (jobs.has(reference.job_id) || reference.active === true) continue;
-    const job = await readIndexedJob(reference);
+    const job = await readIndexedJob(reference, options);
     if (!job) continue;
     job.recovery_status = "recovered_terminal_checkpoint";
     jobs.set(job.job_id, job);
   }
-  pruneJobs();
+  pruneJobs(state);
 }
 
-async function ensureRecovered() {
-  const currentRunRoot = runRoot();
-  if (recoveryRunRoot !== currentRunRoot) {
-    jobs.clear();
-    recoveryPromise = null;
-    recoveryRunRoot = currentRunRoot;
+async function ensureRecovered(state = defaultJobRuntimeState, options = {}) {
+  const currentRunRoot = runRoot(options);
+  if (state.recoveryRunRoot !== currentRunRoot) {
+    state.jobs.clear();
+    state.recoveryPromise = null;
+    state.recoveryRunRoot = currentRunRoot;
   }
-  if (!recoveryPromise) recoveryPromise = recoverJobsFromDisk();
-  await recoveryPromise;
+  if (!state.recoveryPromise) state.recoveryPromise = recoverJobsFromDisk(state, options);
+  await state.recoveryPromise;
 }
 
-function pruneJobs() {
+function pruneJobs(state = defaultJobRuntimeState) {
+  const jobs = state.jobs;
   if (jobs.size <= MAX_RETAINED_JOBS) return;
   const rows = Array.from(jobs.values())
     .sort((left, right) => String(left.updated_at).localeCompare(String(right.updated_at)));
@@ -217,7 +220,7 @@ function pruneJobs() {
   }
 }
 
-async function recordRunEvent(job, event, data = {}, status = "") {
+async function recordRunEvent(job, event, data = {}, status = "", options = {}) {
   if (!job.run_id || (!job.workspace_key && !job.task_id)) return;
   try {
     await handleBrowserRunOps({
@@ -228,13 +231,13 @@ async function recordRunEvent(job, event, data = {}, status = "") {
       event,
       status,
       data: { job_id: job.job_id, ...data },
-    });
+    }, options);
   } catch (error) {
     job.run_event_error = String(error?.message ?? error);
   }
 }
 
-async function maybePrepareRun(args, job) {
+async function maybePrepareRun(args, job, options = {}) {
   if (String(args.run_id ?? "").trim()) {
     job.run_id = String(args.run_id).trim();
     try {
@@ -242,14 +245,14 @@ async function maybePrepareRun(args, job) {
         workspace_key: job.workspace_key,
         task_id: job.task_id,
         run_id: job.run_id,
-      });
+      }, options);
       const status = await handleBrowserRunOps({
         action: "status",
         workspace_key: job.workspace_key,
         task_id: job.task_id,
         run_id: job.run_id,
         summary_only: true,
-      });
+      }, options);
       if (status?.ok !== true) job.run_dir = "";
     } catch {
       job.run_dir = "";
@@ -263,7 +266,7 @@ async function maybePrepareRun(args, job) {
     task_id: job.task_id,
     title: job.title || "browser job",
     data: { job_id: job.job_id, durable: true },
-  });
+  }, options);
   if (prepared?.ok === true && prepared.run?.run_id) {
     job.run_id = prepared.run.run_id;
     job.run_dir = prepared.run.run_dir;
@@ -285,41 +288,43 @@ function finishJob(job, status, result, error) {
   }
 }
 
-function startBackgroundJob(job, executeArgs) {
+function startBackgroundJob(job, executeArgs, state = defaultJobRuntimeState, options = {}) {
   job.promise = (async () => {
     job.status = "running";
     job.started_at = nowIso();
     job.updated_at = job.started_at;
-    await persistJobSafe(job);
-    await recordRunEvent(job, "job_started", { durable: job.durable === true }, "running");
+    await persistJobSafe(job, state, options);
+    await recordRunEvent(job, "job_started", { durable: job.durable === true }, "running", options);
     if (job.cancel_requested === true) {
       finishJob(job, "cancelled", { status: "cancelled" });
       job.cancel_outcome = "prevented_before_execution";
-      await persistJobSafe(job);
-      await recordRunEvent(job, "job_cancelled", { executed: false }, "cancelled");
+      await persistJobSafe(job, state, options);
+      await recordRunEvent(job, "job_cancelled", { executed: false }, "cancelled", options);
       return;
     }
     try {
-      const result = await handleBrowserExecuteJs(executeArgs);
+      const result = await handleBrowserExecuteJs(executeArgs, options);
       const ok = result?.status === "success";
       finishJob(job, ok ? "completed" : "failed", result, ok ? undefined : result?.error);
-      await persistJobSafe(job);
+      await persistJobSafe(job, state, options);
       await recordRunEvent(job, "job_finished", {
         result_status: result?.status,
         cancel_requested: job.cancel_requested === true,
         cancel_outcome: job.cancel_outcome,
-      }, job.status);
+      }, job.status, options);
     } catch (error) {
       const message = String(error?.message ?? error);
       finishJob(job, "failed", { status: "failed", error: message }, message);
-      await persistJobSafe(job);
-      await recordRunEvent(job, "job_failed", { error: job.error }, "failed");
+      await persistJobSafe(job, state, options);
+      await recordRunEvent(job, "job_failed", { error: job.error }, "failed", options);
     }
   })();
 }
 
-async function startJob(args = {}) {
-  await ensureRecovered();
+async function startJob(args = {}, options = {}) {
+  const state = jobRuntimeState(options);
+  const jobs = state.jobs;
+  await ensureRecovered(state, options);
   if (!String(args.script ?? "").trim()) {
     return { ok: false, action: "start", error: "browser_job_ops start requires script" };
   }
@@ -349,37 +354,40 @@ async function startJob(args = {}) {
     result: undefined,
     error: undefined,
   };
-  await maybePrepareRun(args, job);
+  await maybePrepareRun(args, job, options);
   job.durable = Boolean(job.run_dir);
   job.durability_reason = job.durable ? "run_backed_checkpoint" : "no_valid_run_checkpoint";
   jobs.set(job.job_id, job);
-  pruneJobs();
-  await persistJobSafe(job);
-  startBackgroundJob(job, executeArgsFrom(args));
+  pruneJobs(state);
+  await persistJobSafe(job, state, options);
+  startBackgroundJob(job, executeArgsFrom(args), state, options);
   return { ok: true, action: "start", job: serializableJob(job) };
 }
 
-async function getJob(jobId) {
+async function getJob(jobId, state = defaultJobRuntimeState, options = {}) {
+  const jobs = state.jobs;
   const normalized = String(jobId ?? "").trim();
   if (!normalized) return null;
   if (jobs.has(normalized)) return jobs.get(normalized);
-  const reference = await getDefaultJobStore(runRoot()).findReference(normalized);
+  const reference = await state.getStore(runRoot(options)).findReference(normalized);
   if (!reference) return null;
-  const job = await readIndexedJob(reference);
+  const job = await readIndexedJob(reference, options);
   if (job) jobs.set(job.job_id, job);
   return job;
 }
 
-async function statusJob(args = {}) {
-  await ensureRecovered();
-  const job = await getJob(args.job_id);
+async function statusJob(args = {}, options = {}) {
+  const state = jobRuntimeState(options);
+  await ensureRecovered(state, options);
+  const job = await getJob(args.job_id, state, options);
   if (!job) return { ok: false, action: "status", error: "job not found" };
   return { ok: true, action: "status", job: serializableJob(job) };
 }
 
-async function resultJob(args = {}) {
-  await ensureRecovered();
-  const job = await getJob(args.job_id);
+async function resultJob(args = {}, options = {}) {
+  const state = jobRuntimeState(options);
+  await ensureRecovered(state, options);
+  const job = await getJob(args.job_id, state, options);
   if (!job) return { ok: false, action: "result", error: "job not found" };
   return {
     ok: true,
@@ -389,9 +397,10 @@ async function resultJob(args = {}) {
   };
 }
 
-async function cancelJob(args = {}) {
-  await ensureRecovered();
-  const job = await getJob(args.job_id);
+async function cancelJob(args = {}, options = {}) {
+  const state = jobRuntimeState(options);
+  await ensureRecovered(state, options);
+  const job = await getJob(args.job_id, state, options);
   if (!job) return { ok: false, action: "cancel", error: "job not found" };
   const previousStatus = job.status;
   job.cancel_requested = true;
@@ -405,12 +414,12 @@ async function cancelJob(args = {}) {
   } else {
     job.cancel_outcome = "already_finished";
   }
-  await persistJobSafe(job);
+  await persistJobSafe(job, state, options);
   await recordRunEvent(job, "job_cancel_requested", {
     abort_supported: false,
     previous_status: previousStatus,
     cancel_outcome: job.cancel_outcome,
-  }, job.status);
+  }, job.status, options);
   return {
     ok: true,
     action: "cancel",
@@ -423,8 +432,10 @@ async function cancelJob(args = {}) {
   };
 }
 
-async function listJobs(args = {}) {
-  await ensureRecovered();
+async function listJobs(args = {}, options = {}) {
+  const state = jobRuntimeState(options);
+  const jobs = state.jobs;
+  await ensureRecovered(state, options);
   const maxItems = Math.max(1, Math.min(500, Number(args.max_items ?? 50)));
   const rows = Array.from(jobs.values())
     .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)))
@@ -442,13 +453,13 @@ async function listJobs(args = {}) {
   };
 }
 
-async function handleBrowserJobOps(args = {}) {
+async function handleBrowserJobOps(args = {}, options = {}) {
   const action = String(args.action ?? "status");
-  if (action === "start") return startJob(args);
-  if (action === "status") return statusJob(args);
-  if (action === "result") return resultJob(args);
-  if (action === "cancel") return cancelJob(args);
-  if (action === "list") return listJobs(args);
+  if (action === "start") return startJob(args, options);
+  if (action === "status") return statusJob(args, options);
+  if (action === "result") return resultJob(args, options);
+  if (action === "cancel") return cancelJob(args, options);
+  if (action === "list") return listJobs(args, options);
   return { ok: false, action, error: `unknown browser_job_ops action: ${action}` };
 }
 

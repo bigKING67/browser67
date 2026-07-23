@@ -1,8 +1,8 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   listManagedTabRecords,
   managedTabPayload,
-} from "../tab-workspace.mjs";
+} from "../tab-workspace/index.mjs";
 import {
   DEFAULT_LIST_MANAGED_MAX_ITEMS,
   limitedList,

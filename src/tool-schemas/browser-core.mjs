@@ -1,4 +1,4 @@
-import { NATIVE_INPUT_MAX_TIMEOUT_MS } from "../native-input.mjs";
+import { NATIVE_INPUT_MAX_TIMEOUT_MS } from "../native/input.mjs";
 
 const BROWSER_CORE_TOOL_SCHEMAS = {
   browser_scan: {

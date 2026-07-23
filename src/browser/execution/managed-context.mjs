@@ -1,11 +1,11 @@
-import { createToolError } from "../../errors.mjs";
-import { resolveTmwdMode } from "../../common.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
+import { resolveTmwdMode } from "../../runtime/config/endpoints.mjs";
 import {
   browserConnectionGeneration,
   getManagedTab,
   reconcileAdoptedNavigation,
   updateManagedTab,
-} from "../../tab-workspace.mjs";
+} from "../../tab-workspace/index.mjs";
 import {
   authorizeManagedTabNavigation,
   readManagedTabPolicyStatus,
@@ -86,7 +86,7 @@ async function assertManagedExecutionContext(preferred, args = {}, options = {})
   if (record.ownership_origin === "user_adopted") {
     const readStatus = options.read_policy_status ?? readManagedTabPolicyStatus;
     const persistUpdate = options.update_managed_tab ?? updateManagedTab;
-    const policyStatus = await readStatus(args, preferred, record);
+    const policyStatus = await readStatus(args, preferred, record, options);
     const reconciliation = reconcileAdoptedNavigation(record, {
       policy_status: policyStatus,
       connection_generation: browserConnectionGeneration(preferred),

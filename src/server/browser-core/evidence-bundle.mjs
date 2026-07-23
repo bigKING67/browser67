@@ -1,5 +1,5 @@
 import { buildDesignCraftL4Manifest } from "../../browser-screenshot/design-craft-l4.mjs";
-import { createToolError } from "../../errors.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
 
 async function handleBrowserEvidenceBundleOps(args = {}) {
   const action = String(args.action ?? "build_design_craft_l4_manifest").trim()

@@ -1,14 +1,12 @@
-import { normalizeEndpoint } from "../common.mjs";
-import { fetchCdpTargets } from "../cdp-runtime.mjs";
-import {
-  asShortTabs,
-  syncSessionRegistry,
-} from "../session-registry.mjs";
+import { normalizeEndpoint } from "../runtime/config/endpoints.mjs";
+import { fetchCdpTargets } from "../cdp-runtime/index.mjs";
+import { defaultSessionRegistry } from "../runtime/sessions/registry.mjs";
 
-async function refreshSessionRegistry(args) {
+async function refreshSessionRegistry(args, options = {}) {
+  const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
   const targets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
-  syncSessionRegistry(targets);
-  return asShortTabs(targets);
+  sessionStore.sync(targets);
+  return sessionStore.asShortTabs(targets);
 }
 
 export { refreshSessionRegistry };

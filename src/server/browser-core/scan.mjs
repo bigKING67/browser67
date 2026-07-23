@@ -9,28 +9,25 @@ import {
   buildScanContentExpression,
   cdpReadGuardedMainContent,
   cdpReadPageContent,
-} from "../../cdp-runtime.mjs";
-import {
-  asShortTabs,
-  markSessionSelected,
-  sessionPointers,
-} from "../../session-registry.mjs";
+} from "../../cdp-runtime/index.mjs";
+import { defaultSessionRegistry } from "../../runtime/sessions/registry.mjs";
 import {
   executeTmwdJs,
   resolvePreferredBrowserContext,
-} from "../../tmwd-runtime.mjs";
+} from "../../tmwd-runtime/index.mjs";
 
-async function handleBrowserScan(args) {
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+async function handleBrowserScan(args, options = {}) {
+  const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
+  const preferred = await resolvePreferredBrowserContext(args ?? {}, options);
   const resolved = preferred.context;
   const targets = resolved.targets;
   const selected = resolved.target;
-  markSessionSelected(selected.id, { make_default: false });
+  sessionStore.select(selected.id, { make_default: false });
   const metadata = {
     transport: preferred.transport,
     transport_attempts: Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [],
     tabs_count: targets.length,
-    tabs: asShortTabs(targets),
+    tabs: sessionStore.asShortTabs(targets),
     active_tab: selected.id,
     cdp_endpoint: preferred.transport === "cdp" ? resolved.endpoint : undefined,
     tmwd_link_endpoint: preferred.transport === "tmwd_link" ? resolved.endpoint : undefined,
@@ -39,7 +36,7 @@ async function handleBrowserScan(args) {
     selection_source: resolved.selection?.selected_by ?? null,
     selection_warning: resolved.selection?.warning ?? undefined,
     sessions: resolved.sessions,
-    ...sessionPointers(),
+    ...sessionStore.sessionPointers(),
   };
   if (args?.tabs_only === true) {
     return {
@@ -68,6 +65,7 @@ async function handleBrowserScan(args) {
         },
         resolved,
         tmwdScript,
+        options,
       );
       return String(tmwdExec.value ?? "");
     };
@@ -80,6 +78,7 @@ async function handleBrowserScan(args) {
         },
         resolved,
         `return ${buildGuardedMainContentExpression(guardrailOptions)};`,
+        options,
       );
       const guarded = tmwdExec.value && typeof tmwdExec.value === "object" ? tmwdExec.value : {};
       content = String(guarded.content ?? "");
@@ -92,14 +91,14 @@ async function handleBrowserScan(args) {
       const contentResult = await cdpReadPageContent({
         ...args,
         switch_tab_id: selected.id,
-      }, readTextOnly, readMainOnly);
+      }, readTextOnly, readMainOnly, options);
       return String(contentResult.result.content ?? "");
     };
     if (textOnly && mainOnly) {
       const guardedResult = await cdpReadGuardedMainContent({
         ...args,
         switch_tab_id: selected.id,
-      }, guardrailOptions);
+      }, guardrailOptions, options);
       const guarded = guardedResult.result.value && typeof guardedResult.result.value === "object"
         ? guardedResult.result.value
         : {};

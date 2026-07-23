@@ -1,6 +1,6 @@
 import { beginNetworkObservation } from "./observation.mjs";
 
-async function beginExecutionNetworkObservation(args = {}, preferred) {
+async function beginExecutionNetworkObservation(args = {}, preferred, runtimeOptions = {}) {
   const options = args?.network_observation?.enabled === true
     ? args.network_observation
     : null;
@@ -15,7 +15,7 @@ async function beginExecutionNetworkObservation(args = {}, preferred) {
     switch_tab_id: tabId,
     session_id: tabId,
     timeout_ms: options.ttl_ms ?? args.timeout_ms,
-  }, { preferred });
+  }, { ...runtimeOptions, preferred });
   return Object.freeze({
     observer,
     options,

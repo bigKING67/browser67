@@ -14,12 +14,15 @@ function sendError(id, code, message, output = process.stdout) {
   output.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`);
 }
 
-function listToolsPayload() {
-  return { tools: listRegisteredTools() };
+function listToolsPayload(options = {}) {
+  const listTools = options.listTools ?? listRegisteredTools;
+  return { tools: listTools() };
 }
 
 function createRequestHandler(options = {}) {
   const output = options.output ?? process.stdout;
+  const dispatchTool = options.dispatchTool ?? dispatchRegisteredTool;
+  const listTools = options.listTools ?? listRegisteredTools;
   return function handleRequest(request) {
     const { id, method, params } = request;
     if (!method || typeof method !== "string") {
@@ -40,7 +43,7 @@ function createRequestHandler(options = {}) {
       return;
     }
     if (method === "tools/list") {
-      sendResponse(id, listToolsPayload(), output);
+      sendResponse(id, listToolsPayload({ listTools }), output);
       return;
     }
     if (method === "tools/call") {
@@ -50,7 +53,7 @@ function createRequestHandler(options = {}) {
         sendError(id ?? null, -32602, "tools/call requires string params.name", output);
         return;
       }
-      dispatchRegisteredTool(toolName, args, { request_id: String(id ?? "") })
+      dispatchTool(toolName, args, { request_id: String(id ?? "") })
         .then((result) => {
           sendResponse(id, result, output);
         })

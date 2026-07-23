@@ -2,17 +2,17 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { normalizeEndpoint } from "../common.mjs";
+import { normalizeEndpoint } from "../runtime/config/endpoints.mjs";
 import {
   cdpEvaluateScript,
   fetchCdpTargets,
-} from "../cdp-runtime.mjs";
-import { createToolError } from "../errors.mjs";
-import { syncSessionRegistry } from "../session-registry.mjs";
+} from "../cdp-runtime/index.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { defaultSessionRegistry } from "../runtime/sessions/registry.mjs";
 import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
-} from "../tmwd-runtime.mjs";
+} from "../tmwd-runtime/index.mjs";
 
 function normalizeAction(args, supported) {
   const action = String(args?.action ?? "").trim().toLowerCase();
@@ -88,9 +88,9 @@ function wrapPageFunction(body, input) {
 
 async function executeBrowserScript(args, body, input = {}, runtimeOptions = {}) {
   const script = wrapPageFunction(body, input);
-  const preferred = runtimeOptions.preferred ?? await resolvePreferredBrowserContext(args ?? {});
+  const preferred = runtimeOptions.preferred ?? await resolvePreferredBrowserContext(args ?? {}, runtimeOptions);
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script);
+    const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script, runtimeOptions);
     return {
       transport: result.context.tmwd_transport === "ws" ? "tmwd_ws" : "tmwd_link",
       transport_attempts: result.transport_attempts,
@@ -103,7 +103,7 @@ async function executeBrowserScript(args, body, input = {}, runtimeOptions = {})
       },
     };
   }
-  const result = await cdpEvaluateScript(args ?? {}, script);
+  const result = await cdpEvaluateScript(args ?? {}, script, runtimeOptions);
   const cdpValue = result.result.value;
   if (cdpValue?.ok === false) {
     throw createToolError(
@@ -133,7 +133,7 @@ async function executeBrowserScript(args, body, input = {}, runtimeOptions = {})
   };
 }
 
-async function executeTmwdCommandWithPreferred(args, preferred, command) {
+async function executeTmwdCommandWithPreferred(args, preferred, command, runtimeOptions = {}) {
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw createToolError(
       "TRANSPORT_UNAVAILABLE",
@@ -141,7 +141,7 @@ async function executeTmwdCommandWithPreferred(args, preferred, command) {
       { retryable: true },
     );
   }
-  const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, command);
+  const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, command, runtimeOptions);
   if (result.executed?.raw?.ok === false) {
     throw createToolError(
       "EXECUTION_ERROR",
@@ -161,9 +161,9 @@ async function executeTmwdCommandWithPreferred(args, preferred, command) {
   };
 }
 
-async function executeTmwdCommand(args, command) {
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
-  return executeTmwdCommandWithPreferred(args, preferred, command);
+async function executeTmwdCommand(args, command, runtimeOptions = {}) {
+  const preferred = await resolvePreferredBrowserContext(args ?? {}, runtimeOptions);
+  return executeTmwdCommandWithPreferred(args, preferred, command, runtimeOptions);
 }
 
 function extractBatchResults(commandResult) {
@@ -240,7 +240,7 @@ function liveTabMap(liveTabs = []) {
   );
 }
 
-async function readBrowserTabById(args, preferred, tabId) {
+async function readBrowserTabById(args, preferred, tabId, runtimeOptions = {}) {
   const normalizedTabId = String(tabId ?? "").trim();
   if (!normalizedTabId) {
     return null;
@@ -251,7 +251,7 @@ async function readBrowserTabById(args, preferred, tabId) {
         cmd: "tabs",
         method: "get",
         tabId: normalizedTabId,
-      });
+      }, runtimeOptions);
       const summary = normalizeTabSummary(got.value);
       if (summary?.id === normalizedTabId) {
         return summary;
@@ -264,7 +264,7 @@ async function readBrowserTabById(args, preferred, tabId) {
         cmd: "tabs",
         method: "list",
         includeUnscriptable: true,
-      });
+      }, runtimeOptions);
       return normalizeTabList(listed.value).find((tab) => tab.id === normalizedTabId) ?? null;
     } catch {
       return null;
@@ -272,7 +272,7 @@ async function readBrowserTabById(args, preferred, tabId) {
   }
   try {
     const targets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
-    syncSessionRegistry(targets);
+    (runtimeOptions.runtime?.sessionStore ?? defaultSessionRegistry).sync(targets);
     const target = targets.find((item) => item.id === normalizedTabId);
     return target ? normalizeTabSummary(target) : null;
   } catch {
@@ -280,7 +280,7 @@ async function readBrowserTabById(args, preferred, tabId) {
   }
 }
 
-async function readRoutableBrowserTabById(args, tabId) {
+async function readRoutableBrowserTabById(args, tabId, runtimeOptions = {}) {
   const normalizedTabId = String(tabId ?? "").trim();
   if (!normalizedTabId) {
     return null;
@@ -292,7 +292,7 @@ async function readRoutableBrowserTabById(args, tabId) {
       switch_tab_id: normalizedTabId,
       session_id: normalizedTabId,
       refresh_sessions: true,
-    });
+    }, runtimeOptions);
     const target = preferred.context?.target;
     return String(target?.id ?? "").trim() === normalizedTabId
       ? normalizeTabSummary(target)
@@ -302,7 +302,7 @@ async function readRoutableBrowserTabById(args, tabId) {
   }
 }
 
-async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}) {
+async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}, runtimeOptions = {}) {
   const waitOptions = normalizeWaitOptions(args ?? {});
   const startedAt = Date.now();
   if (waitOptions.wait_until === "none") {
@@ -326,10 +326,10 @@ async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}) {
         fallback_title: fallback.title,
       };
     }
-    const tab = await readBrowserTabById(args, preferred, tabId);
+    const tab = await readBrowserTabById(args, preferred, tabId, runtimeOptions);
     if (tab) {
       if (String(tab.url ?? "").trim().length > 0) {
-        const routableTab = await readRoutableBrowserTabById(args, tabId);
+        const routableTab = await readRoutableBrowserTabById(args, tabId, runtimeOptions);
         if (routableTab) {
           return {
             ...waitOptions,
@@ -365,14 +365,14 @@ async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}) {
   return poll();
 }
 
-async function resolveManagedRecordLiveness(args, preferred, record, liveById) {
+async function resolveManagedRecordLiveness(args, preferred, record, liveById, runtimeOptions = {}) {
   if (record.dry_run === true) {
     return { live: true, reason: "dry_run" };
   }
   if (liveById?.has(record.tab_id)) {
     return { live: true, reason: "live_session_registry" };
   }
-  const exactTab = await readBrowserTabById(args, preferred, record.tab_id);
+  const exactTab = await readBrowserTabById(args, preferred, record.tab_id, runtimeOptions);
   if (exactTab) {
     return {
       live: true,

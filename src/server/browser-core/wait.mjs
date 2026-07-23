@@ -1,4 +1,4 @@
-import { normalizeTimeoutMs } from "../../common.mjs";
+import { normalizeTimeoutMs } from "../../runtime/config/limits.mjs";
 import { waitForNetworkIdle } from "../../browser/network/observation.mjs";
 import { handleBrowserExecuteJs } from "./execute-js.mjs";
 
@@ -148,7 +148,7 @@ return await (async (input) => {
 `;
 }
 
-async function handleBrowserWait(args = {}) {
+async function handleBrowserWait(args = {}, options = {}) {
   const type = String(args.type ?? "selector");
   if (type === "selector" && !String(args.selector ?? "").trim()) {
     return {
@@ -177,7 +177,7 @@ async function handleBrowserWait(args = {}) {
   const timeoutMs = normalizeWaitTimeout(args.timeout_ms);
   if (type === "network_idle") {
     const startedAt = Date.now();
-    const result = await waitForNetworkIdle({ ...args, timeout_ms: timeoutMs });
+    const result = await waitForNetworkIdle({ ...args, timeout_ms: timeoutMs }, options);
     return {
       status: result.status,
       ok: result.status === "passed",
@@ -195,7 +195,7 @@ async function handleBrowserWait(args = {}) {
     script: waitCode({ ...args, timeout_ms: timeoutMs }),
     timeout_ms: timeoutMs,
     no_monitor: true,
-  });
+  }, options);
   const waitResult = executed.js_return && typeof executed.js_return === "object"
     ? executed.js_return
     : null;

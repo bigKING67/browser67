@@ -1,39 +1,4 @@
-import { nowIso, resolveTmwdTransport } from "./common.mjs";
-import { makeJsonTextContent } from "./mcp-result.mjs";
-
-function makeErrorPayload(tool, error) {
-  const message = String(error?.message ?? error ?? "unknown error");
-  const explicitErrorCode = typeof error?.errorCode === "string" ? error.errorCode.trim() : "";
-  const errorCode = explicitErrorCode || classifyBrowserErrorCode(message);
-  const retryable = typeof error?.retryable === "boolean"
-    ? error.retryable
-    : isRetryableBrowserErrorCode(errorCode);
-  const transportAttempts = Array.isArray(error?.transportAttempts)
-    ? error.transportAttempts
-    : undefined;
-  const errorDetails = (
-    typeof error?.details === "object"
-    && error.details !== null
-    && !Array.isArray(error.details)
-  )
-    ? error.details
-    : undefined;
-  return {
-    isError: true,
-    content: [
-      makeJsonTextContent({
-        status: "error",
-        tool,
-        error: message,
-        error_code: errorCode,
-        retryable,
-        transport_attempts: transportAttempts,
-        details: errorDetails,
-        at: nowIso(),
-      }),
-    ],
-  };
-}
+import { resolveTmwdTransport } from "./config/endpoints.mjs";
 
 function classifyBrowserErrorCode(message) {
   const normalized = String(message ?? "").toLowerCase();
@@ -131,8 +96,11 @@ function withTransportAttempts(error, attempts) {
 }
 
 function createToolError(errorCode, message, options = {}) {
-  const error = new Error(String(message ?? "tool execution failed"));
-  error.errorCode = String(errorCode || "EXECUTION_ERROR");
+  const error = Object.assign(new Error(String(message ?? "tool execution failed")), {
+    errorCode: String(errorCode || "EXECUTION_ERROR"),
+    retryable: undefined,
+    details: undefined,
+  });
   if (typeof options.retryable === "boolean") {
     error.retryable = options.retryable;
   }
@@ -153,7 +121,6 @@ function shouldFallbackAcrossTmwdTransports(args, error) {
 }
 
 export {
-  makeErrorPayload,
   classifyBrowserErrorCode,
   isRetryableBrowserErrorCode,
   withTransportAttempts,

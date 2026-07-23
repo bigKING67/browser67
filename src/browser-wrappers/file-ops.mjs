@@ -1,6 +1,6 @@
-import { cdpRunCommand } from "../cdp-runtime.mjs";
-import { createToolError } from "../errors.mjs";
-import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+import { cdpRunCommand } from "../cdp-runtime/index.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
   executeBrowserScript,
   executeTmwdCommand,
@@ -22,11 +22,11 @@ function dispatchFileInputEventsExpression(selector) {
   })()`;
 }
 
-async function setInputFilesViaCdp(args, selector, files) {
+async function setInputFilesViaCdp(args, selector, files, options = {}) {
   const documentResult = await cdpRunCommand(args ?? {}, "DOM.getDocument", {
     depth: 1,
     pierce: true,
-  });
+  }, options);
   const rootNodeId = documentResult.result.response?.root?.nodeId;
   if (!Number.isInteger(rootNodeId)) {
     throw createToolError("EXECUTION_ERROR", "DOM.getDocument did not return root.nodeId");
@@ -34,7 +34,7 @@ async function setInputFilesViaCdp(args, selector, files) {
   const queryResult = await cdpRunCommand(args ?? {}, "DOM.querySelector", {
     nodeId: rootNodeId,
     selector,
-  });
+  }, options);
   const nodeId = queryResult.result.response?.nodeId;
   if (!Number.isInteger(nodeId) || nodeId <= 0) {
     throw createToolError("NO_SESSION", `file input not found: ${selector}`);
@@ -42,12 +42,12 @@ async function setInputFilesViaCdp(args, selector, files) {
   const setResult = await cdpRunCommand(args ?? {}, "DOM.setFileInputFiles", {
     nodeId,
     files,
-  });
+  }, options);
   const dispatchResult = await cdpRunCommand(args ?? {}, "Runtime.evaluate", {
     expression: dispatchFileInputEventsExpression(selector),
     awaitPromise: true,
     returnByValue: true,
-  });
+  }, options);
   return {
     transport: "cdp",
     tab_id: setResult.target.id,
@@ -62,7 +62,7 @@ async function setInputFilesViaCdp(args, selector, files) {
   };
 }
 
-async function setInputFilesViaTmwd(args, selector, files) {
+async function setInputFilesViaTmwd(args, selector, files, options = {}) {
   const command = {
     cmd: "batch",
     commands: [
@@ -92,7 +92,7 @@ async function setInputFilesViaTmwd(args, selector, files) {
       },
     ],
   };
-  const result = await executeTmwdCommand(args, command);
+  const result = await executeTmwdCommand(args, command, options);
   const results = extractBatchResults(result);
   const failed = results.find((item) => item?.ok === false);
   if (failed) {
@@ -111,7 +111,7 @@ async function setInputFilesViaTmwd(args, selector, files) {
   };
 }
 
-async function handleInspectInputs(args) {
+async function handleInspectInputs(args, options = {}) {
   const selector = String(args?.selector ?? "input[type=file]").trim() || "input[type=file]";
   const result = await executeBrowserScript(args, `
     const selector = input.selector || 'input[type=file]';
@@ -130,7 +130,7 @@ async function handleInspectInputs(args) {
         selector_hint: el.id ? "#" + CSS.escape(el.id) : selector
       };
     });
-  `, { selector });
+  `, { selector }, options);
   return {
     status: "success",
     action: "inspect_inputs",
@@ -142,24 +142,24 @@ async function handleInspectInputs(args) {
   };
 }
 
-async function handleSetInputFiles(args) {
+async function handleSetInputFiles(args, options = {}) {
   const selector = String(args?.selector ?? "").trim();
   if (!selector) {
     throw createToolError("INVALID_ARGUMENT", "selector is required when action=set_input_files");
   }
   const files = await validateUploadFiles(args?.files);
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = await resolvePreferredBrowserContext(args ?? {}, options);
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    return setInputFilesViaTmwd(args, selector, files);
+    return setInputFilesViaTmwd(args, selector, files, options);
   }
   return {
     status: "success",
     action: "set_input_files",
-    ...(await setInputFilesViaCdp(args, selector, files)),
+    ...(await setInputFilesViaCdp(args, selector, files, options)),
   };
 }
 
-async function handleUploadViaDataTransfer(args) {
+async function handleUploadViaDataTransfer(args, options = {}) {
   const selector = String(args?.selector ?? "").trim();
   if (!selector) {
     throw createToolError("INVALID_ARGUMENT", "selector is required when action=upload_via_data_transfer");
@@ -202,7 +202,7 @@ async function handleUploadViaDataTransfer(args) {
     mime_type: String(args?.mime_type ?? args?.type ?? "application/octet-stream"),
     content: hasContent ? String(args.content ?? "") : undefined,
     base64: hasBase64 ? String(args.base64 ?? "") : undefined,
-  });
+  }, options);
   if (result.value?.ok === false) {
     throw createToolError("EXECUTION_ERROR", String(result.value.error ?? "DataTransfer upload failed"));
   }
@@ -233,7 +233,7 @@ function handleNativeFileChooserPlan(args) {
   };
 }
 
-async function handleBrowserFileOps(args) {
+async function handleBrowserFileOps(args, options = {}) {
   const action = normalizeAction(args, [
     "inspect_inputs",
     "set_input_files",
@@ -241,13 +241,13 @@ async function handleBrowserFileOps(args) {
     "native_file_chooser_plan",
   ]);
   if (action === "inspect_inputs") {
-    return handleInspectInputs(args);
+    return handleInspectInputs(args, options);
   }
   if (action === "set_input_files") {
-    return handleSetInputFiles(args);
+    return handleSetInputFiles(args, options);
   }
   if (action === "upload_via_data_transfer") {
-    return handleUploadViaDataTransfer(args);
+    return handleUploadViaDataTransfer(args, options);
   }
   return handleNativeFileChooserPlan(args);
 }

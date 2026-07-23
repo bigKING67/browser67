@@ -18,32 +18,25 @@ import {
 import {
   cdpEvaluateScript,
   fetchCdpTargets,
-} from "../../cdp-runtime.mjs";
-import { runBridgeCommand } from "../../bridge-commands.mjs";
+} from "../../cdp-runtime/index.mjs";
+import { runBridgeCommand } from "../../browser/execution/bridge-commands.mjs";
 import {
   classifyBrowserErrorCode,
   createToolError,
   isRetryableBrowserErrorCode,
-} from "../../errors.mjs";
+} from "../../runtime/tool-errors.mjs";
 import {
   buildNativeInputSuggestion,
   maybeRunNativeFallbackForExecuteJs,
   resolveNativeAutoFallbackPolicy,
   resolveSuggestedNativeInputCapabilities,
-} from "../../native-fallback.mjs";
-import {
-  getActiveTargetId,
-  listSessionsSnapshot,
-  markSessionSelected,
-  normalizeIdToken,
-  sessionPointers,
-  syncSessionRegistry,
-} from "../../session-registry.mjs";
+} from "../../native-fallback/index.mjs";
+import { defaultSessionRegistry, normalizeIdToken } from "../../runtime/sessions/registry.mjs";
 import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
   resolveTmwdContext,
-} from "../../tmwd-runtime.mjs";
+} from "../../tmwd-runtime/index.mjs";
 import { executeStructuredNodeOperation } from "../../browser/execution/structured-operation.mjs";
 
 const DEFAULT_INTERACTION_NEW_TAB_WAIT_MS = 1_500;
@@ -143,7 +136,7 @@ function applyOutputMode(payload, args) {
   };
 }
 
-async function getTransientTexts(args) {
+async function getTransientTexts(args, options = {}) {
   try {
     const evalResult = await cdpEvaluateScript(args, `
       const nodes = Array.from(document.querySelectorAll('[role="alert"], [role="status"], [aria-live], .toast, .notification'))
@@ -151,7 +144,7 @@ async function getTransientTexts(args) {
         .filter(Boolean)
         .slice(0, 12);
       return nodes;
-    `);
+    `, options);
     const rows = Array.isArray(evalResult.result.value) ? evalResult.result.value : [];
     return rows.filter((item) => typeof item === "string");
   } catch {
@@ -159,7 +152,8 @@ async function getTransientTexts(args) {
   }
 }
 
-async function handleBrowserExecuteJs(args) {
+async function handleBrowserExecuteJs(args, options = {}) {
+  const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
   if (typeof args?.operation === "string" && args.operation.trim()) {
     if (typeof args.script === "string") {
       throw createToolError(
@@ -168,7 +162,7 @@ async function handleBrowserExecuteJs(args) {
         { retryable: false },
       );
     }
-    return executeStructuredNodeOperation(args);
+    return executeStructuredNodeOperation(args, options);
   }
   const scriptInput = resolveExecuteJsScriptInput(args ?? {});
   if (scriptInput.missing === true) {
@@ -180,7 +174,7 @@ async function handleBrowserExecuteJs(args) {
   }
   let preferred = null;
   try {
-    preferred = await resolvePreferredBrowserContext(args ?? {});
+    preferred = await resolvePreferredBrowserContext(args ?? {}, options);
   } catch (contextError) {
     if (args?.native_auto_fallback !== true) {
       throw contextError;
@@ -215,8 +209,8 @@ async function handleBrowserExecuteJs(args) {
       native_input_hint: nativeInputSuggestion.should_escalate === true ? nativeInputSuggestion : undefined,
       native_input_capabilities: nativeInputSuggestion.should_escalate === true ? nativeInputCapabilities : undefined,
       native_auto_fallback: nativeAutoFallback,
-      tab_id: getActiveTargetId() || undefined,
-      session_id: getActiveTargetId() || undefined,
+      tab_id: sessionStore.getActiveTargetId() || undefined,
+      session_id: sessionStore.getActiveTargetId() || undefined,
       selection: undefined,
       selection_source: null,
       selection_warning: undefined,
@@ -224,15 +218,15 @@ async function handleBrowserExecuteJs(args) {
       reloaded: false,
       transients: [],
       diff: "context resolution failed before script execution",
-      sessions: listSessionsSnapshot(),
-      ...sessionPointers(),
+      sessions: sessionStore.list(),
+      ...sessionStore.sessionPointers(),
       environment: {
         newTabs: [],
         reloaded: false,
       },
     }, args ?? {});
   }
-  const management = await assertManagedExecutionContext(preferred, args ?? {});
+  const management = await assertManagedExecutionContext(preferred, args ?? {}, options);
   const command = parseBridgeCommand(scriptInput.value);
   if (
     typeof scriptInput.value === "string"
@@ -246,9 +240,9 @@ async function handleBrowserExecuteJs(args) {
     );
   }
   const navigationAuthorization = executionMayNavigate(command ?? scriptInput.value)
-    ? await authorizeManagedExecutionNavigation(preferred, args ?? {}, "raw_browser_execution")
+    ? await authorizeManagedExecutionNavigation(preferred, args ?? {}, "raw_browser_execution", options)
     : { status: "not_required", authorized: false };
-  const executionObservation = await beginExecutionNetworkObservation(args ?? {}, preferred);
+  const executionObservation = await beginExecutionNetworkObservation(args ?? {}, preferred, options);
   let jsReturn = null;
   let error = "";
   let responseTransport = preferred.transport;
@@ -269,6 +263,7 @@ async function handleBrowserExecuteJs(args) {
           args ?? {},
           preferred.context,
           codePayload,
+          options,
         );
         const executed = tmwdExecution.executed;
         preferred = {
@@ -291,7 +286,7 @@ async function handleBrowserExecuteJs(args) {
           }
         }
         if (newTabs.length > 0) {
-          syncSessionRegistry(newTabs.map((item) => ({ ...item, active: false })));
+          sessionStore.sync(newTabs.map((item) => ({ ...item, active: false })));
         }
         try {
           const refreshed = await resolveTmwdContext(
@@ -300,7 +295,7 @@ async function handleBrowserExecuteJs(args) {
               tmwd_transport: tmwdExecution.context.tmwd_transport,
               session_id: tabId,
             },
-            { probe: false, refresh: newTabWaitMs > 0 },
+            { ...options, probe: false, refresh: newTabWaitMs > 0 },
           );
           afterTargets = refreshed.targets;
           selection = refreshed.selection;
@@ -308,7 +303,7 @@ async function handleBrowserExecuteJs(args) {
           afterTargets = beforeTargets;
         }
       } else if (command) {
-        const commandResult = await runBridgeCommand(command, args);
+        const commandResult = await runBridgeCommand(command, args, options);
         jsReturn = commandResult;
         if (commandResult && typeof commandResult === "object") {
           if (commandResult.ok === false) {
@@ -330,12 +325,12 @@ async function handleBrowserExecuteJs(args) {
           tabId = command.session_id.trim();
         }
         afterTargets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
-        syncSessionRegistry(afterTargets);
+        sessionStore.sync(afterTargets);
       } else {
         const executed = await cdpEvaluateScript({
           ...args,
           switch_tab_id: preferred.context.target.id,
-        }, String(scriptInput.value ?? ""));
+        }, String(scriptInput.value ?? ""), options);
         const cdpValue = executed.result.value;
         if (cdpValue && typeof cdpValue === "object" && Object.prototype.hasOwnProperty.call(cdpValue, "ok")) {
           if (cdpValue.ok === false) {
@@ -348,7 +343,7 @@ async function handleBrowserExecuteJs(args) {
         }
         tabId = executed.target.id;
         afterTargets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
-        syncSessionRegistry(afterTargets);
+        sessionStore.sync(afterTargets);
       }
     } catch (execError) {
       error = String(execError?.message ?? execError);
@@ -357,7 +352,7 @@ async function handleBrowserExecuteJs(args) {
       }
     }
     if (tabId) {
-      markSessionSelected(tabId, { make_default: false });
+      sessionStore.select(tabId, { make_default: false });
     }
     newTabs = mergeNewTabs(newTabs, targetDiff(beforeTargets, afterTargets));
     if (!error && newTabs.length === 0 && newTabWaitMs > 0) {
@@ -373,13 +368,13 @@ async function handleBrowserExecuteJs(args) {
                 tmwd_transport: preferred.context.tmwd_transport,
                 session_id: tabId,
               },
-              { probe: false, refresh: true },
+              { ...options, probe: false, refresh: true },
             );
             afterTargets = refreshed.targets;
             selection = refreshed.selection;
           } else {
             afterTargets = await fetchCdpTargets(normalizeEndpoint(args?.cdp_endpoint));
-            syncSessionRegistry(afterTargets);
+            sessionStore.sync(afterTargets);
           }
         } catch {
           // A target refresh can race navigation; retry within the bounded window.
@@ -392,7 +387,7 @@ async function handleBrowserExecuteJs(args) {
     observationResult = await finishExecutionNetworkObservation(executionObservation);
   }
   const noMonitor = args?.no_monitor === true;
-  const transients = noMonitor || preferred.transport !== "cdp" ? [] : await getTransientTexts(args);
+  const transients = noMonitor || preferred.transport !== "cdp" ? [] : await getTransientTexts(args, options);
   const diff = noMonitor
     ? "monitor skipped (no_monitor=true)"
     : (newTabs.length > 0 ? `DOM变化监控：检测到 ${String(newTabs.length)} 个新标签页` : "DOM变化监控：未检测到显著结构变化");
@@ -424,8 +419,8 @@ async function handleBrowserExecuteJs(args) {
     native_input_hint: nativeInputSuggestion.should_escalate === true ? nativeInputSuggestion : undefined,
     native_input_capabilities: nativeInputSuggestion.should_escalate === true ? nativeInputCapabilities : undefined,
     native_auto_fallback: nativeAutoFallback,
-    tab_id: tabId || getActiveTargetId() || undefined,
-    session_id: tabId || getActiveTargetId() || undefined,
+    tab_id: tabId || sessionStore.getActiveTargetId() || undefined,
+    session_id: tabId || sessionStore.getActiveTargetId() || undefined,
     selection,
     selection_source: selection?.selected_by ?? null,
     selection_warning: selection?.warning ?? undefined,
@@ -435,8 +430,8 @@ async function handleBrowserExecuteJs(args) {
     reloaded: false,
     transients,
     diff,
-    sessions: listSessionsSnapshot(),
-    ...sessionPointers(),
+    sessions: sessionStore.list(),
+    ...sessionStore.sessionPointers(),
     environment: {
       newTabs,
       reloaded: false,

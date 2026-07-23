@@ -1,4 +1,4 @@
-import { createToolError } from "../../errors.mjs";
+import { createToolError } from "../../runtime/tool-errors.mjs";
 import { browserSnapshotStore } from "./snapshot-store.mjs";
 
 const DIFF_FIELDS = [
@@ -114,9 +114,9 @@ function semanticDiffSnapshots(before, after) {
   };
 }
 
-function diffStoredSnapshots(args = {}) {
-  const before = browserSnapshotStore.get(args.before_snapshot_id, args, { require_scope: true });
-  const after = browserSnapshotStore.get(args.after_snapshot_id, args, { require_scope: true });
+function diffStoredSnapshots(args = {}, store = browserSnapshotStore) {
+  const before = store.get(args.before_snapshot_id, args, { require_scope: true });
+  const after = store.get(args.after_snapshot_id, args, { require_scope: true });
   if (before.workspace_key !== after.workspace_key || before.task_id !== after.task_id) {
     throw createToolError("SNAPSHOT_SCOPE_MISMATCH", "snapshots belong to different workspace/task scopes", {
       retryable: false,

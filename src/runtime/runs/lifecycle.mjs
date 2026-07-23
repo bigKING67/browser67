@@ -3,23 +3,27 @@ import {
   RUN_SCHEMA_VERSION,
   configuredRunRoot,
   getDefaultRunStore,
-} from "./runtime/runs/store.mjs";
+} from "./store.mjs";
 
-function runRoot() {
-  return configuredRunRoot();
+function runRoot(options = {}) {
+  return options.runtime?.runStore?.root ?? options.runStore?.root ?? configuredRunRoot();
 }
 
-function runDirFor(args = {}) {
-  return getDefaultRunStore().runDir(args);
+function runStoreFor(options = {}) {
+  return options.runtime?.runStore ?? options.runStore ?? getDefaultRunStore();
 }
 
-async function prepareRun(args = {}) {
-  return getDefaultRunStore().prepare(args);
+function runDirFor(args = {}, options = {}) {
+  return runStoreFor(options).runDir(args);
 }
 
-async function handleBrowserRunOps(args = {}) {
+async function prepareRun(args = {}, options = {}) {
+  return runStoreFor(options).prepare(args);
+}
+
+async function handleBrowserRunOps(args = {}, options = {}) {
   const action = String(args.action ?? "status");
-  const store = getDefaultRunStore();
+  const store = runStoreFor(options);
   if (action === "prepare") return store.prepare(args);
   if (action === "status") return store.status(args);
   if (action === "record_event") return store.recordEvent(args);
@@ -35,4 +39,5 @@ export {
   prepareRun,
   runDirFor,
   runRoot,
+  runStoreFor,
 };

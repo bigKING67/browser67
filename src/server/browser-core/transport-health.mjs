@@ -3,11 +3,11 @@ import { performance } from "node:perf_hooks";
 import {
   normalizeTmwdLinkEndpoint,
   normalizeTmwdWsEndpoint,
-} from "../../common.mjs";
-import { classifyBrowserErrorCode } from "../../errors.mjs";
-import { resolveTmwdContextWithTransport } from "../../tmwd-runtime.mjs";
+} from "../../runtime/config/endpoints.mjs";
+import { classifyBrowserErrorCode } from "../../runtime/tool-errors.mjs";
+import { resolveTmwdContextWithTransport } from "../../tmwd-runtime/index.mjs";
 
-async function probeTransport(args, transport) {
+async function probeTransport(args, transport, options = {}) {
   const started = performance.now();
   try {
     const context = await resolveTmwdContextWithTransport(
@@ -19,6 +19,7 @@ async function probeTransport(args, transport) {
       },
       transport,
       args.session_id,
+      options,
     );
     return {
       transport,
@@ -65,12 +66,12 @@ function suggestionFromHealth(health, results) {
   return "start_or_reconnect_tmwd_hub_reload_extension_then_retry";
 }
 
-async function handleBrowserTransportHealth(args = {}) {
+async function handleBrowserTransportHealth(args = {}, options = {}) {
   const transport = String(args.tmwd_transport ?? "auto");
   const transports = transport === "ws" || transport === "link" ? [transport] : ["ws", "link"];
   const results = [];
   for (const item of transports) {
-    results.push(await probeTransport(args, item));
+    results.push(await probeTransport(args, item, options));
   }
   const health = healthFromResults(results);
   return {

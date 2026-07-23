@@ -1,14 +1,11 @@
-import { CAPABILITIES } from "../capabilities.mjs";
-import {
-  listSessionsSnapshot,
-  sessionPointers,
-} from "../session-registry.mjs";
+import { CAPABILITIES } from "../tab-workspace/capabilities.mjs";
+import { defaultSessionRegistry } from "../runtime/sessions/registry.mjs";
 import {
   listManagedTabRecords,
   managedTabGroups,
   managedTabPayload,
-} from "../tab-workspace.mjs";
-import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+} from "../tab-workspace/index.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
   liveTabMap,
   resolveManagedRecordLiveness,
@@ -22,19 +19,20 @@ import {
 } from "./tab-lifecycle-limits.mjs";
 
 async function listManagedTabs(args = {}, options = {}) {
+  const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
   const includeDisconnected = args?.include_disconnected === true || args?.history === true;
   const summaryOnly = args?.summary_only === true;
   const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
   const maxStaleItems = normalizeListManagedLimit(args?.max_stale_items, DEFAULT_LIST_MANAGED_MAX_STALE_ITEMS);
-  const liveSessions = listSessionsSnapshot();
+  const liveSessions = sessionStore.list();
   const sessions = includeDisconnected
-    ? listSessionsSnapshot({ include_disconnected: true })
+    ? sessionStore.list({ include_disconnected: true })
     : liveSessions;
   const disconnectedSessions = includeDisconnected
     ? sessions.filter((session) => session.active !== true)
     : undefined;
   const pruneStale = args?.prune_stale === true
-    ? await options.pruneStaleManagedTabs({ ...args, dry_run: args?.dry_run === true })
+    ? await options.pruneStaleManagedTabs({ ...args, dry_run: args?.dry_run === true }, options)
     : undefined;
   const registryRecords = await listManagedTabRecords({ include_closed: includeDisconnected });
   let managedRecords = registryRecords;
@@ -51,7 +49,7 @@ async function listManagedTabs(args = {}, options = {}) {
     if (registryRecords.length > 0) {
       let preferred = null;
       try {
-        preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true });
+        preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, options);
       } catch (error) {
         liveFilter.warning = `live browser check unavailable; returning only tabs known in the active session registry: ${String(error?.message ?? error)}`;
       }
@@ -62,7 +60,7 @@ async function listManagedTabs(args = {}, options = {}) {
         const stale = [];
         const livenessRows = await Promise.all(registryRecords.map(async (record) => ({
           record,
-          liveness: await resolveManagedRecordLiveness(args, preferred, record, liveById),
+          liveness: await resolveManagedRecordLiveness(args, preferred, record, liveById, options),
         })));
         livenessRows.forEach(({ record, liveness }) => {
           if (liveness.live === true) {
@@ -164,7 +162,7 @@ async function listManagedTabs(args = {}, options = {}) {
     disconnected_sessions: summaryOnly ? [] : disconnectedSessions,
     sessions: summaryOnly ? [] : sessions,
     prune_stale: pruneStale,
-    ...sessionPointers(),
+    ...sessionStore.sessionPointers(),
   };
 }
 
