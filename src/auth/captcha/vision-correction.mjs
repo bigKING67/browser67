@@ -7,7 +7,7 @@ import {
   unsupportedCorrection,
 } from "./vision-correction/slider.mjs";
 
-async function runCaptchaVisionCorrection(args = {}, pageState = {}, planned = {}) {
+async function runCaptchaVisionCorrection(args = {}, pageState = {}, planned = {}, options = {}) {
   if (args?.run_vision_correction !== true) {
     return null;
   }
@@ -21,7 +21,7 @@ async function runCaptchaVisionCorrection(args = {}, pageState = {}, planned = {
     };
   }
   try {
-    const capture = await captureCdpRegion(args, clip, pageState);
+    const capture = await captureCdpRegion(args, clip, pageState, options);
     const target = String(planned.assist_target ?? args?.assist_target ?? "auto");
     const detected = target === "slider"
       ? detectSliderCorrection(capture.image, clip, pageState, planned)

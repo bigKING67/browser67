@@ -1,8 +1,8 @@
-import { getManagedTab, managedTabPayload } from "../../tab-workspace.mjs";
+import { getManagedTab, managedTabPayload } from "../../tab-workspace/index.mjs";
 import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
-} from "../../tmwd-runtime.mjs";
+} from "../../tmwd-runtime/index.mjs";
 import { executeBrowserScript } from "../login-detect.mjs";
 import { MANUAL_CHALLENGE_DETECTOR_JS } from "../manual-challenge.mjs";
 import { buildCaptchaAssistInspectorJs } from "../captcha/targets.mjs";
@@ -74,8 +74,13 @@ function isSupportedWindowsBrowserProcess(raw) {
   return processName === "chrome" || processName === "msedge";
 }
 
-async function inspectCaptchaAssistPage(args) {
-  const result = await executeBrowserScript(args, buildCaptchaAssistInspectorJs(MANUAL_CHALLENGE_DETECTOR_JS));
+async function inspectCaptchaAssistPage(args, options = {}) {
+  const result = await executeBrowserScript(
+    args,
+    buildCaptchaAssistInspectorJs(MANUAL_CHALLENGE_DETECTOR_JS),
+    {},
+    options,
+  );
   return {
     ...result.value,
     transport: result.transport,
@@ -84,7 +89,7 @@ async function inspectCaptchaAssistPage(args) {
   };
 }
 
-async function activateManagedTabForPhysicalInput(args = {}, tabId = "") {
+async function activateManagedTabForPhysicalInput(args = {}, tabId = "", options = {}) {
   const normalizedTabId = String(tabId || normalizeExplicitTabId(args)).trim();
   if (!normalizedTabId) {
     throw new Error("managed tab id is required before TMWD activation");
@@ -95,7 +100,7 @@ async function activateManagedTabForPhysicalInput(args = {}, tabId = "") {
     switch_tab_id: normalizedTabId,
     session_id: normalizedTabId,
   };
-  const preferred = await resolvePreferredBrowserContext(activationArgs);
+  const preferred = await resolvePreferredBrowserContext(activationArgs, options);
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw new Error(`TMWD activation requires TMWD transport, got ${preferred.transport}`);
   }
@@ -103,7 +108,7 @@ async function activateManagedTabForPhysicalInput(args = {}, tabId = "") {
     cmd: "tabs",
     method: "switch",
     tabId: normalizedTabId,
-  });
+  }, options);
   const raw = result.executed?.raw;
   if (raw?.ok === false) {
     throw new Error(String(raw.error ?? "TMWD tabs.switch failed"));

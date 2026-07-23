@@ -19,7 +19,7 @@ function blockedActivation(planned, activation, extras = {}) {
   };
 }
 
-async function activateInitialWindow(args, planned, managedTab) {
+async function activateInitialWindow(args, planned, managedTab, options = {}) {
   const windowTitle = String(args?.window_title ?? "").trim();
   const windowPid = finiteNumber(args?.window_pid);
   if (windowTitle || windowPid !== null) {
@@ -43,7 +43,7 @@ async function activateInitialWindow(args, planned, managedTab) {
   try {
     return {
       ok: true,
-      activation: await activateManagedTabForPhysicalInput(args, managedTab.tab_id),
+      activation: await activateManagedTabForPhysicalInput(args, managedTab.tab_id, options),
     };
   } catch (error) {
     if (args?.window_active_confirmed === true) {
@@ -206,8 +206,8 @@ async function foregroundWindowsManagedTab(args, planned, managedTab, activation
   }
 }
 
-async function activateCaptchaTarget(args, planned, managedTab) {
-  const initial = await activateInitialWindow(args, planned, managedTab);
+async function activateCaptchaTarget(args, planned, managedTab, options = {}) {
+  const initial = await activateInitialWindow(args, planned, managedTab, options);
   if (!initial.ok) return initial;
 
   const activation = initial.activation;

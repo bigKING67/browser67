@@ -9,7 +9,7 @@ import {
   normalizeCoordinate,
   parseJsonFromCommandOutput,
   runNativeCommand,
-} from "../../native-core.mjs";
+} from "../../native-core/index.mjs";
 
 const PROVIDER_ID = "ljq-ctrl";
 const SUPPORTED_PLATFORMS = ["win32"];

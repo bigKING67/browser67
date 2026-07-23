@@ -10,8 +10,8 @@ import {
   inspectCaptchaAssistPage,
 } from "./context.mjs";
 
-async function handlePlanCaptchaAssist(args) {
-  const pageState = await inspectCaptchaAssistPage(args);
+async function handlePlanCaptchaAssist(args, options = {}) {
+  const pageState = await inspectCaptchaAssistPage(args, options);
   const physicalCapabilities = await detectPhysicalInputCapabilities({
     action: inferPhysicalAction(pageState, args),
     preferred_provider: args?.physical_input_provider,
@@ -23,7 +23,7 @@ async function handlePlanCaptchaAssist(args) {
   planned.captcha_policy = routed.policy;
   planned.captcha_router = routed.router;
   planned.captcha_providers = routed.providers;
-  const visionCorrection = await runCaptchaVisionCorrection(args, pageState, planned);
+  const visionCorrection = await runCaptchaVisionCorrection(args, pageState, planned, options);
   if (visionCorrection && planned.coordinate_transform?.vision_correction_plan) {
     planned.coordinate_transform.vision_correction_plan = {
       ...planned.coordinate_transform.vision_correction_plan,

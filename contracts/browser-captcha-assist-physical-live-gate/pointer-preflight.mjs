@@ -1,4 +1,4 @@
-import { detectNativeInputCapabilities } from "../../src/native-capabilities.mjs";
+import { detectNativeInputCapabilities } from "../../src/native-capabilities/index.mjs";
 import { buildNativePointerReadinessReport } from "../../src/native-capabilities/pointer-readiness.mjs";
 
 async function nativePointerPreflight(options = {}) {

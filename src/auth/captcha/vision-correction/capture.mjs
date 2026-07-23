@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
-} from "../../../tmwd-runtime.mjs";
+} from "../../../tmwd-runtime/index.mjs";
 import {
   finiteNumber,
   roundCoordinate,
@@ -24,8 +24,8 @@ function extractScreenshotData(executed = {}) {
     ?? raw?.result;
 }
 
-async function captureCdpRegion(args = {}, clip = {}, pageState = {}) {
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+async function captureCdpRegion(args = {}, clip = {}, pageState = {}, options = {}) {
+  const preferred = await resolvePreferredBrowserContext(args ?? {}, options);
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw new Error(`TMWD region capture requires TMWD transport, got ${preferred.transport}`);
   }
@@ -44,7 +44,7 @@ async function captureCdpRegion(args = {}, clip = {}, pageState = {}) {
       fromSurface: true,
       clip: cdpClip,
     },
-  });
+  }, options);
   const base64 = extractScreenshotData(result.executed);
   if (typeof base64 !== "string" || base64.length < 16) {
     throw new Error("Page.captureScreenshot did not return PNG data");

@@ -25,8 +25,8 @@ import { assistBlocked } from "./outcome.mjs";
 import { handlePlanCaptchaAssist } from "./plan-handler.mjs";
 import { prepareAssistRequest } from "./preflight.mjs";
 
-async function handleAssistCaptcha(args) {
-  const planned = await handlePlanCaptchaAssist(args);
+async function handleAssistCaptcha(args, options = {}) {
+  const planned = await handlePlanCaptchaAssist(args, options);
   const managedTab = await getManagedTabContext(args);
   const preflight = prepareAssistRequest(args, planned, managedTab);
   if (!preflight.ok) return preflight.outcome;
@@ -36,7 +36,7 @@ async function handleAssistCaptcha(args) {
     useProviderCoordinates,
   } = preflight;
 
-  const activationResult = await activateCaptchaTarget(args, planned, managedTab);
+  const activationResult = await activateCaptchaTarget(args, planned, managedTab, options);
   if (!activationResult.ok) return activationResult.outcome;
   const activation = activationResult.activation;
 
@@ -51,7 +51,7 @@ async function handleAssistCaptcha(args) {
     coordinateRefresh = coordinateRefreshSkipped("provider_coordinate_region_capture");
   }
   if (autoScreenCoordinates || useCorrectedCoordinates || useProviderCoordinates) {
-    const refreshed = await handlePlanCaptchaAssist(args);
+    const refreshed = await handlePlanCaptchaAssist(args, options);
     coordinateRefresh = coordinateRefreshPerformed(planned, refreshed);
     if (refreshed.status !== "planned") {
       return assistBlocked(

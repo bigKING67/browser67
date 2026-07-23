@@ -1,7 +1,7 @@
 import {
   detectNativeInputCapabilities,
   handleBrowserNativeInput,
-} from "../../native-input.mjs";
+} from "../../native/input.mjs";
 
 const PROVIDER_ID = "native-os";
 
