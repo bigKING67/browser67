@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { CAPABILITIES } from "../src/capabilities.mjs";
+import { CAPABILITIES } from "../src/tab-workspace/capabilities.mjs";
 import { collectDoctorChecks } from "./browser67-live-doctor/checks.mjs";
 import { parseArgs } from "./browser67-live-doctor/cli.mjs";
 import { evaluateModeReadiness } from "./browser67-live-doctor/readiness.mjs";

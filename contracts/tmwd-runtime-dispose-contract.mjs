@@ -6,7 +6,7 @@ import {
   disposeTmwdRuntime,
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
-} from "../src/tmwd-runtime.mjs";
+} from "../src/tmwd-runtime/index.mjs";
 
 function waitForServerListening(server) {
   return new Promise((resolvePromise, rejectPromise) => {

@@ -1,4 +1,4 @@
-import { normalizeIdToken } from "../session-registry.mjs";
+import { normalizeIdToken } from "../runtime/sessions/registry.mjs";
 
 function normalizeTmwdSessions(raw) {
   if (!Array.isArray(raw)) {

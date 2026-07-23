@@ -4,13 +4,20 @@ import {
   classifyBrowserErrorCode,
   shouldFallbackAcrossTmwdTransports,
   withTransportAttempts,
-} from "../errors.mjs";
+} from "../runtime/tool-errors.mjs";
 import { callTmwdLink } from "./link.mjs";
 import { resolveTmwdContextWithTransport } from "./context.mjs";
-import { recordTmwdTransportResult } from "./health.mjs";
-import { sendTmwdWsRequest } from "./ws.mjs";
+import { defaultTmwdTransportHealthStore } from "./health.mjs";
+import { defaultTmwdWsRuntime } from "./ws.mjs";
 
-async function executeTmwdJs(args, tmwdContext, code) {
+function runtimeServices(options = {}) {
+  return {
+    healthStore: options.runtime?.transportHealth ?? options.transportHealth ?? defaultTmwdTransportHealthStore,
+    wsRuntime: options.runtime?.tmwdWsRuntime ?? options.tmwdWsRuntime ?? defaultTmwdWsRuntime,
+  };
+}
+
+async function executeTmwdJs(args, tmwdContext, code, options = {}) {
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms);
   if (tmwdContext.tmwd_transport === "ws") {
     const numericTargetTabId = Number(tmwdContext.target.id);
@@ -20,7 +27,7 @@ async function executeTmwdJs(args, tmwdContext, code) {
     const codePayload = typeof code === "object" && code !== null
       ? { ...code, tabId: code.tabId ?? bridgeTabId }
       : String(code ?? "");
-    const response = await sendTmwdWsRequest(
+    const response = await runtimeServices(options).wsRuntime.send(
       {
         ...args,
         tmwd_ws_endpoint: tmwdContext.endpoint,
@@ -81,7 +88,8 @@ async function executeTmwdJs(args, tmwdContext, code) {
   };
 }
 
-async function executeTmwdJsWithFallback(args, tmwdContext, codePayload) {
+async function executeTmwdJsWithFallback(args, tmwdContext, codePayload, options = {}) {
+  const { healthStore } = runtimeServices(options);
   const attempts = [];
   const initialTransport = tmwdContext.tmwd_transport === "ws" ? "ws" : "link";
   const runExecute = async (context, transport, reason) => {
@@ -93,15 +101,16 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload) {
         },
         context,
         codePayload,
+        options,
       );
-      recordTmwdTransportResult(args, transport, true, { endpoint: context.endpoint });
+      healthStore.record(args, transport, true, { endpoint: context.endpoint });
       appendTransportAttempt(attempts, transport, "execute", "ok", { reason });
       return {
         executed,
         context,
       };
     } catch (error) {
-      recordTmwdTransportResult(args, transport, false, {
+      healthStore.record(args, transport, false, {
         endpoint: context.endpoint,
         error: error?.message,
       });
@@ -127,7 +136,12 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload) {
     const fallbackTransport = initialTransport === "ws" ? "link" : "ws";
     let fallbackContext;
     try {
-      fallbackContext = await resolveTmwdContextWithTransport(args, fallbackTransport, tmwdContext.target.id);
+      fallbackContext = await resolveTmwdContextWithTransport(
+        args,
+        fallbackTransport,
+        tmwdContext.target.id,
+        options,
+      );
       appendTransportAttempt(attempts, fallbackTransport, "resolve_context", "ok", {
         reason: "fallback_after_primary_error",
       });

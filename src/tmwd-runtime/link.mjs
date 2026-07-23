@@ -1,7 +1,7 @@
 import {
-  normalizeTimeoutMs,
   normalizeTmwdLinkEndpoint,
-} from "../common.mjs";
+} from "../runtime/config/endpoints.mjs";
+import { normalizeTimeoutMs } from "../runtime/config/limits.mjs";
 
 async function callTmwdLink(args, payload, timeoutMsOverride) {
   const endpoint = normalizeTmwdLinkEndpoint(args?.tmwd_link_endpoint ?? process.env.BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT);
