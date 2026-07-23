@@ -1,8 +1,8 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   detectNativeInputCapabilities,
   normalizeNativeInputAction,
-} from "../native-input.mjs";
+} from "../native/input.mjs";
 
 async function resolveSuggestedNativeInputCapabilities(nativeAutoFallback, nativeInputSuggestion) {
   if (typeof nativeAutoFallback?.capabilities === "object" && nativeAutoFallback.capabilities !== null) {

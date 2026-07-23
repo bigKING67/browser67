@@ -1,4 +1,4 @@
-import { allNativeInputActions, commandExists, runNativeCommand } from "../native-core.mjs";
+import { allNativeInputActions, commandExists, runNativeCommand } from "../native-core/index.mjs";
 
 function cliclickAccessibilityWarning(output) {
   return String(output ?? "").toLowerCase().includes("accessibility privileges not enabled");

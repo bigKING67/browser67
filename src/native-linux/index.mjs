@@ -1,5 +1,5 @@
-import { createToolError } from "../errors.mjs";
-import { commandExists } from "../native-core.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { commandExists } from "../native-core/index.mjs";
 
 import {
   activateWindow,

@@ -1,4 +1,4 @@
-import { nowIso } from "../common.mjs";
+import { nowIso } from "../runtime/identity.mjs";
 import { validateNativeInputArguments } from "./validation.mjs";
 
 function buildNativeInputDriverPlan(platform, action) {

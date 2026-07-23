@@ -1,4 +1,4 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   NATIVE_INPUT_ACTIONS_WITH_CAPABILITIES,
   NATIVE_INPUT_DEFAULT_TIMEOUT_MS,

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-import { compactText } from "../common.mjs";
+import { compactText } from "../browser/content/output-limits.mjs";
 import { normalizeNativeInputTimeoutMs } from "./normalize.mjs";
 
 function parseJsonFromCommandOutput(stdout) {

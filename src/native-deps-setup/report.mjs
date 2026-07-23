@@ -1,6 +1,10 @@
 import process from "node:process";
 
-import { computeReportOk, summarizeCapabilities } from "./capabilities.mjs";
+import {
+  capabilityPayload,
+  computeReportOk,
+  summarizeCapabilities,
+} from "./capabilities.mjs";
 import { maybeInstallDependencies } from "./installers.mjs";
 import { createMcpClient } from "./mcp-client.mjs";
 
@@ -34,7 +38,12 @@ async function runNativeDepsSetup({ options, serverPath, platform = process.plat
       raw: beforeCaps,
       summary: summarizeCapabilities(beforeCaps),
     };
-    const changed = await maybeInstallDependencies(platform, beforeCaps, options, actions);
+    const changed = await maybeInstallDependencies(
+      platform,
+      capabilityPayload(beforeCaps),
+      options,
+      actions,
+    );
     report.install_attempted = options.install;
     const afterCaps = changed
       ? await client.toolCall("browser_native_input", { action: "capabilities" })

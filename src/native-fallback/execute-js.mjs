@@ -1,11 +1,11 @@
-import { isRetryableBrowserErrorCode } from "../errors.mjs";
+import { isRetryableBrowserErrorCode } from "../runtime/tool-errors.mjs";
 import {
   buildNativeInputDryRunResponse,
   detectNativeInputCapabilities,
   mapNativeInputError,
   normalizeNativeInputTimeoutMs,
   runNativeInputAction,
-} from "../native-input.mjs";
+} from "../native/input.mjs";
 import {
   isPointerNativeAction,
   resolveNativeExecuteActionScope,

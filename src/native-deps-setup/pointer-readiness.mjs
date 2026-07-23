@@ -2,7 +2,7 @@
 
 import process from "node:process";
 
-import { detectNativeInputCapabilities } from "../native-capabilities.mjs";
+import { detectNativeInputCapabilities } from "../native-capabilities/index.mjs";
 import { buildNativePointerReadinessReport } from "../native-capabilities/pointer-readiness.mjs";
 
 function parseArgs(argv) {
