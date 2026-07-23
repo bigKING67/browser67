@@ -1,4 +1,3 @@
-import { sessionPointers } from "../session-registry.mjs";
 import { withTargetClient } from "./execution.mjs";
 
 function buildScanContentExpression(textOnly, mainOnly) {
@@ -109,11 +108,11 @@ function contentResult(target, endpoint, resolved, result) {
     ...result,
     selection: resolved.selection,
     sessions: resolved.sessions,
-    ...sessionPointers(),
+    ...resolved.pointers,
   };
 }
 
-async function evaluateContent(args, expression, fallbackError, selectValue) {
+async function evaluateContent(args, expression, fallbackError, selectValue, options = {}) {
   return withTargetClient(args, async (client, target, endpoint, timeoutMs, resolved) => {
     await client.send("Runtime.enable", {}, Math.min(timeoutMs, 10_000));
     const evalResult = await client.send("Runtime.evaluate", {
@@ -124,21 +123,21 @@ async function evaluateContent(args, expression, fallbackError, selectValue) {
     const error = evaluationError(evalResult, fallbackError);
     if (error) throw error;
     return contentResult(target, endpoint, resolved, selectValue(evalResult));
-  });
+  }, options);
 }
 
-async function cdpReadPageContent(args, textOnly, mainOnly = false) {
+async function cdpReadPageContent(args, textOnly, mainOnly = false, options = {}) {
   const expression = buildScanContentExpression(textOnly, mainOnly);
   return evaluateContent(args, expression, "CDP page content evaluate failed", (evalResult) => ({
     content: String(evalResult?.result?.value ?? ""),
-  }));
+  }), options);
 }
 
-async function cdpReadGuardedMainContent(args, options = {}) {
-  const expression = buildGuardedMainContentExpression(options);
+async function cdpReadGuardedMainContent(args, scanOptions = {}, runtimeOptions = {}) {
+  const expression = buildGuardedMainContentExpression(scanOptions);
   return evaluateContent(args, expression, "CDP guarded main content evaluate failed", (evalResult) => ({
     value: evalResult?.result?.value,
-  }));
+  }), runtimeOptions);
 }
 
 export {

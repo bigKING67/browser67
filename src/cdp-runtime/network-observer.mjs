@@ -1,4 +1,5 @@
-import { normalizeTimeoutMs, nowIso, randomId } from "../common.mjs";
+import { normalizeTimeoutMs } from "../runtime/config/limits.mjs";
+import { nowIso, randomId } from "../runtime/identity.mjs";
 import { createCdpClient } from "./client.mjs";
 import { resolveTarget } from "./target.mjs";
 
@@ -20,7 +21,7 @@ function matchesNetworkIgnorePattern(url, patterns = []) {
 
 async function createCdpNetworkObserver(args = {}, options = {}) {
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms);
-  const resolved = await resolveTarget(args);
+  const resolved = await resolveTarget(args, options);
   const client = createCdpClient(resolved.target.webSocketDebuggerUrl);
   await client.connect(Math.min(timeoutMs, 10_000));
   const observationId = randomId("network_observation");

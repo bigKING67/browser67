@@ -1,11 +1,5 @@
-import { normalizeEndpoint } from "../common.mjs";
-import {
-  listSessionsSnapshot,
-  markSessionSelected,
-  selectTargetFromCandidates,
-  sessionPointers,
-  syncSessionRegistry,
-} from "../session-registry.mjs";
+import { normalizeEndpoint } from "../runtime/config/endpoints.mjs";
+import { defaultSessionRegistry } from "../runtime/sessions/registry.mjs";
 
 async function fetchCdpTargets(endpoint) {
   const response = await fetch(`${endpoint}/json/list`);
@@ -28,23 +22,24 @@ async function fetchCdpTargets(endpoint) {
     .filter((item) => item.id.length > 0 && item.webSocketDebuggerUrl.length > 0);
 }
 
-async function resolveTarget(args) {
+async function resolveTarget(args, options = {}) {
+  const sessionStore = options.runtime?.sessionStore ?? options.sessionStore ?? defaultSessionRegistry;
   const endpoint = normalizeEndpoint(args?.cdp_endpoint);
   const targets = await fetchCdpTargets(endpoint);
   if (targets.length === 0) {
     throw new Error("no CDP page targets found");
   }
-  syncSessionRegistry(targets);
-  const picked = selectTargetFromCandidates(targets, args);
+  sessionStore.sync(targets);
+  const picked = sessionStore.selectTarget(targets, args);
   const selected = picked.target;
-  markSessionSelected(selected.id, { make_default: false });
+  sessionStore.select(selected.id, { make_default: false });
   return {
     endpoint,
     targets,
     target: selected,
     selection: picked.selection,
-    sessions: listSessionsSnapshot(),
-    pointers: sessionPointers(),
+    sessions: sessionStore.list(),
+    pointers: sessionStore.sessionPointers(),
   };
 }
 
