@@ -13,6 +13,13 @@ import { fileURLToPath } from "node:url";
 
 import { extensionBatchReferenceSource } from "../src/browser/execution/batch-references.mjs";
 import { extensionPageExecutionSource } from "../src/browser/execution/page-script.mjs";
+import {
+  createExtensionBuildIdentity,
+  extensionBuildIdentityJavaScript,
+  extensionBuildIdentityJson,
+  listExtensionSourceFiles,
+  normalizeManifestVersion,
+} from "../src/extension/build-identity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -46,6 +53,33 @@ function patchWsNewTabMonitoring(source) {
       "chrome.tabs.onCreated.removeListener(onCreated);",
       "if (monitorNewTabs) chrome.tabs.onCreated.removeListener(onCreated);",
     );
+}
+
+function patchExtensionIdentityHandshake(source) {
+  const readyAnchor = [
+    "      type: 'ext_ready',",
+    "      tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
+  ].join("\n");
+  const readyReplacement = [
+    "      type: 'ext_ready',",
+    "      extension_identity: globalThis.__browser67BuildIdentity ?? null,",
+    "      tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
+  ].join("\n");
+  const updateAnchor = [
+    "    type: 'tabs_update',",
+    "    tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
+  ].join("\n");
+  const updateReplacement = [
+    "    type: 'tabs_update',",
+    "    extension_identity: globalThis.__browser67BuildIdentity ?? null,",
+    "    tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
+  ].join("\n");
+  if (!source.includes(readyAnchor) || !source.includes(updateAnchor)) {
+    throw new Error("upstream extension handshake anchors changed; review the browser67 overlay transform");
+  }
+  return source
+    .replace(readyAnchor, readyReplacement)
+    .replace(updateAnchor, updateReplacement);
 }
 
 function patchSharedExecutionRuntime(source) {
@@ -100,7 +134,7 @@ function buildBackground(source) {
   }
   const withoutGlobalCsp = [
     source.slice(0, installStart),
-    "importScripts('browser67/runtime.js');\n\n",
+    "importScripts('browser67/build-identity.js', 'browser67/runtime.js');\n\n",
     source.slice(handlerStart),
   ].join("");
   const handlerAnchor = "async function handleExtMessage(msg, sender) {\n";
@@ -113,16 +147,18 @@ function buildBackground(source) {
   if (routed === withoutGlobalCsp) {
     throw new Error("failed to inject browser67 command routing into background.js");
   }
-  return patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed));
+  return patchExtensionIdentityHandshake(
+    patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed)),
+  );
 }
 
-function buildManifest(source) {
+function buildManifest(source, version) {
   const manifest = JSON.parse(source);
   const permissions = new Set(Array.isArray(manifest.permissions) ? manifest.permissions : []);
   permissions.add("storage");
   permissions.add("webRequest");
   manifest.name = "browser67 TMWD Bridge";
-  manifest.version = "3.0.0";
+  manifest.version = normalizeManifestVersion(version);
   manifest.description = "browser67 managed-tab bridge with scoped page policies";
   manifest.permissions = [...permissions].sort();
   manifest.content_scripts = [];
@@ -145,12 +181,31 @@ function buildExtension(options = {}) {
   }
   mkdirSync(targetDir, { recursive: true });
   cpSync(sourceDir, targetDir, { recursive: true, force: true, errorOnExist: false });
+  const packageJson = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
+  const bundleFiles = listExtensionSourceFiles(sourceDir);
   const upstreamBackground = readFileSync(resolve(sourceDir, "background.js"), "utf8");
   const upstreamManifest = readFileSync(resolve(sourceDir, "manifest.json"), "utf8");
   const background = buildBackground(upstreamBackground);
-  const manifest = buildManifest(upstreamManifest);
+  const manifest = buildManifest(upstreamManifest, packageJson.version);
   writeFileSync(resolve(targetDir, "background.js"), background, "utf8");
   writeFileSync(resolve(targetDir, "manifest.json"), manifest, "utf8");
+  const manifestVersion = JSON.parse(manifest).version;
+  const extensionIdentity = createExtensionBuildIdentity({
+    repoRoot,
+    targetDir,
+    bundleFiles,
+    manifestVersion,
+  });
+  writeFileSync(
+    resolve(targetDir, "browser67/build-identity.js"),
+    extensionBuildIdentityJavaScript(extensionIdentity),
+    "utf8",
+  );
+  writeFileSync(
+    resolve(targetDir, "browser67/build-identity.json"),
+    extensionBuildIdentityJson(extensionIdentity),
+    "utf8",
+  );
   return {
     ok: true,
     schema: "browser67.extension-build.v1",
@@ -160,6 +215,9 @@ function buildExtension(options = {}) {
     generated_background_sha256: sha256(background),
     upstream_manifest_sha256: sha256(upstreamManifest),
     generated_manifest_sha256: sha256(manifest),
+    extension_identity: extensionIdentity,
+    build_identity_js: "browser67/build-identity.js",
+    build_identity_json: "browser67/build-identity.json",
     ordinary_tab_policy: {
       csp_override: false,
       dialog_override: false,
@@ -223,6 +281,7 @@ export {
   buildBackground,
   buildExtension,
   buildManifest,
+  patchExtensionIdentityHandshake,
   patchSharedExecutionRuntime,
   patchWsNewTabMonitoring,
 };

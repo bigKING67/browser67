@@ -20,6 +20,7 @@ import {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDir = resolve(repoRoot, "extension");
+const packageJson = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
 
 function hashFile(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -39,13 +40,17 @@ async function run() {
     const manifest = JSON.parse(readFileSync(resolve(targetDir, "manifest.json"), "utf8"));
     const background = readFileSync(resolve(targetDir, "background.js"), "utf8");
     const runtime = readFileSync(resolve(targetDir, "browser67/runtime.js"), "utf8");
+    const buildIdentity = JSON.parse(readFileSync(resolve(targetDir, "browser67/build-identity.json"), "utf8"));
+    const buildIdentityJavaScript = readFileSync(resolve(targetDir, "browser67/build-identity.js"), "utf8");
     assert.equal(result.schema, "browser67.extension-build.v1");
     assert.equal(manifest.name, "browser67 TMWD Bridge");
+    assert.equal(manifest.version, packageJson.version);
     assert.deepEqual(manifest.content_scripts, []);
     assert.equal(manifest.permissions.includes("webRequest"), true);
     assert.equal(manifest.permissions.includes("storage"), true);
-    assert.match(background, /importScripts\('browser67\/runtime\.js'\)/);
+    assert.match(background, /importScripts\('browser67\/build-identity\.js', 'browser67\/runtime\.js'\)/);
     assert.match(background, /browser67HandleCommand/);
+    assert.match(background, /extension_identity: globalThis\.__browser67BuildIdentity \?\? null/);
     assert.match(background, /const monitorNewTabs = data\.monitorNewTabs !== false/);
     assert.match(background, /monitorNewTabs && newTabIds\.size === 0/);
     assert.match(background, /if \(monitorNewTabs\) chrome\.tabs\.onCreated\.addListener/);
@@ -61,6 +66,16 @@ async function run() {
     assert.match(runtime, /authorize_navigation/);
     assert.match(runtime, /last_navigation_actor/);
     assert.match(runtime, /data-browser67-node-id/);
+    assert.equal(buildIdentity.schema, "browser67.extension-identity.v1");
+    assert.equal(buildIdentity.product, "browser67");
+    assert.equal(buildIdentity.extension_version, packageJson.version);
+    assert.equal(buildIdentity.manifest_version, manifest.version);
+    assert.equal(typeof buildIdentity.build_revision, "string");
+    assert.equal(typeof buildIdentity.build_inputs_dirty, "boolean");
+    assert.match(buildIdentity.source_digest, /^[a-f0-9]{64}$/);
+    assert.equal(buildIdentity.protocol_revision, 1);
+    assert.deepEqual(result.extension_identity, buildIdentity);
+    assert.match(buildIdentityJavaScript, /globalThis\.__browser67BuildIdentity = Object\.freeze/);
     const batchContext = vm.createContext({});
     vm.runInContext(extensionBatchReferenceSource(), batchContext);
     const batchResults = [{ data: { nodes: [{ id: "node-1" }] } }];
@@ -126,6 +141,8 @@ async function run() {
       managed_navigation_observer: true,
       batch_reference_runtime_parity: true,
       page_execution_runtime_parity: true,
+      extension_identity_generated: true,
+      extension_identity_handshake_injected: true,
     })}\n`);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });

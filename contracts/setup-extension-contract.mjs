@@ -15,6 +15,7 @@ const legacyBrowserServerPath = path.resolve(repoRoot, "src/server.mjs");
 const legacyJsReverseServerPath = path.resolve(repoRoot, "src/js-reverse-server.mjs");
 const browserServerPath = path.resolve(repoRoot, "src/mcp/browser/server.mjs");
 const jsReverseServerPath = path.resolve(repoRoot, "src/mcp/js-reverse/server.mjs");
+const packageVersion = JSON.parse(await readFile(path.resolve(repoRoot, "package.json"), "utf8")).version;
 
 function tomlString(value) {
   return JSON.stringify(String(value));
@@ -85,10 +86,20 @@ async function main() {
     assert.equal(first.extension_build?.schema, "browser67.extension-build.v1");
     const installedManifest = JSON.parse(await readFile(path.join(targetDir, "manifest.json"), "utf8"));
     assert.equal(installedManifest.name, "browser67 TMWD Bridge");
+    assert.equal(installedManifest.version, packageVersion);
     assert.deepEqual(installedManifest.content_scripts, []);
     assert.equal(installedManifest.permissions.includes("webRequest"), true);
     assert.match(await readFile(path.join(targetDir, "background.js"), "utf8"), /browser67HandleCommand/);
     assert.match(await readFile(path.join(targetDir, "browser67", "runtime.js"), "utf8"), /tabIds: \[tabId\]/);
+    const buildIdentity = JSON.parse(await readFile(path.join(targetDir, "browser67", "build-identity.json"), "utf8"));
+    assert.equal(buildIdentity.schema, "browser67.extension-identity.v1");
+    assert.equal(buildIdentity.extension_version, packageVersion);
+    assert.equal(buildIdentity.manifest_version, installedManifest.version);
+    assert.match(buildIdentity.source_digest, /^[a-f0-9]{64}$/);
+    assert.match(
+      await readFile(path.join(targetDir, "browser67", "build-identity.js"), "utf8"),
+      /globalThis\.__browser67BuildIdentity/,
+    );
     assert.match(await readFile(path.join(targetDir, "config.js"), "utf8"), /globalThis\.__browser67TID/);
 
     const normalized = await readFile(registryPath, "utf8");
@@ -116,6 +127,7 @@ async function main() {
       normalized_legacy_registry: true,
       idempotent: true,
       managed_overlay_built: true,
+      extension_identity_built: true,
       legacy_config_migrated: true,
     }) + "\n");
   } finally {
