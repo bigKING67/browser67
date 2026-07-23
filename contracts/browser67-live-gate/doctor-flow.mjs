@@ -47,6 +47,8 @@ function doctorSummary(payload) {
       cdp_tcp: false,
       tmwd_ws_api_ok: false,
       tmwd_link_http_ok: false,
+      tmwd_ws_runtime_ok: false,
+      tmwd_link_runtime_ok: false,
       cdp_http_ok: false,
       cdp_targets_ok: false,
     };
@@ -60,6 +62,8 @@ function doctorSummary(payload) {
     cdp_tcp: payload?.checks?.cdp_tcp?.reachable === true,
     tmwd_ws_api_ok: payload?.checks?.tmwd_ws_api?.ok === true,
     tmwd_link_http_ok: payload?.checks?.tmwd_link_http?.ok === true,
+    tmwd_ws_runtime_ok: payload?.checks?.tmwd_ws_runtime?.ok === true,
+    tmwd_link_runtime_ok: payload?.checks?.tmwd_link_runtime?.ok === true,
     cdp_http_ok: payload?.checks?.cdp_http?.ok === true,
     cdp_targets_ok: payload?.checks?.cdp_targets?.ok === true,
   };

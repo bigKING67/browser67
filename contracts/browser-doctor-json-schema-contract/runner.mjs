@@ -9,6 +9,9 @@ function assertSchemaShape(schema) {
   assert.equal(schema.properties?.doctor?.properties?.mode?.enum?.includes("remote_cdp"), true);
   assert.equal(schema.properties?.doctor?.properties?.readiness?.properties?.path?.enum?.includes("cdp"), true);
   assert.equal(schema.properties?.doctor?.properties?.checks?.required?.includes("tmwd_ws_api"), true);
+  assert.equal(schema.properties?.doctor?.properties?.checks?.required?.includes("tmwd_ws_runtime"), true);
+  assert.equal(schema.properties?.doctor?.properties?.checks?.required?.includes("tmwd_link_runtime"), true);
+  assert.equal(schema.$defs?.extension_identity?.required?.includes("source_digest"), true);
   assert.equal(schema.properties?.event_log?.$ref, "#/$defs/event_log");
 }
 

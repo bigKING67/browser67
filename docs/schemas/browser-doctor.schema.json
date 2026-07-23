@@ -132,6 +132,8 @@
             "cdp_tcp",
             "tmwd_link_http",
             "tmwd_ws_api",
+            "tmwd_link_runtime",
+            "tmwd_ws_runtime",
             "cdp_http",
             "cdp_targets"
           ],
@@ -151,6 +153,12 @@
             },
             "tmwd_link_http": {
               "$ref": "#/$defs/api_check"
+            },
+            "tmwd_ws_runtime": {
+              "$ref": "#/$defs/extension_runtime_check"
+            },
+            "tmwd_link_runtime": {
+              "$ref": "#/$defs/extension_runtime_check"
             },
             "cdp_http": {
               "$ref": "#/$defs/api_check"
@@ -245,6 +253,147 @@
         },
         "detail": {
           "type": "string"
+        }
+      }
+    },
+    "extension_identity": {
+      "type": "object",
+      "required": [
+        "schema",
+        "product",
+        "extension_version",
+        "manifest_version",
+        "build_revision",
+        "build_revision_source",
+        "build_inputs_dirty",
+        "source_digest",
+        "protocol_revision"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "browser67.extension-identity.v1"
+          ]
+        },
+        "product": {
+          "type": "string",
+          "enum": [
+            "browser67"
+          ]
+        },
+        "extension_version": {
+          "type": "string"
+        },
+        "manifest_version": {
+          "type": "string"
+        },
+        "build_revision": {
+          "type": "string"
+        },
+        "build_revision_source": {
+          "type": "string"
+        },
+        "build_inputs_dirty": {
+          "type": "boolean"
+        },
+        "source_digest": {
+          "type": "string"
+        },
+        "protocol_revision": {
+          "type": "integer"
+        }
+      }
+    },
+    "extension_runtime_check": {
+      "type": "object",
+      "required": [
+        "endpoint",
+        "ok",
+        "latency_ms",
+        "detail",
+        "extension_connected",
+        "extension_identity_status",
+        "expected_identity_path",
+        "expected_identity_available",
+        "identity_match",
+        "mismatches",
+        "observed_identity",
+        "expected_identity"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "latency_ms": {
+          "type": "integer"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "extension_connected": {
+          "type": "boolean"
+        },
+        "extension_identity_status": {
+          "type": "string",
+          "enum": [
+            "valid",
+            "missing",
+            "invalid"
+          ]
+        },
+        "extension_identity_received_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_identity_path": {
+          "type": "string"
+        },
+        "expected_identity_basis": {
+          "type": "string"
+        },
+        "expected_identity_available": {
+          "type": "boolean"
+        },
+        "identity_match": {
+          "type": "boolean"
+        },
+        "mismatches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observed_identity": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "expected_identity": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "installed_identity_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "matching_installed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

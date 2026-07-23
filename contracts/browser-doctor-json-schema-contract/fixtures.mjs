@@ -21,6 +21,39 @@ function unavailableApiCheck(endpoint) {
 
 const remoteDebuggingSuggestion = "For remote-debugging CDP path, launch Chrome with --remote-debugging-port=9222";
 
+function extensionIdentity() {
+  return {
+    schema: "browser67.extension-identity.v1",
+    product: "browser67",
+    extension_version: "0.4.0",
+    manifest_version: "0.4.0",
+    build_revision: "0123456789abcdef0123456789abcdef01234567",
+    build_revision_source: "git",
+    build_inputs_dirty: false,
+    source_digest: "a".repeat(64),
+    protocol_revision: 1,
+  };
+}
+
+function extensionRuntimeCheck(endpoint, ready) {
+  const identity = extensionIdentity();
+  return {
+    endpoint,
+    ok: ready,
+    latency_ms: ready ? 2 : 0,
+    detail: ready ? "extension_identity_ok" : "skipped_tcp_unreachable",
+    extension_connected: ready,
+    extension_identity_status: ready ? "valid" : "missing",
+    extension_identity_received_at: ready ? "2026-07-23T00:00:00.000Z" : null,
+    expected_identity_path: "/tmp/browser67/build-identity.json",
+    expected_identity_available: true,
+    identity_match: ready,
+    mismatches: [],
+    observed_identity: ready ? identity : null,
+    expected_identity: identity,
+  };
+}
+
 function doctorSuggestions({ ok, mode, path }) {
   const tmwdReady = ok === true && (path === "tmwd_ws" || path === "tmwd_link");
   const cdpReady = ok === true && path === "cdp";
@@ -71,6 +104,8 @@ function buildDoctorPayload({ ok, mode = "auto", path = "tmwd_ws", reason = "aut
           session_count: tmwdReachable ? 1 : 0,
           detail: tmwdReachable ? "http_ok_with_r" : "skipped_tcp_unreachable",
         },
+        tmwd_ws_runtime: extensionRuntimeCheck("ws://127.0.0.1:18765", tmwdReachable),
+        tmwd_link_runtime: extensionRuntimeCheck("http://127.0.0.1:18766/link", tmwdReachable),
         cdp_http: unavailableApiCheck("http://127.0.0.1:9222/json/version"),
         cdp_targets: {
           ...unavailableApiCheck("http://127.0.0.1:9222/json/list"),

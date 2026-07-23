@@ -1,7 +1,16 @@
 import { probeCdpHttp, probeCdpTargets } from "./cdp-probes.mjs";
 import { trimTrailingSlash } from "./endpoints.mjs";
+import {
+  compareExtensionRuntimeIdentity,
+  loadExpectedExtensionIdentity,
+} from "./extension-identity.mjs";
 import { probeTcp } from "./tcp-probe.mjs";
-import { probeTmwdLinkHttp, probeTmwdWsApi } from "./tmwd-probes.mjs";
+import {
+  probeTmwdLinkHttp,
+  probeTmwdLinkRuntimeInfo,
+  probeTmwdWsApi,
+  probeTmwdWsRuntimeInfo,
+} from "./tmwd-probes.mjs";
 
 function skippedLinkHttp(endpoint) {
   return {
@@ -20,6 +29,16 @@ function skippedWsApi(endpoint) {
     ok: false,
     latency_ms: 0,
     tab_count: 0,
+    detail: "skipped_tcp_unreachable",
+  };
+}
+
+function skippedRuntimeInfo(endpoint) {
+  return {
+    endpoint,
+    ok: false,
+    latency_ms: 0,
+    runtime_info: null,
     detail: "skipped_tcp_unreachable",
   };
 }
@@ -63,18 +82,27 @@ async function collectTcpChecks(cli) {
 }
 
 async function collectApplicationChecks(cli, tcpChecks) {
+  const expectedExtensionIdentity = loadExpectedExtensionIdentity();
   const [
     tmwdLinkHttp,
+    tmwdLinkRuntimeRaw,
     tmwdWsApi,
+    tmwdWsRuntimeRaw,
     cdpHttp,
     cdpTargets,
   ] = await Promise.all([
     tcpChecks.tmwd_link_tcp.reachable
       ? probeTmwdLinkHttp(cli.tmwd_link_endpoint, cli.timeout_ms)
       : skippedLinkHttp(cli.tmwd_link_endpoint),
+    tcpChecks.tmwd_link_tcp.reachable
+      ? probeTmwdLinkRuntimeInfo(cli.tmwd_link_endpoint, cli.timeout_ms)
+      : skippedRuntimeInfo(cli.tmwd_link_endpoint),
     tcpChecks.tmwd_ws_tcp.reachable
       ? probeTmwdWsApi(cli.tmwd_ws_endpoint, cli.timeout_ms)
       : skippedWsApi(cli.tmwd_ws_endpoint),
+    tcpChecks.tmwd_ws_tcp.reachable
+      ? probeTmwdWsRuntimeInfo(cli.tmwd_ws_endpoint, cli.timeout_ms)
+      : skippedRuntimeInfo(cli.tmwd_ws_endpoint),
     tcpChecks.cdp_tcp.reachable
       ? probeCdpHttp(cli.cdp_endpoint, cli.timeout_ms)
       : skippedCdpHttp(cli.cdp_endpoint),
@@ -84,7 +112,15 @@ async function collectApplicationChecks(cli, tcpChecks) {
   ]);
   return {
     tmwd_link_http: tmwdLinkHttp,
+    tmwd_link_runtime: compareExtensionRuntimeIdentity(
+      tmwdLinkRuntimeRaw,
+      expectedExtensionIdentity,
+    ),
     tmwd_ws_api: tmwdWsApi,
+    tmwd_ws_runtime: compareExtensionRuntimeIdentity(
+      tmwdWsRuntimeRaw,
+      expectedExtensionIdentity,
+    ),
     cdp_http: cdpHttp,
     cdp_targets: cdpTargets,
   };
