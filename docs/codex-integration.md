@@ -678,6 +678,16 @@ run `npm run setup:local-extension` and load exactly:
 /path/to/browser67/runtime/chrome-extension/tmwd_cdp_bridge/
 ```
 
+The generated extension includes `browser67/build-identity.json`. On
+`ext_ready`, the running service worker reports that identity to the Hub. The
+live doctor deterministically builds the expected identity from current source,
+compares it with the handshake through both WS and Link, and reports matching
+active-home/project-local installed candidates. Treat
+`checks.tmwd_ws_runtime.ok:true` or
+`checks.tmwd_link_runtime.ok:true` together with
+`detail:"extension_identity_ok"` as the installed-and-running version proof;
+source presence, setup output, or a disk digest alone is not equivalent.
+
 Before committing maintenance changes:
 
 ```bash

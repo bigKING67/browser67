@@ -397,6 +397,12 @@ to dry-run validate a real sanitized proof before adding `--write`.
   generated `config.js`.
 - Reload the unpacked extension after extension source changes or after
   `extension:doctor` reports `needs_browser_extension_reload:true`.
+- After reload, require `npm run check:live:doctor` to report
+  `checks.tmwd_ws_runtime.detail:"extension_identity_ok"` or the equivalent
+  Link result. This compares the live `ext_ready` identity with the current
+  source build and reports matching active-home/project-local installed roots;
+  disk-current files alone do not prove the Chrome/Edge service worker has
+  reloaded them.
 - Refresh old target tabs after extension reload so content scripts reinject.
 - Treat all browser profile data and JS reverse evidence as sensitive local
   runtime data.

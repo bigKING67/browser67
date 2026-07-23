@@ -31,6 +31,10 @@ two paired MCP surfaces:
 2. For setup, use `browser67 setup`; it writes under the active browser67 home.
    When an existing bridge is connected, use `npm run extension:reload-live`
    after setup and confirm readiness with `npm run check:live:doctor`.
+   A verified TMWD route requires `tmwd_ws_runtime` or `tmwd_link_runtime` to
+   report `extension_identity_ok`; this compares the live `ext_ready` build
+   identity with the deterministic current source identity and reports matching
+   installed roots instead of trusting disk files alone.
 3. For legacy runtime migration, run `browser67 migrate-home --dry-run` before
    `browser67 migrate-home --write`.
 4. For real browser work, select/create browser67-owned managed tabs and finalize

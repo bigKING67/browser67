@@ -260,6 +260,10 @@ npm run check:extension-install-doctor
 `extension:doctor` is read-only. It compares `extension/` with the installed
 target, ignores the install-local generated `config.js`, and reports
 `needs_setup`, `needs_clean_setup`, and `needs_browser_extension_reload`.
+The generated overlay also contains `browser67/build-identity.json` and
+`browser67/build-identity.js`. They record the package/manifest version, source
+revision, deterministic bundle digest, and extension handshake protocol
+revision used by the installed unpacked extension.
 When drift is reported, run `npm run setup`, reload the unpacked extension from
 the reported target directory, then refresh old target tabs so content scripts
 are reinjected.
@@ -276,6 +280,15 @@ The command reloads only the connected browser67 extension. First installation,
 a disabled extension, or a disconnected bridge still requires loading/reloading
 the reported unpacked directory from `chrome://extensions` or
 `edge://extensions`.
+
+The live doctor compares the identity reported by the extension's `ext_ready`
+handshake with a deterministic identity generated from the current source. It
+also reports `installed_identity_candidates` and `matching_installed_paths` for
+the canonical active-home and project-local unpacked roots. Inspect
+`checks.tmwd_ws_runtime` and `checks.tmwd_link_runtime`; a current in-memory
+extension reports `detail:"extension_identity_ok"` and
+`identity_match:true`. A disk-current but not-yet-reloaded extension is not
+treated as a fully verified TMWD route.
 
 For manual Chrome extension loading from this repository, prepare the
 project-local runtime copy:

@@ -38,6 +38,7 @@
   - bridge 未连接时再从浏览器扩展页 reload unpacked extension（显示名可能仍为 `TMWD CDP Bridge`）
   - 刷新目标 tab，让 content script 重新注入
   - `npm run check:live:doctor`
+  - 确认 `tmwd_ws_runtime` 或 `tmwd_link_runtime` 为 `extension_identity_ok`，不能只用磁盘文件一致代替 live service-worker 身份证明
 - 修改 browser67/tmwd-browser-mcp skill 或 Agent 安装规则后运行：
   - `npm run check:active-skill-sync`
   - `npm run skills:active:diff -- --target ~/.agents/skills`
