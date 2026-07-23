@@ -24,7 +24,7 @@ The current implementation still preserves several compatibility entrypoints:
 - `src/server/`: browser MCP protocol, dispatch, and browser-core tools.
 - `src/js-reverse-server/`: JS reverse protocol, tools, hooks, network, frames,
   scripts, artifacts, and lifecycle.
-- `src/tmwd-runtime/` and `src/tmwd-runtime.mjs`: TMWD transport runtime.
+- `src/tmwd-runtime/`: TMWD transport runtime with `index.mjs` as its public module surface.
 - `src/tmwd-hub/`, `src/tmwd-hub.mjs`, `src/tmwd-hub-control/`: local hub and
   operator control.
 - `src/auth/`: login profiles, lifecycle sidecars, manual-required states, and
@@ -37,9 +37,15 @@ The current implementation still preserves several compatibility entrypoints:
 - `src/runtime/config/`, `src/runtime/storage/`, `src/runtime/runs/`, and
   `src/runtime/jobs/`: bounded configuration, atomic storage, indexed run
   records, and job recovery indexes.
+- `src/runtime/evidence/`: normalized evidence schemas shared by browser and
+  reverse workflows.
+- `src/mcp/shared/`: transport-neutral MCP result formatting.
 - `src/browser/content/`, `src/browser/execution/`, and `src/browser/network/`:
   actionable snapshots/diffs, managed execution policy, and network lifecycle
   observation.
+- `src/native/`: canonical native-input orchestration; platform-specific
+  providers remain in their existing `src/native-*` directories during the
+  staged migration.
 - `extension/browser67/`: browser67-owned managed-tab overlay; upstream root
   extension files remain provenance-tracked inputs to the generated install.
 
@@ -80,6 +86,11 @@ contracts have migrated.
   implementation modules must go under a capability directory; future
   migrations should remove root entries and reduce the budget rather than
   replacing them with new catch-all modules.
+- The current budget is 5 after additionally moving bridge commands, evidence
+  normalization, run lifecycle, native-input orchestration, managed-tab
+  capability metadata, and tool-error policy under capability-owned
+  directories. The obsolete `common.mjs` compatibility surface and unused MCP
+  error-result formatter were removed instead of retained as dead facades.
 
 ## Executable structure gate
 

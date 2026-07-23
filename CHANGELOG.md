@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Add top-level confirmed page context to `browser67.tool-outcome.v3`, including
+  page title, redacted URL, tab id, and managed/adopted policy state.
+- Add `full`/`compact` output mode to all 17 `tmwd_browser` tools while keeping
+  content-scope parameters independent; compact repeated session/transport
+  diagnostics and add deterministic response-size/serialization benchmarks.
+- Make browser MCP composition own session, WebSocket, transport-health,
+  scheduler, snapshot, download, network-observation, run, job, and adoption
+  lifecycle state while retaining explicit compatibility defaults for direct
+  imports and legacy contracts.
+- Add a `node:test` core runtime suite with an enforced 85% line/function/
+  statement and 80% branch coverage floor for bounded stores, scheduling,
+  page serialization, and structured batch references.
+- Remove 21 root-level compatibility or catch-all modules and move active
+  imports to capability-local auth, wrapper, CDP, TMWD, session, tab-workspace,
+  schema, evidence, run, native, and runtime-error surfaces; reduce the root
+  module budget from 26 to 5. Remove the unused MCP error-result formatter
+  instead of retaining another compatibility facade.
+- Teach the native dependency doctor to unwrap `browser67.tool-outcome.v3`
+  before evaluating supported actions and installer prerequisites, avoiding a
+  false not-ready result when the native capability probe is actually ready.
 - Pin isolated remote-CDP live checks to the exact fixture target across scan
   and execution, revalidate target ID/URL/title after startup-tab cleanup, and
   fail explicitly on target or URL drift instead of accepting `about:blank`.

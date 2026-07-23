@@ -1,20 +1,26 @@
 import Ajv from "ajv";
 
-import { handleBrowserAuthOps } from "../../browser-auth.mjs";
+import { handleBrowserAuthOps } from "../../auth/index.mjs";
 import {
   handleBrowserClipboardOps,
   handleBrowserDownloadOps,
   handleBrowserFileOps,
   handleBrowserTabLifecycle,
-} from "../../browser-wrappers.mjs";
-import { randomId } from "../../common.mjs";
+} from "../../browser-wrappers/index.mjs";
 import {
   classifyBrowserErrorCode,
   isRetryableBrowserErrorCode,
-} from "../../errors.mjs";
-import { handleBrowserNativeInput } from "../../native-input.mjs";
-import { handleBrowserRunOps } from "../../run-lifecycle.mjs";
+} from "../../runtime/tool-errors.mjs";
+import { handleBrowserNativeInput } from "../../native/input.mjs";
 import { createBrowserRuntime } from "../../runtime/browser-runtime.mjs";
+import { randomId } from "../../runtime/identity.mjs";
+import {
+  compactToolData,
+  compactTransportAttempts,
+  resolveOutputMode,
+} from "../../runtime/output-mode.mjs";
+import { resolvePageContext } from "../../runtime/page-context.mjs";
+import { handleBrowserRunOps } from "../../runtime/runs/lifecycle.mjs";
 import {
   completedOutcome,
   failedOutcome,
@@ -32,7 +38,7 @@ import {
   handleBrowserTransportHealth,
   handleBrowserWait,
 } from "../../server/browser-core.mjs";
-import { TOOL_SCHEMAS } from "../../tool-schemas.mjs";
+import { TOOL_SCHEMAS } from "../../tool-schemas/index.mjs";
 
 const HANDLERS = {
   browser_scan: handleBrowserScan,
@@ -70,7 +76,7 @@ function formatValidationErrors(errors = []) {
   }));
 }
 
-function createBrowserToolRegistry() {
+function createBrowserToolRegistry(options = {}) {
   const ajv = new Ajv({
     allErrors: true,
     coerceTypes: false,
@@ -80,7 +86,7 @@ function createBrowserToolRegistry() {
   });
   const registry = {};
   for (const [name, schema] of Object.entries(TOOL_SCHEMAS)) {
-    const handler = HANDLERS[name];
+    const handler = options.handlers?.[name] ?? HANDLERS[name];
     if (typeof handler !== "function") {
       throw new Error(`tool registry missing handler: ${name}`);
     }
@@ -91,7 +97,10 @@ function createBrowserToolRegistry() {
       inputSchema,
       handler,
       validate: ajv.compile(inputSchema),
-      outputPolicy: name === "browser_execute_js" ? "compact_by_request" : "bounded",
+      outputPolicy: "full_or_compact",
+      defaultOutputMode: inputSchema.properties?.output_mode?.default ?? "full",
+      compactPolicy: compactToolData,
+      pagePolicy: resolvePageContext,
       concurrencyKey: (args = {}) => String(args.tab_id || args.switch_tab_id || args.session_id || "runtime"),
     });
   }
@@ -124,7 +133,9 @@ function validateToolArguments(tool, args) {
 async function dispatchRegisteredTool(name, args = {}, options = {}) {
   const startedAt = performance.now();
   const requestId = options.request_id || randomId("tool");
-  const tool = BROWSER_TOOL_REGISTRY[name];
+  const registry = options.registry ?? BROWSER_TOOL_REGISTRY;
+  const runtime = options.runtime ?? DEFAULT_BROWSER_RUNTIME;
+  const tool = registry[name];
   if (!tool) {
     return formatMcpOutcome(failedOutcome(new Error(`unknown tool: ${String(name)}`), {
       code: "TOOL_NOT_FOUND",
@@ -146,20 +157,28 @@ async function dispatchRegisteredTool(name, args = {}, options = {}) {
     }));
   }
   try {
-    const data = await DEFAULT_BROWSER_RUNTIME.runForTab(
+    const rawData = await runtime.runForTab(
       tool.concurrencyKey(args),
-      () => tool.handler(args),
+      () => tool.handler(args, { runtime }),
     );
-    const transportAttempts = Array.isArray(data?.transport_attempts)
-      ? data.transport_attempts
+    const page = await tool.pagePolicy(name, args, rawData, { runtime });
+    const outputMode = resolveOutputMode(args, tool.defaultOutputMode);
+    const data = tool.compactPolicy(name, rawData, page, { mode: outputMode });
+    const rawTransportAttempts = Array.isArray(rawData?.transport_attempts)
+      ? rawData.transport_attempts
       : undefined;
+    const transportAttempts = outputMode === "compact"
+      ? compactTransportAttempts(rawTransportAttempts)
+      : rawTransportAttempts;
     return formatMcpOutcome(completedOutcome(data, {
+      page,
       request_id: requestId,
       duration_ms: Number((performance.now() - startedAt).toFixed(2)),
       transport_attempts: transportAttempts,
       meta: {
         tool: name,
         output_policy: tool.outputPolicy,
+        output_mode: outputMode,
       },
     }));
   } catch (error) {
@@ -168,16 +187,42 @@ async function dispatchRegisteredTool(name, args = {}, options = {}) {
     const retryable = typeof error?.retryable === "boolean"
       ? error.retryable
       : isRetryableBrowserErrorCode(code);
+    const outputMode = resolveOutputMode(args, tool.defaultOutputMode);
+    const page = await tool.pagePolicy(name, args, error?.details ?? {}, { runtime });
+    const transportAttempts = outputMode === "compact"
+      ? compactTransportAttempts(error?.transportAttempts)
+      : error?.transportAttempts;
     return formatMcpOutcome(failedOutcome(error, {
+      page,
       code,
       retryable,
       request_id: requestId,
       duration_ms: Number((performance.now() - startedAt).toFixed(2)),
       details: error?.details,
-      transport_attempts: error?.transportAttempts,
-      meta: { tool: name },
+      transport_attempts: transportAttempts,
+      meta: { tool: name, output_policy: tool.outputPolicy, output_mode: outputMode },
     }));
   }
+}
+
+function createBrowserToolDispatcher(options = {}) {
+  const runtime = options.runtime ?? createBrowserRuntime(options.runtime_options);
+  const registry = options.registry ?? createBrowserToolRegistry(options.registry_options);
+  return Object.freeze({
+    dispatch: (name, args = {}, dispatchOptions = {}) => dispatchRegisteredTool(name, args, {
+      ...dispatchOptions,
+      registry,
+      runtime,
+    }),
+    dispose: () => runtime.dispose(),
+    listTools: () => Object.values(registry).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })),
+    registry,
+    runtime,
+  });
 }
 
 async function disposeRegisteredBrowserRuntime() {
@@ -186,6 +231,7 @@ async function disposeRegisteredBrowserRuntime() {
 
 export {
   BROWSER_TOOL_REGISTRY,
+  createBrowserToolDispatcher,
   createBrowserToolRegistry,
   dispatchRegisteredTool,
   disposeRegisteredBrowserRuntime,

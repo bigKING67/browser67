@@ -56,9 +56,26 @@ class JobStore {
     this.activeIndexPath = path.join(this.activeDir, "index.ndjson");
     this.activeJobs = null;
     this.locks = new Map();
+    this.disposed = false;
+  }
+
+  assertActive() {
+    if (this.disposed) throw new Error(`job store is disposed: ${this.root}`);
+  }
+
+  stats() {
+    return {
+      root: this.root,
+      run_root: this.runRoot,
+      disposed: this.disposed,
+      active_job_count: this.activeJobs?.size ?? 0,
+      active_index_loaded: this.activeJobs !== null,
+      pending_lock_count: this.locks.size,
+    };
   }
 
   async withLock(key, operation) {
+    this.assertActive();
     const previous = this.locks.get(key) ?? Promise.resolve();
     const current = previous.catch(() => {}).then(operation);
     this.locks.set(key, current);
@@ -70,6 +87,7 @@ class JobStore {
   }
 
   async ensureActiveLoaded() {
+    this.assertActive();
     if (this.activeJobs) return this.activeJobs;
     const rows = await readNdjsonFile(this.activeIndexPath);
     this.activeJobs = new Map();
@@ -98,6 +116,7 @@ class JobStore {
   }
 
   async index(job, statePath) {
+    this.assertActive();
     const reference = jobReference(job, statePath);
     if (!reference.job_id) throw new Error("job_id is required for job index");
     return this.withLock("catalog", async () => {
@@ -125,11 +144,13 @@ class JobStore {
   }
 
   async activeReferences() {
+    this.assertActive();
     const active = await this.ensureActiveLoaded();
     return Array.from(active.values());
   }
 
   async recentReferences(limit = 200) {
+    this.assertActive();
     const normalizedLimit = Math.max(1, Number(limit ?? 200));
     const rows = new Map();
     await scanNdjsonBackwards(this.catalogPath, {
@@ -149,6 +170,7 @@ class JobStore {
   }
 
   async findReference(jobId) {
+    this.assertActive();
     const normalized = String(jobId ?? "").trim();
     if (!normalized) return null;
     let found = null;
@@ -166,6 +188,7 @@ class JobStore {
   }
 
   async rebuild() {
+    this.assertActive();
     const references = [];
     const groups = await readdir(this.runRoot, { withFileTypes: true }).catch((error) => {
       if (error?.code === "ENOENT") return [];
@@ -215,6 +238,7 @@ class JobStore {
   }
 
   async inspect() {
+    this.assertActive();
     const meta = await readJsonIfExists(this.catalogMetaPath);
     const active = await this.ensureActiveLoaded();
     return {
@@ -223,6 +247,15 @@ class JobStore {
       entry_count: Number(meta?.entry_count ?? 0),
       active_count: active.size,
     };
+  }
+
+  async dispose() {
+    if (this.disposed) return this.stats();
+    await Promise.allSettled(Array.from(this.locks.values()));
+    this.disposed = true;
+    this.locks.clear();
+    this.activeJobs?.clear();
+    return this.stats();
   }
 }
 

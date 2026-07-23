@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { normalizeEvidenceRecord } from "../../evidence-schema.mjs";
+import { normalizeEvidenceRecord } from "../evidence/schema.mjs";
 import { atomicWriteJson } from "../storage/atomic-file.mjs";
 import { readNdjsonTail } from "../storage/ndjson.mjs";
 import { createRunIndex } from "./index.mjs";
@@ -20,6 +20,7 @@ import {
 } from "./model.mjs";
 
 const DEFAULT_CHECKPOINT_INTERVAL_MS = 1_000;
+const MAX_CACHED_RUNS = 1_000;
 
 class RunStore {
   constructor(options = {}) {
@@ -31,9 +32,11 @@ class RunStore {
         ?? process.env.BROWSER67_RUN_CHECKPOINT_INTERVAL_MS
         ?? DEFAULT_CHECKPOINT_INTERVAL_MS),
     );
+    this.maxCachedRuns = Math.max(1, Number(options.max_cached_runs ?? MAX_CACHED_RUNS));
     this.latestRuns = new Map();
     this.checkpointStates = new Map();
     this.locks = new Map();
+    this.disposed = false;
     this.index = createRunIndex({
       root: this.root,
       clock: this.clock,
@@ -61,6 +64,7 @@ class RunStore {
   }
 
   async withLock(key, operation) {
+    this.assertActive();
     const previous = this.locks.get(key) ?? Promise.resolve();
     const current = previous.catch(() => {}).then(operation);
     this.locks.set(key, current);
@@ -69,6 +73,34 @@ class RunStore {
     } finally {
       if (this.locks.get(key) === current) this.locks.delete(key);
     }
+  }
+
+  assertActive() {
+    if (this.disposed) throw new Error(`run store is disposed: ${this.root}`);
+  }
+
+  stats() {
+    return {
+      root: this.root,
+      disposed: this.disposed,
+      cached_run_count: this.latestRuns.size,
+      checkpoint_state_count: this.checkpointStates.size,
+      pending_lock_count: this.locks.size,
+      max_cached_runs: this.maxCachedRuns,
+    };
+  }
+
+  cacheRun(runDir, run, checkpointMs) {
+    this.latestRuns.delete(runDir);
+    this.latestRuns.set(runDir, run);
+    this.checkpointStates.delete(runDir);
+    this.checkpointStates.set(runDir, checkpointMs);
+    while (this.latestRuns.size > this.maxCachedRuns) {
+      const oldest = this.latestRuns.keys().next().value;
+      this.latestRuns.delete(oldest);
+      this.checkpointStates.delete(oldest);
+    }
+    return run;
   }
 
   eventPayload(args = {}, eventName = "event") {
@@ -109,8 +141,7 @@ class RunStore {
       checkpoint_at: checkpointAt,
     };
     await atomicWriteJson(this.runJsonPath(runDir), payload);
-    this.latestRuns.set(runDir, payload);
-    this.checkpointStates.set(runDir, Date.parse(checkpointAt));
+    this.cacheRun(runDir, payload, Date.parse(checkpointAt));
     await this.index.append(payload, options);
     return payload;
   }
@@ -119,14 +150,14 @@ class RunStore {
     if (this.latestRuns.has(runDir)) return this.latestRuns.get(runDir);
     const run = await readJsonIfExists(this.runJsonPath(runDir));
     if (run) {
-      this.latestRuns.set(runDir, run);
       const checkpointMs = Date.parse(String(run.checkpoint_at ?? run.updated_at ?? ""));
-      this.checkpointStates.set(runDir, Number.isFinite(checkpointMs) ? checkpointMs : 0);
+      this.cacheRun(runDir, run, Number.isFinite(checkpointMs) ? checkpointMs : 0);
     }
     return run;
   }
 
   async prepare(args = {}) {
+    this.assertActive();
     const group = resolveRunGroup(args);
     const now = this.clock();
     const runId = makeRunId(args, now);
@@ -163,6 +194,7 @@ class RunStore {
   }
 
   async status(args = {}) {
+    this.assertActive();
     const runDir = this.runDir(args);
     const run = await this.readRun(runDir);
     if (!run) return { ok: false, action: "status", error: "run not found", run_dir: runDir };
@@ -173,6 +205,7 @@ class RunStore {
   }
 
   async recordEvent(args = {}) {
+    this.assertActive();
     const runDir = this.runDir(args);
     return this.withLock(`run:${runDir}`, async () => {
       const run = await this.readRun(runDir);
@@ -188,7 +221,7 @@ class RunStore {
         updated_at: event.ts,
         event_count: Number(run.event_count ?? 0) + 1,
       };
-      this.latestRuns.set(runDir, updated);
+      this.cacheRun(runDir, updated, Number(this.checkpointStates.get(runDir) ?? 0));
       const checkpointMs = Number(this.checkpointStates.get(runDir) ?? 0);
       const statusChanged = nextStatus !== run.status;
       const checkpointDue = statusChanged
@@ -208,6 +241,7 @@ class RunStore {
   }
 
   async finish(args = {}) {
+    this.assertActive();
     const runDir = this.runDir(args);
     return this.withLock(`run:${runDir}`, async () => {
       const run = await this.readRun(runDir);
@@ -230,23 +264,38 @@ class RunStore {
   }
 
   async list(args = {}) {
+    this.assertActive();
     return this.index.list(args);
   }
 
   async compactGroupIndex(group) {
+    this.assertActive();
     return this.index.compactGroup(group);
   }
 
   async compactAllIndexes() {
+    this.assertActive();
     return this.index.compactAll();
   }
 
   async inspect() {
+    this.assertActive();
     return this.index.inspect();
   }
 
   async migrate() {
+    this.assertActive();
     return this.index.migrate();
+  }
+
+  async dispose() {
+    if (this.disposed) return this.stats();
+    await Promise.allSettled(Array.from(this.locks.values()));
+    this.disposed = true;
+    this.locks.clear();
+    this.latestRuns.clear();
+    this.checkpointStates.clear();
+    return this.stats();
   }
 }
 
@@ -264,6 +313,7 @@ function createRunStore(options = {}) {
 
 export {
   DEFAULT_RUN_ROOT,
+  MAX_CACHED_RUNS,
   RUN_INDEX_META_SCHEMA_VERSION,
   RUN_INDEX_SCHEMA_VERSION,
   RUN_SCHEMA_VERSION,

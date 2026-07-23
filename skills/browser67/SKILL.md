@@ -66,7 +66,13 @@ two paired MCP surfaces:
    a delayed provider window, rely on the bounded default new-target poll or set
    `new_tab_wait_ms`; `no_monitor:true` intentionally disables that poll.
 9. Treat MCP output as `browser67.tool-outcome.v3`: inspect `ok/status`, then
-   read success data from `data` or failure details from `error`.
+   read success data from `data` or failure details from `error`. Read the
+   top-level `page` for the confirmed tab id/title/URL/managed state; `page:null`
+   means the operation did not resolve one unique page.
+   - All `tmwd_browser` tools accept `output_mode:"compact"|"full"`. Prefer
+     compact for routine work and full for transport/session/target diagnosis.
+     Output mode only changes repeated diagnostics; content scope remains under
+     each tool's scan/extract/execute/screenshot limit parameters.
 10. Use `script`, not the removed `code` alias, for `browser_execute_js` and
     `browser_job_ops.start`. Bridge commands must be strict JSON.
 11. For a script or NodeRef action whose network completion matters, pass

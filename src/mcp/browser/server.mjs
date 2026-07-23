@@ -3,10 +3,13 @@
 import { createInterface } from "node:readline";
 
 import { createRequestHandler, sendError } from "../../server/protocol.mjs";
-import { disposeRegisteredBrowserRuntime } from "./tool-registry.mjs";
-import { disposeAdoptionRuntime } from "../../tab-workspace/adoption.mjs";
+import { createBrowserToolDispatcher } from "./tool-registry.mjs";
 
-const handleRequest = createRequestHandler();
+const tools = createBrowserToolDispatcher();
+const handleRequest = createRequestHandler({
+  dispatchTool: tools.dispatch,
+  listTools: tools.listTools,
+});
 
 const rl = createInterface({
   input: process.stdin,
@@ -26,10 +29,7 @@ rl.on("line", (line) => {
 });
 
 rl.on("close", () => {
-  Promise.allSettled([
-    disposeRegisteredBrowserRuntime(),
-    disposeAdoptionRuntime(),
-  ]).catch((error) => {
+  tools.dispose().catch((error) => {
     process.stderr.write(`browser runtime dispose failed: ${String(error)}\n`);
   });
 });

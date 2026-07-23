@@ -1,4 +1,4 @@
-import { nowIso } from "../common.mjs";
+import { nowIso } from "./identity.mjs";
 import { redactBrowserValue } from "./redaction.mjs";
 
 const TOOL_OUTCOME_SCHEMA = "browser67.tool-outcome.v3";
@@ -8,6 +8,7 @@ function completedOutcome(data, options = {}) {
     schema: TOOL_OUTCOME_SCHEMA,
     ok: true,
     status: options.status === "partial" ? "partial" : "completed",
+    page: redactBrowserValue(options.page ?? null),
     data: redactBrowserValue(data ?? {}),
     meta: redactBrowserValue({
       request_id: options.request_id,
@@ -27,6 +28,7 @@ function failedOutcome(error, options = {}) {
     schema: TOOL_OUTCOME_SCHEMA,
     ok: false,
     status: "failed",
+    page: redactBrowserValue(options.page ?? null),
     error: redactBrowserValue({
       code,
       message: String(options.message || error?.message || error || "tool execution failed"),

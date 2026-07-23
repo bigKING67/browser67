@@ -13,6 +13,19 @@ Both MCP surfaces now return JSON encoded in standard MCP text content using:
   "schema": "browser67.tool-outcome.v3",
   "ok": true,
   "status": "completed",
+  "page": {
+    "tab_id": "123",
+    "title": "Example",
+    "url": "https://example.test/",
+    "source": "selected_target",
+    "resolution": "confirmed",
+    "management": {
+      "managed": true,
+      "ownership_origin": "agent_created",
+      "policy_status": "applied",
+      "suspended": false
+    }
+  },
   "data": {},
   "meta": {
     "tool": "browser_scan",
@@ -27,7 +40,10 @@ Both MCP surfaces now return JSON encoded in standard MCP text content using:
 Failures use `ok:false`, `status:"failed"`, and a structured `error` with
 `code`, `message`, `retryable`, and optional `details`. Consumers that formerly
 read the handler payload at the content root must read `data` after confirming
-the envelope.
+the envelope. `page` is `null` when the tool has no unique page. All
+`tmwd_browser` tools accept `output_mode:"full"|"compact"`; compact affects
+repeated diagnostics only and never replaces scan/extract/screenshot content
+limit parameters.
 
 ## Raw execution input
 

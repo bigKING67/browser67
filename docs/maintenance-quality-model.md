@@ -53,6 +53,7 @@ Fast deterministic gates:
 
 ```bash
 npm run check:mcp
+npm run coverage:core
 npm run check:job-persistence
 npm run check:js-reverse-mcp
 npm run check:doctor-schema
@@ -76,6 +77,8 @@ Tiered and machine-readable gates:
 
 ```bash
 npm run verify:manifest
+npm run test:core
+npm run coverage:core
 npm run coverage:contracts
 npm run verify:ci
 npm run verify:live
