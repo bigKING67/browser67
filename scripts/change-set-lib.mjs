@@ -307,6 +307,7 @@ const GROUPS = [
     ],
     patterns: [
       /^extension\/browser67\//,
+      /^src\/extension\//,
       /^scripts\/(?:build-extension|check-extension-bridge|extension-install-doctor|reload-extension-live|sync-genericagent-extension)\.mjs$/,
       /^contracts\/extension-(?:build|managed-runtime|reload-live)-contract\.mjs$/,
     ],
