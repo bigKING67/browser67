@@ -49,7 +49,10 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
    `tmwd_browser` tools.
 20. Every browser67 and JS reverse tool result uses
     `browser67.tool-outcome.v3`. Check envelope `ok/status`, then read `data` or
-    structured `error`.
+    structured `error`. The top-level `page` exposes the confirmed tab title,
+    URL, id, and managed state or is `null` when no unique page applies. Every
+    `tmwd_browser` tool accepts `output_mode:"compact"|"full"`; compact removes
+    repeated diagnostics but does not reduce requested page content.
 21. Treat actionable snapshot `limitations` and `marker_policy` as part of the
     contract: cross-origin frames may be opaque, closed shadow roots are not
     externally observable, and NodeRef markers expire with the document or
@@ -122,7 +125,7 @@ Use this skill for real Chrome/Edge automation through `tmwd_browser`.
 - Before absorbing a newer GenericAgent checkout, run `npm run upstream:audit`, `npm run upstream:audit:latest`, or `npm run upstream:audit -- --source <GenericAgent/assets/tmwd_cdp_bridge> --json`; after audit tooling changes run `npm run check:upstream-audit` and `npm run check:upstream-review`. Do not blindly `extension:sync` when the audit reports `safe_to_direct_sync:false`; preserve local enhanced bridge features such as `handleTabs`, `tabs.get`, `tabs.close`, `includeUnscriptable`, and guarded numeric `tabId` validation.
 - `UPSTREAM.review.json` records the latest reviewed remote-main drift separately from `UPSTREAM.lock.json` and is validated by `docs/schemas/upstream-review.schema.json`. If `upstream_review.status=stale` or `upstream_review.stale=true`, rerun `npm run upstream:audit:latest -- --json` and refresh the ledger only after a new manual review. If the reviewed commit still lacks local bridge capabilities, keep `safe_to_direct_sync:false` and cherry-pick only future useful hunks.
 - After adding or changing wrapper tools, run `npm run check:mcp`; after changing task lifecycle, templates, or governance gates also run `npm run check:performance-smoke`, `npm run check:task-templates`, and `npm run check:regression-matrix`.
-- For ad-hoc one-shot Node scripts that directly import `src/tmwd-runtime.mjs`, call `await disposeTmwdRuntime()` in `finally`; otherwise an open TMWD websocket can keep the shell process alive after the browser action has already succeeded.
+- For ad-hoc one-shot Node scripts that directly import `src/tmwd-runtime/index.mjs`, call `await disposeTmwdRuntime()` in `finally`; otherwise an open TMWD websocket can keep the shell process alive after the browser action has already succeeded.
 - `await` in `browser_execute_js` must explicitly `return` to expose values.
 - For CDP coordinate clicks, warm up debugger attachment before measuring coordinates.
 - For real local file upload, prefer same-batch `DOM.getDocument -> DOM.querySelector -> DOM.setFileInputFiles`; DataTransfer is only suitable for in-memory files.

@@ -53,17 +53,18 @@ web_execute_js script='{"cmd": "batch", "commands": [...]}'
 // 返回值直接是JSON结果
 ```
 通信方式：⭐JSON字符串直传(首选) | TID DOM方式(TID元素+MutationObserver，web_scan/execute_js底层依赖)
-单命令：`{cmd:'tabs'}` | `{cmd:'cookies'}` | `{cmd:'cdp', tabId:N, method:'...', params:{...}}` | `{cmd:'management', method:'list|reload|disable|enable', extId:'...'}`
+单命令必须是严格 JSON：`{"cmd":"tabs"}` | `{"cmd":"cookies"}` | `{"cmd":"cdp","tabId":N,"method":"...","params":{...}}` | `{"cmd":"management","method":"list|reload|disable|enable","extId":"..."}`
 - management：list返回所有扩展信息；reload/disable/enable需传extId
 - contentSettings：`{cmd:'contentSettings', type:'automaticDownloads', pattern:'https://*/*', setting:'allow'}`
   - 绕过Chrome"下载多个文件"对话框（该对话框会阻塞整个浏览器JS执行）
   - type可选：automaticDownloads/popups/notifications等；setting：allow/block/ask
   - ⚠CDP的Browser.setDownloadBehavior在扩展中不可用（chrome.debugger仅tab级），此为替代方案
-- ⭐batch混合：`{cmd:'batch', commands:[{cmd:'cookies'},{cmd:'tabs'},{cmd:'cdp',...},...]}`
+- ⭐batch混合：`{"cmd":"batch","commands":[{"cmd":"cookies"},{"cmd":"tabs"},{"cmd":"cdp","method":"...","params":{}}]}`
   - 返回`{ok:true, results:[...]}`，一次请求多命令，CDP懒attach复用session
   - 子命令会自动继承外层batch的tabId（如cookies命令可正确获取当前页面URL）
-  - `$N.path`引用第N个结果字段(0-indexed)，如`"nodeId":"$2.root.nodeId"`
-  - ⚠batch前序命令失败时，后续`$N`引用会静默变成undefined；要检查results数组中每项的ok状态
+  - `$N.path`引用第N个结果字段(0-indexed)，且只解析完整引用字符串，如`"nodeId":"$2.data.root.nodeId"`；`"prefix-$0.data.id"`保持普通字符串
+  - 引用会递归解析数组和普通对象，且不会修改原始 command
+  - 前序结果、索引或路径不可用时不会静默写入`undefined`，batch返回`ok:false`及`errorCode`/`errorDetails`；常见错误为`BATCH_REFERENCE_INDEX_UNAVAILABLE`、`BATCH_REFERENCE_PATH_UNRESOLVED`、`BATCH_REFERENCE_CYCLE`、`BATCH_REFERENCE_UNSUPPORTED_VALUE`
   - 典型文件上传：getDocument(**depth:1**) → querySelector(`input[type=file]`) → setFileInputFiles
   - 思想：
     - 同一链路内保持nodeId来源一致，不混用querySelector路径与performSearch路径

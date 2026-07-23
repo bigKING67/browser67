@@ -130,6 +130,18 @@ target drift instead of falling back to a startup `about:blank` page. Set
 All `tmwd_browser` and `js-reverse` calls return JSON inside standard MCP text
 content using `browser67.tool-outcome.v3`. Read successful handler data from
 `outcome.data`; failures use `outcome.error.code/message/retryable/details`.
+`outcome.page` is either a redacted confirmed-page summary (`tab_id`, `title`,
+`url`, resolution source, and managed-tab state) or `null` when the operation
+has no unique page. This keeps the selected page title visible without parsing
+large session arrays.
+
+All `tmwd_browser` tools accept `output_mode:"full"|"compact"`. Compact mode
+preserves the tool's primary data while collapsing repeated session and
+transport diagnostics; full mode returns complete diagnostics. Output mode
+does not change `main_only`, `text_only`, `max_chars`, `selector_limit`,
+`max_return_chars`, screenshot targets, or other content-scope parameters.
+Use compact for ordinary Agent work and full when diagnosing target/session or
+transport drift.
 
 - `browser_execute_js`: direct browser67/CDP JavaScript execution. Use
   `output_mode:"compact"` plus `max_return_chars` for large DOM/network payloads
@@ -583,7 +595,7 @@ sites to use the generic profile directory above.
 - Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, groups them by cleanup scope, reports duplicate URL groups, marks old unkept records, and prints scoped finalize suggestions. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing browser67 workspaces do not make repository verification flaky.
 - Use `npm run runtime:cleanup:dry-run` as the repo-external run/screenshot artifact retention audit. It is non-destructive by default; use `npm run runtime:cleanup -- --write` only when intentionally deleting planned old run directories.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
-- One-shot Node helpers that import `src/tmwd-runtime.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the browser67 websocket explicitly to avoid successful actions ending with a command timeout.
+- One-shot Node helpers that import `src/tmwd-runtime/index.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the browser67 websocket explicitly to avoid successful actions ending with a command timeout.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, run `npm run setup` and `npm run extension:reload-live` before expecting new bridge capabilities in a running Chrome/Edge profile; use the browser extension page only when the existing bridge is not connected.
 - Run `npm run check:tmwd-performance-live` for bounded cold and p50/p95/p99 measurements of the real TMWD `tabs.get`, managed execution, actionable snapshot, and selector-wait paths. It uses an isolated local managed fixture and finalizes its own workspace.
 - Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, CAPTCHA assist dry-run planning, manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.

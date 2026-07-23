@@ -3,7 +3,7 @@
 ```text
 Codex / MCP client
   -> src/mcp/browser/server.mjs
-  -> src/tmwd-runtime.mjs
+  -> src/tmwd-runtime/index.mjs
   -> src/tmwd-hub.mjs
      -> src/tmwd-hub/{config,sessions,relay,ws-server,link-server,shutdown}.mjs
   -> extension/background.js
@@ -11,7 +11,7 @@ Codex / MCP client
 
 Codex / MCP client
   -> src/mcp/js-reverse/server.mjs
-  -> src/tmwd-runtime.mjs
+  -> src/tmwd-runtime/index.mjs
   -> src/tmwd-hub.mjs
      -> src/tmwd-hub/{config,sessions,relay,ws-server,link-server,shutdown}.mjs
   -> extension/background.js
@@ -22,8 +22,8 @@ Codex / MCP client
 Fallback paths:
 
 ```text
-remote_cdp mode -> src/cdp-runtime.mjs -> http://127.0.0.1:9222
-native fallback -> src/native-input.mjs -> macOS/Windows/Linux OS input backend
+remote_cdp mode -> src/cdp-runtime/index.mjs -> http://127.0.0.1:9222
+native fallback -> src/native/input.mjs -> macOS/Windows/Linux OS input backend
 ```
 
 ## Key design decisions

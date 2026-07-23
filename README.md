@@ -54,11 +54,11 @@ runtime, contracts, skills, docs, and agent integration surface.
   orchestration lives under `src/auth/handlers/` and is split by action family
   (`ensure-login`, profile actions, CAPTCHA actions, registry/shared helpers).
 - MCP tool JSON schemas under `src/tool-schemas/`, grouped by tool family and
-  re-exported through `src/tool-schemas.mjs` to keep the public server import
+  exported through `src/tool-schemas/index.mjs` as the public server import
   stable while avoiding a schema monolith.
 - Browser tool wrappers under `src/browser-wrappers/`, grouped by execution
   surface (`file-ops`, `download-ops`, `tab-lifecycle`, `clipboard-ops`, shared
-  runtime helpers) and re-exported through `src/browser-wrappers.mjs` to keep
+  runtime helpers) and exported through `src/browser-wrappers/index.mjs` to keep
   existing imports stable while removing the previous wrapper monolith.
 - JS reverse server internals under `src/js-reverse-server/`, grouped by MCP
   tool schemas, shared utilities, TMWD adapter, managed-tab lifecycle,
@@ -85,7 +85,11 @@ work that needs Network/Debugger/Script source.
 
 ## v0.3 execution model
 
-- Both MCP surfaces return `browser67.tool-outcome.v3` envelopes.
+- Both MCP surfaces return `browser67.tool-outcome.v3` envelopes. Outcomes now
+  expose a top-level `page` summary when one exact tab is confirmed; otherwise
+  `page` is `null`.
+- Every `tmwd_browser` tool accepts `output_mode:"full"|"compact"`. The mode
+  controls repeated diagnostics, not scan/extract/screenshot content limits.
 - `browser_execute_js` and `browser_job_ops.start` accept `script`; the legacy
   `code` aliases are removed.
 - TMWD raw execution and NodeRef mutations require an agent-created or
@@ -543,6 +547,8 @@ npm run verify
 npm run gate -- --tier fast
 npm run gate -- --tier check --changed
 npm run verify:manifest
+npm run test:core
+npm run coverage:core
 npm run coverage:contracts
 npm run verify:ci
 npm run verify:live
@@ -786,9 +792,13 @@ For a real Linux desktop deployment, additionally run
 `npm run verify:manifest` prints the machine-readable verification tier model;
 `scripts/verification/manifest.mjs` is the single command source of truth used
 by `check`, `verify`, CI/live/platform aliases, and `gate --changed`.
-Use `coverage:contracts` to generate the current deterministic `src/`/`scripts/`
-coverage baseline under ignored `runtime/coverage/`; the initial baseline is
-observability, not a fabricated release threshold. Use `verify:ci` for deterministic cross-platform CI, `verify:live` for real TMWD
+Use `coverage:core` for the bounded runtime/serializer unit suite. It enforces
+85% line/function/statement coverage and 80% branch coverage and writes its
+machine-readable report under ignored `runtime/coverage-core/`.
+Use `coverage:contracts` to generate the broader deterministic `src/`/`scripts/`
+coverage baseline under ignored `runtime/coverage/`; that whole-repository
+baseline remains observability rather than an invented global threshold. Use
+`verify:ci` for deterministic cross-platform CI, `verify:live` for real TMWD
 browser behavior including screenshot live proof, `verify:platform` for
 isolated remote CDP/native diagnostics, `verify:local` for active-skill parity,
 and `verify:all` for the broadest current-host gate. Shared CI never receives a
