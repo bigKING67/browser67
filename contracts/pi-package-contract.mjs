@@ -22,6 +22,10 @@ const actualSkills = Array.isArray(pkg.pi?.skills) ? pkg.pi.skills : [];
 for (const skill of expectedSkills) {
   requireCondition(actualSkills.includes(skill), `pi.skills must include ${skill}`);
   requireCondition(existsSync(resolve(repoRoot, skill, "SKILL.md")), `missing package skill entrypoint: ${skill}/SKILL.md`);
+  requireCondition(
+    existsSync(resolve(repoRoot, skill, "agents/openai.yaml")),
+    `missing package skill descriptor: ${skill}/agents/openai.yaml`,
+  );
 }
 
 requireCondition(Boolean(pkg.bin?.browser67), "bin.browser67 must be declared");

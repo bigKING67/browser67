@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add canonical `agents/openai.yaml` metadata to the browser67 and legacy alias
+  skills, refresh the JS reverse descriptor to invoke `$js-reverse`, and lock
+  descriptor parity and package inclusion with executable contracts.
 - Add a deterministic extension build identity containing the package and
   manifest version, Git revision and dirty state, generated source digest, and
   protocol revision; report it from both `ext_ready` and `tabs_update`.

@@ -1,7 +1,13 @@
 interface:
-  display_name: "MCP 前端逆向作业规范"
-  short_description: "前端 JS 逆向：补环境、插桩、去混淆"
-  default_prompt: "使用 $mcp-js-reverse-playbook 对目标站做签名链路逆向，按 Hook 优先流程完成补环境、插桩与证据化输出。"
+  display_name: "browser67 JS Reverse"
+  short_description: "Trace browser signatures, hooks, and network evidence"
+  default_prompt: "Use $js-reverse to trace browser signatures and request initiators, capture bounded hook/network evidence, and build a reproducible local reconstruction."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "js-reverse"
+      description: "browser67 JS reverse MCP for request tracing, hooks, evidence export, and local rebuild workflows."
 
 policy:
   allow_implicit_invocation: true

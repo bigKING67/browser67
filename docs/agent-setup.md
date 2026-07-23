@@ -21,8 +21,10 @@ owns observe/capture/rebuild workflows.
 | Legacy browser67 alias skill | `skills/tmwd-browser-mcp/` |
 | JS reverse skill | `skills/js-reverse/` |
 | JS reverse SOP entrypoint | `docs/js-reverse-SOP.md` |
-| Generic agent descriptor | `agents/openai.yaml` |
+| Generic browser67 agent descriptor | `agents/openai.yaml` |
 | JS reverse agent descriptor | `skills/js-reverse/agents/openai.yaml` |
+| browser67 skill descriptor | `skills/browser67/agents/openai.yaml` |
+| Legacy alias skill descriptor | `skills/tmwd-browser-mcp/agents/openai.yaml` |
 | JS reverse reference docs | `docs/js-reverse/` and `skills/js-reverse/references/` |
 
 `docs/js-reverse/` and `skills/js-reverse/` should stay synchronized. Verify
@@ -143,8 +145,16 @@ For agents that consume YAML descriptors, use:
 
 ```text
 /path/to/browser67/agents/openai.yaml
+/path/to/browser67/skills/browser67/agents/openai.yaml
+/path/to/browser67/skills/tmwd-browser-mcp/agents/openai.yaml
 /path/to/browser67/skills/js-reverse/agents/openai.yaml
 ```
+
+The top-level descriptor mirrors the canonical browser67 skill descriptor.
+Keep its default prompt concise but explicit about managed-tab creation,
+user-tab adoption, `browser67.tool-outcome.v3`, and scoped finalization. The
+legacy alias descriptor remains available for explicit compatibility routing;
+new configurations should invoke `$browser67`.
 
 ## Prompt rules to merge into global/project instructions
 

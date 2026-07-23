@@ -44,8 +44,11 @@ For example:
 
 ```text
 ~/.agents/skills/browser67/SKILL.md
+~/.agents/skills/browser67/agents/openai.yaml
 ~/.agents/skills/tmwd-browser-mcp/SKILL.md
+~/.agents/skills/tmwd-browser-mcp/agents/openai.yaml
 ~/.agents/skills/js-reverse/SKILL.md
+~/.agents/skills/js-reverse/agents/openai.yaml
 ```
 
 This active copy is what a newly started skill loader reads. Editing
@@ -86,7 +89,8 @@ visible but non-fatal so repository checks do not depend on a specific user's
 home directory.
 
 After syncing active skills, start a fresh agent session when you need to prove
-that the loader is reading the updated skill text.
+that the loader is reading the updated skill text and `agents/openai.yaml`
+metadata. A sync result proves file parity, not session reload.
 
 ## 4. MCP runtime entrypoints
 

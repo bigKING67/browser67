@@ -1,0 +1,13 @@
+interface:
+  display_name: "browser67 Legacy Alias"
+  short_description: "Compatibility route for tmwd-browser-mcp callers"
+  default_prompt: "Use $tmwd-browser-mcp only for legacy routing compatibility; prefer $browser67 for new real-browser work."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "tmwd_browser"
+      description: "Primary browser67 MCP for real Chrome/Edge automation and managed/adopted tab lifecycle."
+
+policy:
+  allow_implicit_invocation: true
