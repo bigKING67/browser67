@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Refresh the GenericAgent review ledger from `733615d` to `7fede5a` after a
+  release-time upstream drift check confirmed that the new commit does not
+  touch `assets/tmwd_cdp_bridge` or add a browser67 capability to absorb.
+
 ## 0.4.0 - 2026-07-23
 
 - Add top-level confirmed page context to `browser67.tool-outcome.v3`, including
