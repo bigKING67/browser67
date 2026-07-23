@@ -1,4 +1,4 @@
-import { commandExists, ensureNativeCommandOk, parseWindowSelector, runNativeCommand } from "../native-core.mjs";
+import { commandExists, ensureNativeCommandOk, parseWindowSelector, runNativeCommand } from "../native-core/index.mjs";
 
 import {
   parseWindowGeometryFromShell,

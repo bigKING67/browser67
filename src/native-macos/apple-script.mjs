@@ -1,5 +1,5 @@
-import { createToolError } from "../errors.mjs";
-import { runNativeCommand } from "../native-core.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { runNativeCommand } from "../native-core/index.mjs";
 
 function escapeAppleScriptString(raw) {
   return String(raw ?? "")

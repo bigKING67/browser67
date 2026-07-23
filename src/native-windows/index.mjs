@@ -1,4 +1,4 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 
 import {
   activateWindow,

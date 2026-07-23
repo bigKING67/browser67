@@ -1,10 +1,10 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   commandExists,
   ensureNativeCommandOk,
   parseJsonFromCommandOutput,
   runNativeCommand,
-} from "../native-core.mjs";
+} from "../native-core/index.mjs";
 
 function escapePowerShellString(raw) {
   return String(raw ?? "").replace(/'/g, "''");

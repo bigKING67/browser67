@@ -1,8 +1,8 @@
-import { compactText } from "../common.mjs";
+import { compactText } from "../browser/content/output-limits.mjs";
 import {
   ensureNativeCommandOk,
   runNativeCommand,
-} from "../native-core.mjs";
+} from "../native-core/index.mjs";
 
 import {
   escapeAppleScriptString,

@@ -1,5 +1,5 @@
-import { createToolError } from "../errors.mjs";
-import { parseWindowSelector } from "../native-core.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { parseWindowSelector } from "../native-core/index.mjs";
 
 import {
   buildWindowsNativePrelude,

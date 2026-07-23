@@ -3,7 +3,7 @@ import {
   normalizeDragDurationMs,
   normalizeDragSteps,
   normalizeMouseButton,
-} from "../native-core.mjs";
+} from "../native-core/index.mjs";
 
 import {
   buildWindowsNativePrelude,

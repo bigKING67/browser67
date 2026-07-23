@@ -1,4 +1,4 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   ensureNativeCommandOk,
   normalizeCoordinate,
@@ -6,7 +6,7 @@ import {
   normalizeDragSteps,
   normalizeMouseButton,
   runNativeCommand,
-} from "../native-core.mjs";
+} from "../native-core/index.mjs";
 import { runCliclickAgainstChromiumTab } from "./chromium-window.mjs";
 
 async function runCliclickPointerCommands(args, cliclickArgs, timeoutMs) {

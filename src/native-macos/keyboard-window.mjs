@@ -1,5 +1,5 @@
-import { createToolError } from "../errors.mjs";
-import { ensureNativeCommandOk, parseWindowSelector } from "../native-core.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { ensureNativeCommandOk, parseWindowSelector } from "../native-core/index.mjs";
 
 import {
   buildAppleModifiersClause,

@@ -5,7 +5,7 @@ import {
   normalizeDragSteps,
   normalizeMouseButton,
   runNativeCommand,
-} from "../native-core.mjs";
+} from "../native-core/index.mjs";
 
 import { resolveLinuxButton } from "./xdotool.mjs";
 

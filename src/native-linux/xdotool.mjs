@@ -1,8 +1,8 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   ensureNativeCommandOk,
   runNativeCommand,
-} from "../native-core.mjs";
+} from "../native-core/index.mjs";
 
 function toLinuxXdotoolKey(raw) {
   const normalized = String(raw ?? "").trim();
