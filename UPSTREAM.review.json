@@ -4,16 +4,16 @@
     "name": "lsdefine/GenericAgent",
     "remote": "https://github.com/lsdefine/GenericAgent.git",
     "reviewed_ref": "main",
-    "reviewed_commit": "7fede5a050e440f6b4e78255d74b97be72f8749b",
+    "reviewed_commit": "4086d5c858b90e10eb24a106ea3c41ac729bc00e",
     "reviewed_at": "2026-07-23",
-    "release_context": "v0.4.0 release gate refresh; 733615d..7fede5a changed only GenericAgent conductor, desktop token refresh, and ga.py working-memory behavior"
+    "release_context": "post-v0.4.0 upstream review refresh; 7fede5a..4086d5c changed only agentmain.py model-reload handling and GenericAgent working-memory guidance in assets/tools_schema.json and ga.py"
   },
   "decision": {
     "extension_merge_mode": "manual_merge_preserve_local_bridge_features",
     "direct_sync_allowed": false,
     "local_extension_action": "keep_local_bridge_and_selectively_cherry_pick_future_useful_hunks",
     "lock_action": "keep_UPSTREAM.lock.json_at_extension_sync_baseline_until_intentional_extension_sync",
-    "reason": "Latest upstream 7fede5a050e440f6b4e78255d74b97be72f8749b was checked with upstream:audit:latest and a manual 733615d..7fede5a diff. The new commit does not modify assets/tmwd_cdp_bridge and has no browser67 capability to absorb. Existing extension drift remains background.js,browser67/managed-content.js,browser67/runtime.js,content.js,disable_dialogs.js,manifest.json; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
+    "reason": "Latest upstream 4086d5c858b90e10eb24a106ea3c41ac729bc00e was checked with exact GitHub commit comparisons from 7fede5a050e440f6b4e78255d74b97be72f8749b. The two new commits only change agentmain.py model-reload handling and GenericAgent working-memory guidance in assets/tools_schema.json and ga.py; they do not modify assets/tmwd_cdp_bridge and have no browser67 capability to absorb. Existing extension drift remains background.js,browser67/managed-content.js,browser67/runtime.js,content.js,disable_dialogs.js,manifest.json; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
   },
   "extension_review": {
     "changed_files": [
