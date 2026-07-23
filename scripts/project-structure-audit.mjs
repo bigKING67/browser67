@@ -52,35 +52,13 @@ const FORBIDDEN_TRACKED_PREFIXES = [
 ];
 
 const ALLOWED_SRC_ROOT_MODULES = new Set([
-  "src/bridge-commands.mjs",
-  "src/browser-auth.mjs",
-  "src/browser-wrappers.mjs",
-  "src/capabilities.mjs",
-  "src/cdp-runtime.mjs",
-  "src/common.mjs",
-  "src/content-extraction.mjs",
-  "src/errors.mjs",
-  "src/evidence-schema.mjs",
   "src/js-reverse-server.mjs",
-  "src/mcp-result.mjs",
-  "src/native-capabilities.mjs",
-  "src/native-core.mjs",
   "src/native-deps-setup.mjs",
-  "src/native-fallback.mjs",
-  "src/native-input.mjs",
-  "src/native-linux.mjs",
-  "src/native-macos.mjs",
-  "src/native-windows.mjs",
-  "src/run-lifecycle.mjs",
   "src/server.mjs",
-  "src/session-registry.mjs",
-  "src/tab-workspace.mjs",
   "src/tmwd-hub-control.mjs",
   "src/tmwd-hub.mjs",
-  "src/tmwd-runtime.mjs",
-  "src/tool-schemas.mjs",
 ]);
-const SRC_ROOT_MODULE_BUDGET = 28;
+const SRC_ROOT_MODULE_BUDGET = 5;
 
 function runGit(gitArgs) {
   const result = spawnSync("git", gitArgs, {

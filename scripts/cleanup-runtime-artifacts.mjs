@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_RUN_ROOT,
   runRoot as configuredRunRoot,
-} from "../src/run-lifecycle.mjs";
+} from "../src/runtime/runs/lifecycle.mjs";
 import { createRunStore } from "../src/runtime/runs/store.mjs";
 import { createJobStore } from "../src/runtime/jobs/store.mjs";
 

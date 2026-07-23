@@ -8,7 +8,7 @@ import {
 } from "./change-set-lib.mjs";
 import { buildOptionalLiveProofAudit } from "./optional-live-proof-audit.mjs";
 import { buildNativePointerReadinessReport } from "../src/native-capabilities/pointer-readiness.mjs";
-import { detectNativeInputCapabilities } from "../src/native-input.mjs";
+import { detectNativeInputCapabilities } from "../src/native/input.mjs";
 import { loadJfbymProviderConfig } from "../src/auth/captcha/providers/config.mjs";
 import { getLjqCtrlPhysicalInputProviderCapabilities } from "../src/physical-input/providers/ljq-ctrl.mjs";
 import { resolveTier } from "./verification/manifest.mjs";

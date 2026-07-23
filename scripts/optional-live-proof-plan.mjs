@@ -9,7 +9,7 @@ import {
   DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
 } from "./optional-live-proof-audit.mjs";
-import { detectNativeInputCapabilities } from "../src/native-input.mjs";
+import { detectNativeInputCapabilities } from "../src/native/input.mjs";
 import { buildNativePointerReadinessReport } from "../src/native-capabilities/pointer-readiness.mjs";
 import { nativeLiveCommand } from "./native-live-proof-gate.mjs";
 

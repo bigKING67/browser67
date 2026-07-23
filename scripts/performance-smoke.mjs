@@ -1,15 +1,25 @@
 #!/usr/bin/env node
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { normalizeEvidenceRecord } from "../src/evidence-schema.mjs";
-import { handleBrowserRunOps } from "../src/run-lifecycle.mjs";
+import { normalizeEvidenceRecord } from "../src/runtime/evidence/schema.mjs";
+import { handleBrowserRunOps } from "../src/runtime/runs/lifecycle.mjs";
 import { semanticDiffSnapshots } from "../src/browser/content/semantic-diff.mjs";
+import { createSnapshotStore } from "../src/browser/content/snapshot-store.mjs";
+import { createAdoptionRuntime } from "../src/runtime/adoption/state.mjs";
+import { createDownloadSessionStore } from "../src/runtime/downloads/store.mjs";
+import { createNetworkObservationStore } from "../src/runtime/network/observation-store.mjs";
 import { createRunStore } from "../src/runtime/runs/store.mjs";
+import { createSessionRegistry } from "../src/runtime/sessions/registry.mjs";
+import { compactToolData } from "../src/runtime/output-mode.mjs";
+import { createTabScheduler } from "../src/runtime/tab-scheduler.mjs";
+import { completedOutcome } from "../src/runtime/tool-outcome.mjs";
 import { scanNdjsonBackwards } from "../src/runtime/storage/ndjson.mjs";
+import { createTmwdTransportHealthStore } from "../src/tmwd-runtime/health.mjs";
 
 const RUN_EVENT_COUNT = 2_000;
 const SEMANTIC_DIFF_BUDGET_MS = process.env.CI === "true" ? 1_000 : 500;
@@ -138,7 +148,11 @@ async function main() {
     const runEventP95Ms = percentile(eventLatencies, 0.95);
     const runEventP99Ms = percentile(eventLatencies, 0.99);
 
-    const runStore = createRunStore({ root: runRoot, checkpoint_interval_ms: 60_000 });
+    const runStore = createRunStore({
+      root: runRoot,
+      checkpoint_interval_ms: 60_000,
+      max_cached_runs: 32,
+    });
     const scaleGroup = "performance-scale";
     const runListStarted = performance.now();
     for (let index = 0; index < 120; index += 1) {
@@ -177,6 +191,126 @@ async function main() {
 
     const mcpColdStartMs = await measureMcpColdStart();
 
+    const diagnosticSessions = Array.from({ length: 1_000 }, (_value, index) => ({
+      id: `tab-${index}`,
+      title: `Performance tab ${index}`,
+      url: `https://example.test/report/${index}?token=secret-${index}`,
+      active: index === 0,
+      is_default: index === 0,
+      is_latest: index === 0,
+      connected_at: new Date().toISOString(),
+    }));
+    const diagnosticPayload = {
+      status: "success",
+      transport: "tmwd_ws",
+      sessions: diagnosticSessions,
+      transport_attempts: Array.from({ length: 10 }, (_value, index) => ({
+        transport: index % 2 === 0 ? "ws" : "link",
+        phase: "execute",
+        status: "ok",
+        reason: "performance_fixture",
+        health: {
+          endpoint: `ws://127.0.0.1:${18_765 + index}`,
+          consecutive_failures: 0,
+          backed_off: false,
+          last_success_at: new Date().toISOString(),
+          last_success_at_ms: Date.now(),
+        },
+      })),
+      js_return: { type: "object", preview: "ok", truncated: false },
+    };
+    const diagnosticPage = {
+      tab_id: "tab-0",
+      title: "Performance tab 0",
+      url: "https://example.test/report/0",
+      source: "selected_target",
+      resolution: "confirmed",
+      management: { managed: true, ownership_origin: "agent_created", policy_status: "applied", suspended: false },
+    };
+    const fullSerializeStarted = performance.now();
+    const fullResponse = JSON.stringify(completedOutcome(diagnosticPayload, { page: diagnosticPage }));
+    const fullSerializeMs = performance.now() - fullSerializeStarted;
+    const compactSerializeStarted = performance.now();
+    const compactResponse = JSON.stringify(completedOutcome(
+      compactToolData("browser_execute_js", diagnosticPayload, diagnosticPage, { mode: "compact" }),
+      { page: diagnosticPage },
+    ));
+    const compactSerializeMs = performance.now() - compactSerializeStarted;
+    const compactReductionRatio = 1 - (Buffer.byteLength(compactResponse) / Buffer.byteLength(fullResponse));
+    if (compactReductionRatio < 0.3) {
+      throw new Error(`compact response reduction below 30%: ${(compactReductionRatio * 100).toFixed(2)}%`);
+    }
+
+    const sessionStore = createSessionRegistry({ max_records: 64, retain_ms: 60_000 });
+    sessionStore.sync(Array.from({ length: 500 }, (_value, index) => ({
+      id: `bounded-tab-${index}`,
+      url: `https://example.test/${index}`,
+      title: `Tab ${index}`,
+      active: index === 0,
+    })));
+    const snapshotStore = createSnapshotStore({ max_global: 32, max_per_tab: 4 });
+    for (let index = 0; index < 200; index += 1) {
+      snapshotStore.put({ snapshot_id: `bounded-snapshot-${index}`, tab_id: `tab-${index % 20}`, nodes: [] });
+    }
+    const downloadStore = createDownloadSessionStore({ max_sessions: 32 });
+    for (let index = 0; index < 200; index += 1) {
+      downloadStore.put({ token: `bounded-download-${index}`, download_dir: "/tmp", since_ms: index });
+    }
+    const adoptionRuntime = createAdoptionRuntime({
+      start_timer: false,
+      max_adoption_tokens: 32,
+      max_close_tokens: 16,
+    });
+    for (let index = 0; index < 200; index += 1) {
+      adoptionRuntime.putAdoptionToken(`bounded-adoption-${index}`, { expires_at_ms: Date.now() + 60_000 });
+      adoptionRuntime.putCloseToken(`bounded-close-${index}`, { expires_at_ms: Date.now() + 60_000 });
+    }
+    const observationStore = createNetworkObservationStore({ max_observations: 32 });
+    for (let index = 0; index < 200; index += 1) {
+      observationStore.remember({ network_observation_id: `bounded-network-${index}`, stopped: true });
+    }
+    const healthStore = createTmwdTransportHealthStore({ max_records: 16 });
+    for (let index = 0; index < 200; index += 1) {
+      healthStore.record({ tmwd_ws_endpoint: `ws://127.0.0.1:${20_000 + index}` }, "ws", false, {
+        error: "bounded fixture",
+      });
+    }
+    const scheduler = createTabScheduler({ max_keys: 4, max_queue_per_key: 4 });
+    let releaseScheduler;
+    const schedulerBlock = new Promise((resolve) => { releaseScheduler = resolve; });
+    const scheduled = Array.from({ length: 4 }, () => scheduler.run("bounded-tab", () => schedulerBlock));
+    await assert.rejects(
+      () => scheduler.run("bounded-tab", async () => undefined),
+      /queue limit reached/,
+    );
+    releaseScheduler();
+    await Promise.all(scheduled);
+    const boundedStoreStats = {
+      sessions: sessionStore.stats(),
+      snapshots: snapshotStore.stats(),
+      adoption: adoptionRuntime.stats(),
+      downloads: downloadStore.stats(),
+      observations: observationStore.stats(),
+      runs: runStore.stats(),
+      transport_health: healthStore.stats(),
+      scheduler: scheduler.stats(),
+    };
+    if (
+      boundedStoreStats.sessions.session_count > 64
+      || boundedStoreStats.snapshots.snapshot_count > 32
+      || boundedStoreStats.adoption.adoption_token_count > 32
+      || boundedStoreStats.adoption.close_token_count > 16
+      || boundedStoreStats.downloads.session_count > 32
+      || boundedStoreStats.observations.observation_count > 32
+      || boundedStoreStats.runs.cached_run_count > 32
+      || boundedStoreStats.transport_health.endpoint_count > 16
+    ) {
+      throw new Error(`bounded runtime store exceeded limit: ${JSON.stringify(boundedStoreStats)}`);
+    }
+    await scheduler.dispose();
+    await adoptionRuntime.dispose();
+    await runStore.dispose();
+
     assertBudget("evidence normalization", evidenceMs, 250);
     assertBudget("run lifecycle io", runMs, 2_500);
     assertBudget("run event p95", runEventP95Ms, 200);
@@ -186,6 +320,8 @@ async function main() {
     assertBudget("event tail read", eventTailMs, 250);
     assertBudget("semantic diff", semanticDiffMs, SEMANTIC_DIFF_BUDGET_MS);
     assertBudget("MCP cold start", mcpColdStartMs, 3_000);
+    assertBudget("full outcome serialization", fullSerializeMs, 50);
+    assertBudget("compact outcome serialization", compactSerializeMs, 50);
     process.stdout.write(`${JSON.stringify({
       ok: true,
       evidence_records: 5_000,
@@ -204,6 +340,13 @@ async function main() {
       semantic_diff_changed: semanticDiff.summary.changed_count,
       semantic_diff_ms: Number(semanticDiffMs.toFixed(2)),
       mcp_cold_start_ms: Number(mcpColdStartMs.toFixed(2)),
+      output_fixture_sessions: diagnosticSessions.length,
+      full_response_bytes: Buffer.byteLength(fullResponse),
+      compact_response_bytes: Buffer.byteLength(compactResponse),
+      compact_reduction_pct: Number((compactReductionRatio * 100).toFixed(2)),
+      full_serialize_ms: Number(fullSerializeMs.toFixed(2)),
+      compact_serialize_ms: Number(compactSerializeMs.toFixed(2)),
+      bounded_runtime_stores: boundedStoreStats,
       budgets_ms: {
         evidence: 250,
         run_lifecycle: 2_500,
@@ -214,6 +357,7 @@ async function main() {
         event_tail: 250,
         semantic_diff: SEMANTIC_DIFF_BUDGET_MS,
         mcp_cold_start: 3_000,
+        outcome_serialize: 50,
       },
     })}\n`);
     return 0;

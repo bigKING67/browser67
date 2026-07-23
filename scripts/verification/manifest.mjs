@@ -26,6 +26,21 @@ const entries = [
   npmEntry("type-check", "type-check"),
   npmEntry("dependency-boundaries", "check:dependency-boundaries"),
   npmEntry("syntax", "check:syntax"),
+  npmEntry("core-coverage", "coverage:core", {
+    changed_paths: [
+      "src/browser/content/snapshot-store.mjs",
+      "src/browser/execution/batch-references.mjs",
+      "src/browser/execution/page-script.mjs",
+      "src/runtime/adoption/**",
+      "src/runtime/downloads/**",
+      "src/runtime/network/**",
+      "src/runtime/sessions/**",
+      "src/runtime/tab-scheduler.mjs",
+      "src/tmwd-runtime/health.mjs",
+      "test/runtime-core.test.mjs",
+      "package.json",
+    ],
+  }),
   npmEntry("mcp", "check:mcp"),
   npmEntry("browser-runtime", "check:browser-runtime"),
   npmEntry("browser-content-core", "check:browser-content-core"),
@@ -41,7 +56,7 @@ const entries = [
   npmEntry("active-skill-sync-contract", "check:active-skill-sync", { changed_paths: ["skills/**", "contracts/active-skill-**", "scripts/active-skill-**"] }),
   npmEntry("skills-roots-audit-contract", "check:skills-roots-audit", { changed_paths: ["skills/**", "contracts/skills-roots-**", "scripts/skills-roots-**"] }),
   npmEntry("browser67-naming", "check:browser67-naming", { changed_paths: ["src/**", "docs/**", "skills/**", "README.md", "package.json"] }),
-  npmEntry("runtime-home", "check:runtime-home", { changed_paths: ["src/runtime/**", "src/run-lifecycle.mjs", "scripts/migrate-**", "contracts/runtime-**"] }),
+  npmEntry("runtime-home", "check:runtime-home", { changed_paths: ["src/runtime/**", "scripts/migrate-**", "contracts/runtime-**"] }),
   npmEntry("project-structure", "check:project-structure", { changed_paths: ["src/**", "scripts/project-structure-audit.mjs", "docs/project-structure.md"] }),
   npmEntry("change-set-contract", "check:change-set-contract", { changed_paths: ["scripts/change-set-lib.mjs", "contracts/change-set-contract.mjs"] }),
   npmEntry("setup-extension", "check:setup-extension", { changed_paths: ["extension/**", "scripts/setup-extension.mjs", "scripts/build-extension.mjs", "contracts/setup-extension-contract.mjs"] }),
@@ -97,7 +112,7 @@ const entries = [
   npmEntry("active-skill-strict", "skills:active:check", { changed_paths: ["skills/**", "scripts/active-skill-sync.mjs"] }),
   npmEntry("remote-cdp", "check:remote-cdp", {
     changed_paths: [
-      "src/cdp-runtime.mjs",
+      "src/cdp-runtime/**",
       "src/cdp-runtime/**",
       "src/browser/**",
       "src/server/browser-core/execute-js.mjs",
@@ -116,12 +131,12 @@ const entries = [
 const tiers = {
   fast: {
     purpose: "Fast static and core runtime feedback for local edits.",
-    steps: ["lint", "type-check", "dependency-boundaries", "syntax", "mcp", "browser-runtime", "browser-content-core", "run-store", "job-persistence"],
+    steps: ["lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "browser-content-core", "run-store", "job-persistence"],
   },
   check: {
     purpose: "Deterministic repository contracts without requiring a real browser profile.",
     steps: [
-      "lint", "type-check", "dependency-boundaries", "syntax", "mcp", "browser-runtime", "browser-content-core", "run-store", "job-persistence",
+      "lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "browser-content-core", "run-store", "job-persistence",
       "hub-control", "hub-relay", "doctor-schema", "js-reverse-mcp", "js-reverse-upstream", "js-reverse-upstream-audit-contract",
       "js-reverse-absorption", "active-skill-sync-contract", "skills-roots-audit-contract", "browser67-naming", "runtime-home",
       "project-structure", "change-set-contract", "setup-extension", "extension-build", "extension-managed-runtime", "extension-install-doctor", "performance-smoke",

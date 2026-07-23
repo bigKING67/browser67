@@ -14,9 +14,25 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
+    "src/browser/content/snapshot-store.mjs",
+    "src/browser/execution/batch-references.mjs",
+    "src/browser/execution/page-script.mjs",
+    "src/runtime/evidence/schema.mjs",
+    "src/runtime/adoption/state.mjs",
+    "src/runtime/browser-runtime.mjs",
+    "src/runtime/downloads/store.mjs",
+    "src/runtime/jobs/state.mjs",
+    "src/runtime/jobs/store.mjs",
+    "src/runtime/network/observation-store.mjs",
+    "src/runtime/output-mode.mjs",
+    "src/runtime/page-context.mjs",
+    "src/runtime/runs/store.mjs",
+    "src/runtime/sessions/registry.mjs",
     "src/runtime/storage/atomic-file.mjs",
     "src/runtime/storage/ndjson.mjs",
     "src/runtime/tab-scheduler.mjs",
-    "src/runtime/redaction.mjs"
+    "src/runtime/redaction.mjs",
+    "src/tmwd-runtime/health.mjs",
+    "test/runtime-core.test.mjs"
   ]
 }
