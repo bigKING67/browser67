@@ -1,11 +1,11 @@
-import { createToolError } from "../errors.mjs";
-import { handleBrowserNativeInput } from "../native-input.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
+import { handleBrowserNativeInput } from "../native/input.mjs";
 import {
   executeBrowserScript,
   normalizeAction,
 } from "./shared.mjs";
 
-async function writeClipboardText(args) {
+async function writeClipboardText(args, options = {}) {
   const text = String(args?.text ?? "");
   if (!Object.prototype.hasOwnProperty.call(args ?? {}, "text")) {
     throw createToolError("INVALID_ARGUMENT", "text is required when action=write_text");
@@ -26,7 +26,7 @@ async function writeClipboardText(args) {
     }
     await navigator.clipboard.writeText(input.text);
     return { ok: true, text_length: input.text.length };
-  `, { text });
+  `, { text }, options);
   if (result.value?.ok === false) {
     throw createToolError("EXECUTION_ERROR", String(result.value.error ?? "clipboard write failed"));
   }
@@ -41,7 +41,7 @@ async function writeClipboardText(args) {
   };
 }
 
-async function pasteClipboardText(args) {
+async function pasteClipboardText(args, options = {}) {
   const text = String(args?.text ?? "");
   if (!Object.prototype.hasOwnProperty.call(args ?? {}, "text")) {
     throw createToolError("INVALID_ARGUMENT", "text is required when action=paste_text");
@@ -59,7 +59,7 @@ async function pasteClipboardText(args) {
       }
       ["input", "change"].forEach((type) => el.dispatchEvent(new Event(type, { bubbles: true })));
       return { ok: true, selector: input.selector, previous_length: previous.length, text_length: input.text.length };
-    `, { selector, text });
+    `, { selector, text }, options);
     if (result.value?.ok === false) {
       throw createToolError("EXECUTION_ERROR", String(result.value.error ?? "DOM paste failed"));
     }
@@ -77,7 +77,7 @@ async function pasteClipboardText(args) {
     ...args,
     action: "paste",
     text,
-  });
+  }, options);
   return {
     status: "success",
     action: "paste_text",
@@ -86,15 +86,15 @@ async function pasteClipboardText(args) {
   };
 }
 
-async function handleBrowserClipboardOps(args) {
+async function handleBrowserClipboardOps(args, options = {}) {
   const action = normalizeAction(args, [
     "write_text",
     "paste_text",
   ]);
   if (action === "write_text") {
-    return writeClipboardText(args);
+    return writeClipboardText(args, options);
   }
-  return pasteClipboardText(args);
+  return pasteClipboardText(args, options);
 }
 
 export { handleBrowserClipboardOps };

@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   clearNativeInputCapabilitiesCache,
   detectNativeInputCapabilities,
-} from "../../src/native-capabilities.mjs";
+} from "../../src/native-capabilities/index.mjs";
 import { buildNativePointerReadinessReport } from "../../src/native-capabilities/pointer-readiness.mjs";
 import { detectPhysicalInputCapabilities } from "../../src/physical-input/index.mjs";
 

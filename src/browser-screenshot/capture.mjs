@@ -1,6 +1,6 @@
-import { createToolError } from "../errors.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import { mergeTransportAttempts } from "../runtime/transport-attempts.mjs";
-import { resolvePreferredBrowserContext } from "../tmwd-runtime.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import { writeScreenshotArtifact } from "./artifact.mjs";
 import {
   buildFullPageClip,
@@ -48,6 +48,7 @@ async function applyViewportOverride(args, request, state) {
     state.preferred,
     "Emulation.setDeviceMetricsOverride",
     request.viewportOverride.cdp_params,
+    state.runtimeOptions,
   ));
   state.viewportOverrideResult = {
     applied: true,
@@ -58,6 +59,7 @@ async function applyViewportOverride(args, request, state) {
     args,
     applied.preferred,
     viewportOverrideSettleScript(request.viewportOverride.requested),
+    state.runtimeOptions,
   ));
   state.viewportOverrideResult.settle = settled.value;
 }
@@ -65,7 +67,7 @@ async function applyViewportOverride(args, request, state) {
 async function readPageState(args, request, state) {
   const pageEval = absorbTransportResult(
     state,
-    await evaluatePageScript(args, state.preferred, PAGE_METADATA_SCRIPT),
+    await evaluatePageScript(args, state.preferred, PAGE_METADATA_SCRIPT, state.runtimeOptions),
   );
   state.page = pageEval.value;
   if (state.viewportOverrideResult) {
@@ -87,6 +89,7 @@ async function readPageState(args, request, state) {
         args,
         state.preferred,
         layoutMetricsScript(request.effectiveLayoutSelectors),
+        state.runtimeOptions,
       ),
     );
     state.layoutMetrics = metricsEval.value;
@@ -125,6 +128,7 @@ async function resolveSelectorTarget(args, request, state) {
       args,
       state.preferred,
       selectorClipScript(request.requestedSelector),
+      state.runtimeOptions,
     ),
   );
   const selectorResult = selectorEval.value;
@@ -193,6 +197,7 @@ async function captureArtifact(args, request, state) {
       captureBeyondViewport: state.captureBeyondViewport,
       ...(state.cdpClip ? { clip: state.cdpClip } : {}),
     },
+    state.runtimeOptions,
   ));
   if (typeof screenshot.base64 !== "string" || screenshot.base64.length < 16) {
     throw createToolError("EXECUTION_ERROR", "Page.captureScreenshot did not return PNG data", {
@@ -279,6 +284,7 @@ async function clearViewportOverride(args, request, state) {
       state.preferred,
       "Emulation.clearDeviceMetricsOverride",
       {},
+      state.runtimeOptions,
     ));
     cleanup = {
       cleared: true,
@@ -297,10 +303,11 @@ async function clearViewportOverride(args, request, state) {
   }
 }
 
-async function captureBrowserScreenshot(args = {}) {
+async function captureBrowserScreenshot(args = {}, runtimeOptions = {}) {
   const request = normalizeScreenshotRequest(args);
-  const preferred = await resolvePreferredBrowserContext(args ?? {});
+  const preferred = await resolvePreferredBrowserContext(args ?? {}, runtimeOptions);
   const state = {
+    runtimeOptions,
     preferred,
     transportAttempts: Array.isArray(preferred.transport_attempts)
       ? preferred.transport_attempts

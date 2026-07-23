@@ -6,6 +6,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { createJobStore } from "../src/runtime/jobs/store.mjs";
+
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 function runRecoveryProbe(runRoot, jobId) {
@@ -115,6 +117,12 @@ async function main() {
     const run = JSON.parse(await readFile(path.join(runDir, "run.json"), "utf8"));
     assert.equal(run.schema_version, "browser67.run.v2");
 
+    const jobStore = createJobStore({ run_root: root });
+    assert.equal((await jobStore.inspect()).active_count, 0);
+    assert.equal(jobStore.stats().disposed, false);
+    await jobStore.dispose();
+    assert.equal(jobStore.stats().disposed, true);
+
     process.stdout.write(`${JSON.stringify({
       ok: true,
       check: "browser-job-persistence-contract",
@@ -123,6 +131,7 @@ async function main() {
       abort_supported: result.job.abort_supported,
       migration_indexed_jobs: migration.rebuilt_jobs.indexed_count,
       active_index_cleared: true,
+      disposable_store: true,
     })}\n`);
   } finally {
     await rm(root, { recursive: true, force: true });

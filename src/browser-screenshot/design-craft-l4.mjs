@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { nowIso } from "../common.mjs";
-import { createToolError } from "../errors.mjs";
+import { nowIso } from "../runtime/identity.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import { readPngDimensions } from "../image/png-lite.mjs";
 
 const DESIGN_CRAFT_L4_SCHEMA = "design-craft.l4-screenshots.v1";

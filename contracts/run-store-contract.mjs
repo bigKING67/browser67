@@ -97,6 +97,21 @@ async function main() {
     const tempFiles = (await readdir(runDir)).filter((name) => name.endsWith(".tmp"));
     assert.deepEqual(tempFiles, []);
 
+    const boundedStore = createRunStore({
+      root: path.join(root, "bounded-cache"),
+      max_cached_runs: 4,
+    });
+    for (let index = 0; index < 12; index += 1) {
+      await boundedStore.prepare({
+        workspace_key: "bounded",
+        run_id: `run-${index}`,
+      });
+    }
+    assert.equal(boundedStore.stats().cached_run_count, 4);
+    assert.equal(boundedStore.stats().checkpoint_state_count, 4);
+    await boundedStore.dispose();
+    assert.equal(boundedStore.stats().cached_run_count, 0);
+
     process.stdout.write(`${JSON.stringify({
       ok: true,
       check: "run-store-contract",
@@ -105,6 +120,7 @@ async function main() {
       tail_bytes_scanned: eventScan.bytes_scanned,
       event_file_bytes: eventScan.file_bytes,
       index_entries: indexRows.length,
+      bounded_cache: true,
       migration: true,
     })}\n`);
   } finally {

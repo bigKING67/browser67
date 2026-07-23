@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
@@ -11,7 +14,8 @@ import { parseArgs as parseLiveContractArgs } from "./browser67-live-contract/cl
 import { buildLiveArgs } from "./browser67-live-gate/args.mjs";
 import { parseArgs as parseLiveGateArgs } from "./browser67-live-gate/cli.mjs";
 import { createBrowserRuntime } from "../src/runtime/browser-runtime.mjs";
-import { selectTargetFromCandidates } from "../src/session-registry.mjs";
+import { createSessionRegistry } from "../src/runtime/sessions/registry.mjs";
+import { handleBrowserRunOps } from "../src/runtime/runs/lifecycle.mjs";
 
 async function run() {
   const runtime = createBrowserRuntime({ runtime_id: "contract-runtime" });
@@ -45,18 +49,74 @@ async function run() {
     /disposed/,
   );
 
+  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), "browser67-runtime-contract-"));
+  const runtimeA = createBrowserRuntime({
+    runtime_id: "isolated-a",
+    runs: { root: path.join(runtimeRoot, "a") },
+  });
+  const runtimeB = createBrowserRuntime({
+    runtime_id: "isolated-b",
+    runs: { root: path.join(runtimeRoot, "b") },
+  });
+  runtimeA.sessionStore.sync([{ id: "tab-a", url: "https://a.example/", title: "A", active: true }]);
+  runtimeB.sessionStore.sync([{ id: "tab-b", url: "https://b.example/", title: "B", active: true }]);
+  runtimeA.snapshotStore.put({ snapshot_id: "snapshot-a", tab_id: "tab-a", nodes: [] });
+  runtimeB.downloadStore.put({ token: "download-b", download_dir: "/tmp", since_ms: 1 });
+  runtimeA.adoptionRuntime.adoptionTokens.set("adoption-a", { expires_at_ms: Date.now() + 60_000 });
+  runtimeA.jobState.jobs.set("job-a", { job_id: "job-a", status: "pending" });
+  runtimeA.networkObservations.remember({ network_observation_id: "network-a", stopped: true });
+  runtimeA.transportHealth.record({ tmwd_ws_endpoint: "ws://127.0.0.1:18765" }, "ws", false, {
+    error: "fixture",
+  });
+  const preparedRun = await handleBrowserRunOps({
+    action: "prepare",
+    workspace_key: "runtime-a",
+    task_id: "run-store-isolation",
+  }, { runtime: runtimeA });
+  assert.equal(preparedRun.ok, true);
+  assert.equal((await handleBrowserRunOps({
+    action: "list",
+    workspace_key: "runtime-a",
+  }, { runtime: runtimeA })).runs.length, 1);
+  assert.equal((await handleBrowserRunOps({
+    action: "list",
+    workspace_key: "runtime-a",
+  }, { runtime: runtimeB })).runs.length, 0);
+  assert.deepEqual(runtimeA.sessionStore.list().map((item) => item.id), ["tab-a"]);
+  assert.deepEqual(runtimeB.sessionStore.list().map((item) => item.id), ["tab-b"]);
+  assert.equal(runtimeB.snapshotStore.stats().snapshot_count, 0);
+  assert.equal(runtimeA.downloadStore.stats().session_count, 0);
+  assert.equal(runtimeB.adoptionRuntime.stats().adoption_token_count, 0);
+  assert.equal(runtimeB.jobState.stats().job_count, 0);
+  assert.equal(runtimeB.networkObservations.stats().observation_count, 0);
+  assert.equal(runtimeB.transportHealth.stats().endpoint_count, 0);
+  await runtimeA.dispose();
+  assert.equal(runtimeA.stats().sessions.session_count, 0);
+  assert.equal(runtimeA.stats().snapshots.snapshot_count, 0);
+  assert.equal(runtimeA.stats().adoption.adoption_token_count, 0);
+  assert.equal(runtimeA.stats().transport_health.endpoint_count, 0);
+  assert.equal(runtimeA.stats().jobs.job_count, 0);
+  assert.equal(runtimeA.stats().network_observations.observation_count, 0);
+  assert.equal(runtimeA.stats().tmwd_ws.pending_count, 0);
+  assert.equal(runtimeA.stats().run_store.disposed, true);
+  assert.equal(runtimeB.stats().sessions.session_count, 1);
+  assert.equal(runtimeB.stats().run_store.disposed, false);
+  await runtimeB.dispose();
+  await rm(runtimeRoot, { recursive: true, force: true });
+
   const targets = [
     { id: "startup", url: "about:blank", title: "", active: true },
     { id: "fixture", url: "http://127.0.0.1:4567/", title: "remote-cdp-fixture", active: false },
   ];
-  const explicit = selectTargetFromCandidates(targets, {
+  const targetSelector = createSessionRegistry();
+  const explicit = targetSelector.selectTarget(targets, {
     switch_tab_id: "fixture",
     target_url_contains: "about:blank",
   });
   assert.equal(explicit.target.id, "fixture");
   assert.equal(explicit.selection.selected_by, "tab_id");
   assert.throws(
-    () => selectTargetFromCandidates(targets, {
+    () => targetSelector.selectTarget(targets, {
       switch_tab_id: "missing",
       target_url_contains: "about:blank",
     }),
@@ -126,6 +186,7 @@ async function run() {
     different_tab_max_active: differentTabMax,
     disposed_scheduler: disposed.scheduler,
     explicit_target_routing: explicit.selection.selected_by,
+    isolated_runtime_stores: true,
     target_mismatch_rejected: true,
   })}\n`);
 }

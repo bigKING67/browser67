@@ -8,6 +8,14 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   const names = tools
     .map((entry) => (typeof entry?.name === "string" ? entry.name : ""))
     .filter((name) => name.length > 0);
+  assert.equal(tools.length, 17);
+  for (const tool of tools) {
+    assert.deepEqual(
+      tool?.inputSchema?.properties?.output_mode?.enum,
+      ["full", "compact"],
+      `${tool?.name} must expose full/compact output_mode`,
+    );
+  }
   assert.equal(names.includes("browser_scan"), true);
   assert.equal(names.includes("browser_execute_js"), true);
   assert.equal(names.includes("browser_extract"), true);

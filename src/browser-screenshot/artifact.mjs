@@ -2,13 +2,13 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { nowIso } from "../common.mjs";
+import { nowIso } from "../runtime/identity.mjs";
 import { readPngDimensions } from "../image/png-lite.mjs";
 import {
   prepareRun,
   runDirFor,
   runRoot,
-} from "../run-lifecycle.mjs";
+} from "../runtime/runs/lifecycle.mjs";
 
 const SCREENSHOT_ARTIFACT_TTL_MS = 86_400_000;
 

@@ -1,11 +1,11 @@
 import {
   cdpEvaluateScript,
   cdpRunCommand,
-} from "../cdp-runtime.mjs";
-import { createToolError } from "../errors.mjs";
+} from "../cdp-runtime/index.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   executeTmwdJsWithFallback,
-} from "../tmwd-runtime.mjs";
+} from "../tmwd-runtime/index.mjs";
 import { normalizeTmwdTransportLabel } from "../runtime/transport-attempts.mjs";
 
 function unwrapJsValue(value) {
@@ -39,9 +39,9 @@ function extractScreenshotData(executed = {}) {
     ?? raw?.result;
 }
 
-async function evaluatePageScript(args, preferred, script) {
+async function evaluatePageScript(args, preferred, script, runtimeOptions = {}) {
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    const tmwd = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script);
+    const tmwd = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script, runtimeOptions);
     return {
       value: unwrapJsValue(tmwd.executed.value),
       preferred: {
@@ -55,7 +55,7 @@ async function evaluatePageScript(args, preferred, script) {
   const executed = await cdpEvaluateScript({
     ...args,
     switch_tab_id: preferred.context.target.id,
-  }, script);
+  }, script, runtimeOptions);
   return {
     value: unwrapJsValue(executed.result.value),
     preferred,
@@ -63,13 +63,13 @@ async function evaluatePageScript(args, preferred, script) {
   };
 }
 
-async function runCdpScreenshot(args, preferred, params) {
+async function runCdpScreenshot(args, preferred, params, runtimeOptions = {}) {
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
     const tmwd = await executeTmwdJsWithFallback(args ?? {}, preferred.context, {
       cmd: "cdp",
       method: "Page.captureScreenshot",
       params,
-    });
+    }, runtimeOptions);
     return {
       base64: extractScreenshotData(tmwd.executed),
       preferred: {
@@ -83,7 +83,7 @@ async function runCdpScreenshot(args, preferred, params) {
   const command = await cdpRunCommand({
     ...args,
     switch_tab_id: preferred.context.target.id,
-  }, "Page.captureScreenshot", params);
+  }, "Page.captureScreenshot", params, runtimeOptions);
   return {
     base64: command.result.response?.data,
     preferred,
@@ -91,13 +91,13 @@ async function runCdpScreenshot(args, preferred, params) {
   };
 }
 
-async function runCdpBrowserCommand(args, preferred, method, params = {}) {
+async function runCdpBrowserCommand(args, preferred, method, params = {}, runtimeOptions = {}) {
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
     const tmwd = await executeTmwdJsWithFallback(args ?? {}, preferred.context, {
       cmd: "cdp",
       method,
       params,
-    });
+    }, runtimeOptions);
     return {
       value: tmwd.executed.value,
       preferred: {
@@ -111,7 +111,7 @@ async function runCdpBrowserCommand(args, preferred, method, params = {}) {
   const command = await cdpRunCommand({
     ...args,
     switch_tab_id: preferred.context.target.id,
-  }, method, params);
+  }, method, params, runtimeOptions);
   return {
     value: command.result.response,
     preferred,

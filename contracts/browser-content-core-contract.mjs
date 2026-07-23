@@ -2,16 +2,27 @@
 
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
+import vm from "node:vm";
 
 import { semanticDiffSnapshots } from "../src/browser/content/semantic-diff.mjs";
 import { createSnapshotStore } from "../src/browser/content/snapshot-store.mjs";
 import { parseBridgeCommand } from "../src/browser/execution/bridge-command.mjs";
+import { resolveBatchReferences } from "../src/browser/execution/batch-references.mjs";
 import {
   assertManagedExecutionContext,
   authorizeManagedExecutionNavigation,
   executionMayNavigate,
 } from "../src/browser/execution/managed-context.mjs";
+import { buildCdpScript } from "../src/browser/execution/page-script.mjs";
 import { redactBrowserValue } from "../src/runtime/redaction.mjs";
+import {
+  compactToolData,
+  resolveOutputMode,
+} from "../src/runtime/output-mode.mjs";
+import {
+  resolvePageContext,
+  resolvePageId,
+} from "../src/runtime/page-context.mjs";
 import { reconcileAdoptedNavigation } from "../src/tab-workspace/navigation-guard.mjs";
 import {
   completedOutcome,
@@ -96,13 +107,98 @@ async function run() {
   assert.equal(completed.schema, "browser67.tool-outcome.v3");
   assert.equal(completed.ok, true);
   assert.equal(completed.status, "completed");
+  assert.equal(completed.page, null);
   assert.equal(completed.data.password.redacted, true);
   const failed = failedOutcome(new Error("contract failure"), {
     code: "CONTRACT_FAILURE",
     retryable: false,
   });
   assert.equal(failed.ok, false);
+  assert.equal(failed.page, null);
   assert.equal(failed.error.code, "CONTRACT_FAILURE");
+
+  assert.equal(resolveOutputMode({ output_mode: "compact" }), "compact");
+  assert.equal(resolveOutputMode({ output_mode: "invalid" }), "full");
+  assert.equal(resolvePageId({ tab_id: "request-tab" }, {}), "request-tab");
+  const page = await resolvePageContext("browser_execute_js", { tab_id: "managed-tab" }, {
+    target_url: "https://example.test/report?token=secret",
+    sessions: [{ id: "managed-tab", title: "Monthly report", url: "https://example.test/report" }],
+  }, {
+    get_managed_tab: async () => ({
+      tab_id: "managed-tab",
+      managed: true,
+      ownership_origin: "user_adopted",
+      management_policy_status: "applied",
+      suspended: false,
+    }),
+  });
+  assert.equal(page.tab_id, "managed-tab");
+  assert.equal(page.title, "Monthly report");
+  assert.equal(page.resolution, "confirmed");
+  assert.equal(page.management.ownership_origin, "user_adopted");
+  const compacted = compactToolData("browser_execute_js", {
+    status: "success",
+    sessions: [
+      { id: "managed-tab", title: "Monthly report", url: "https://example.test/report", active: true },
+      { id: "other-tab", title: "Other", url: "https://example.test/other" },
+    ],
+    transport_attempts: [{
+      transport: "ws",
+      phase: "execute",
+      status: "ok",
+      reason: "primary",
+      health: { endpoint: "ws://127.0.0.1:18765", consecutive_failures: 0, backed_off: false },
+    }],
+  }, page, { mode: "compact" });
+  assert.equal(Object.hasOwn(compacted, "sessions"), false);
+  assert.equal(compacted.session_summary.count, 2);
+  assert.equal(compacted.session_summary.selected[0].id, "managed-tab");
+  assert.equal(compacted.transport_attempts[0].health.endpoint, undefined);
+
+  const priorResults = [{ data: { tabId: 42, nodes: [{ id: 7 }] } }];
+  const batchCommand = {
+    tabId: "$0.data.tabId",
+    params: {
+      nodeId: "$0.data.nodes.0.id",
+      literal: "prefix-$0.data.tabId",
+    },
+  };
+  const resolvedBatch = resolveBatchReferences(batchCommand, priorResults, { command_index: 1 });
+  assert.equal(resolvedBatch.tabId, 42);
+  assert.equal(resolvedBatch.params.nodeId, 7);
+  assert.equal(resolvedBatch.params.literal, "prefix-$0.data.tabId");
+  assert.equal(batchCommand.tabId, "$0.data.tabId");
+  assert.throws(
+    () => resolveBatchReferences({ value: "$1.data" }, priorResults, { command_index: 1 }),
+    (error) => error?.code === "BATCH_REFERENCE_INDEX_UNAVAILABLE",
+  );
+  assert.throws(
+    () => resolveBatchReferences({ value: "$0.data.missing" }, priorResults, { command_index: 1 }),
+    (error) => error?.code === "BATCH_REFERENCE_PATH_UNRESOLVED",
+  );
+  const cyclic = {};
+  cyclic.self = cyclic;
+  assert.throws(
+    () => resolveBatchReferences(cyclic, priorResults, { command_index: 1 }),
+    (error) => error?.code === "BATCH_REFERENCE_CYCLE",
+  );
+
+  const pageScriptContext = {
+    NodeList: class NodeList {},
+    HTMLCollection: class HTMLCollection {},
+    jQuery: class jQuery {},
+    window: {},
+    document: {},
+    Promise,
+  };
+  const pageScriptResult = await vm.runInNewContext(buildCdpScript(`({
+    0: { nodeType: 1, outerHTML: "<button>A</button>" },
+    length: 1
+  })`), pageScriptContext);
+  assert.equal(
+    JSON.stringify(pageScriptResult),
+    JSON.stringify({ ok: true, data: ["<button>A</button>"] }),
+  );
 
   assert.deepEqual(parseBridgeCommand('{"cmd":"tabs"}'), { cmd: "tabs" });
   assert.equal(parseBridgeCommand("{cmd:'tabs'}"), undefined);

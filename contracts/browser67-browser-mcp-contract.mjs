@@ -175,6 +175,7 @@ async function run() {
     assert.equal(missingScriptOutcome?.schema, "browser67.tool-outcome.v3");
     assert.equal(missingScriptOutcome?.ok, false);
     assert.equal(missingScriptOutcome?.status, "failed");
+    assert.equal(missingScriptOutcome?.page, null);
     assert.equal(missingScriptOutcome?.error?.code, "INVALID_ARGUMENT");
     assert.equal(missingScriptOutcome?.error?.retryable, false);
     assert.equal(missingScriptOutcome?.meta?.tool, "browser_execute_js");
