@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep temporary TMWD viewport emulation, page verification, PNG capture, and
+  cleanup in one debugger batch so mobile screenshots cannot lose the
+  session-scoped device metrics between bridge requests.
 - Add canonical `agents/openai.yaml` metadata to the browser67 and legacy alias
   skills, refresh the JS reverse descriptor to invoke `$js-reverse`, and lock
   descriptor parity and package inclusion with executable contracts.

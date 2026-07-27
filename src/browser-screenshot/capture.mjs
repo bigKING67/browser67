@@ -22,8 +22,10 @@ import {
 import { normalizeScreenshotRequest } from "./request.mjs";
 import {
   evaluatePageScript,
+  isTmwdTransport,
   runCdpBrowserCommand,
   runCdpScreenshot,
+  runTmwdViewportScreenshotBatch,
 } from "./transport.mjs";
 import {
   assertViewportOverrideArtifactVerification,
@@ -94,6 +96,13 @@ async function readPageState(args, request, state) {
     );
     state.layoutMetrics = metricsEval.value;
   }
+}
+
+function shouldUseAtomicTmwdViewportCapture(request, state) {
+  return request.target === "viewport"
+    && request.viewportOverride !== null
+    && request.viewportOverride?.requested?.clear_after !== false
+    && isTmwdTransport(state.preferred);
 }
 
 function selectorFailureResponse(request, state, selectorClip) {
@@ -187,26 +196,24 @@ async function resolveCaptureTarget(args, request, state) {
   return null;
 }
 
-async function captureArtifact(args, request, state) {
-  const screenshot = absorbTransportResult(state, await runCdpScreenshot(
-    args,
-    state.preferred,
-    {
-      format: "png",
-      fromSurface: true,
-      captureBeyondViewport: state.captureBeyondViewport,
-      ...(state.cdpClip ? { clip: state.cdpClip } : {}),
-    },
-    state.runtimeOptions,
-  ));
-  if (typeof screenshot.base64 !== "string" || screenshot.base64.length < 16) {
+function screenshotParams(state) {
+  return {
+    format: "png",
+    fromSurface: true,
+    captureBeyondViewport: state.captureBeyondViewport,
+    ...(state.cdpClip ? { clip: state.cdpClip } : {}),
+  };
+}
+
+async function writeCapturedArtifact(args, request, state, base64) {
+  if (typeof base64 !== "string" || base64.length < 16) {
     throw createToolError("EXECUTION_ERROR", "Page.captureScreenshot did not return PNG data", {
       retryable: false,
     });
   }
   const artifact = await writeScreenshotArtifact({
     args,
-    bytes: Buffer.from(screenshot.base64, "base64"),
+    bytes: Buffer.from(base64, "base64"),
     target: request.target,
     title: args.title ?? state.page?.title ?? "",
     clip: state.clip,
@@ -223,6 +230,64 @@ async function captureArtifact(args, request, state) {
     assertViewportOverrideArtifactVerification(verification, artifact.artifact);
   }
   return artifact;
+}
+
+async function captureArtifact(args, request, state) {
+  const screenshot = absorbTransportResult(state, await runCdpScreenshot(
+    args,
+    state.preferred,
+    screenshotParams(state),
+    state.runtimeOptions,
+  ));
+  return writeCapturedArtifact(args, request, state, screenshot.base64);
+}
+
+async function captureAtomicTmwdViewport(args, request, state) {
+  state.viewportOverrideCleanupHandled = true;
+  const batch = absorbTransportResult(state, await runTmwdViewportScreenshotBatch(
+    args,
+    state.preferred,
+    {
+      viewportParams: request.viewportOverride.cdp_params,
+      settleScript: viewportOverrideSettleScript(request.viewportOverride.requested),
+      pageMetadataScript: PAGE_METADATA_SCRIPT,
+      layoutMetricsScript: request.includeLayoutMetrics
+        ? layoutMetricsScript(request.effectiveLayoutSelectors)
+        : null,
+      screenshotParams: screenshotParams(state),
+    },
+    state.runtimeOptions,
+  ));
+  state.viewportOverrideResult = {
+    applied: true,
+    requested: request.viewportOverride.requested,
+    cdp_params: request.viewportOverride.cdp_params,
+    settle: batch.settle,
+    cleanup: batch.cleanup,
+  };
+  state.page = batch.page;
+  state.layoutMetrics = batch.layout_metrics;
+  const pageVerification = buildViewportOverrideVerification({
+    page: state.page,
+    target: request.target,
+    viewportOverrideResult: state.viewportOverrideResult,
+  });
+  state.viewportOverrideResult.verification = {
+    page: pageVerification?.page,
+  };
+  try {
+    assertViewportOverridePageVerification(pageVerification?.page);
+  } catch (error) {
+    error.details = {
+      ...(error.details ?? {}),
+      probe: {
+        settle: batch.settle,
+        viewport: state.page?.viewport,
+      },
+    };
+    throw error;
+  }
+  return writeCapturedArtifact(args, request, state, batch.base64);
 }
 
 function successResponse(args, request, state, artifact) {
@@ -274,6 +339,7 @@ function successResponse(args, request, state, artifact) {
 }
 
 async function clearViewportOverride(args, request, state) {
+  if (state.viewportOverrideCleanupHandled) return;
   if (!request.viewportOverride || request.viewportOverride.requested.clear_after === false) {
     return;
   }
@@ -321,9 +387,14 @@ async function captureBrowserScreenshot(args = {}, runtimeOptions = {}) {
     selectorFallback: null,
     captureBeyondViewport: false,
     viewportOverrideResult: null,
+    viewportOverrideCleanupHandled: false,
   };
 
   try {
+    if (shouldUseAtomicTmwdViewportCapture(request, state)) {
+      const artifact = await captureAtomicTmwdViewport(args, request, state);
+      return successResponse(args, request, state, artifact);
+    }
     await applyViewportOverride(args, request, state);
     await readPageState(args, request, state);
     const targetFailure = await resolveCaptureTarget(args, request, state);

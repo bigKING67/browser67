@@ -205,7 +205,9 @@ transport drift.
   pass `viewport:{width,height,dpr,is_mobile}`; the wrapper applies temporary
   CDP device metrics, verifies the page viewport and PNG artifact dimensions
   against the requested viewport, and clears the override after capture by
-  default. A responsive capture with stale desktop-sized artifact dimensions
+  default. On TMWD, the set/verify/capture/clear sequence runs in one debugger
+  batch so the session-scoped emulation remains active through the capture.
+  A responsive capture with stale desktop-sized artifact dimensions
   returns a verification error instead of success. Pass
   `layout_selectors` to return compact selector rect/computed-style metrics for
   L3/L4 visual evidence. For `target:"selector"`, browser67 also pre-samples the

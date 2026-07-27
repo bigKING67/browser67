@@ -28,13 +28,15 @@ async function startScreenshotFixture() {
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TMWD screenshot smoke</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; font-family: system-ui, sans-serif; background: #f6f4ef; color: #1f2937; }
     .hero { min-height: 420px; padding: 48px; background: linear-gradient(135deg, #111827, #3b82f6); color: white; }
     .hero h1 { margin: 0 0 16px; font-size: 48px; line-height: 1.05; }
-    .capture-target { width: 360px; height: 180px; margin-top: 32px; border-radius: 24px; background: #f97316; display: grid; place-items: center; font-weight: 800; }
-    .flaky-target { width: 320px; height: 120px; margin-top: 24px; border-radius: 20px; background: #22c55e; display: grid; place-items: center; color: #052e16; font-weight: 800; }
+    .capture-target { width: min(360px, 100%); height: 180px; margin-top: 32px; border-radius: 24px; background: #f97316; display: grid; place-items: center; font-weight: 800; }
+    .flaky-target { width: min(320px, 100%); height: 120px; margin-top: 24px; border-radius: 20px; background: #22c55e; display: grid; place-items: center; color: #052e16; font-weight: 800; }
     .content { height: 860px; padding: 48px; }
   </style>
   <script>
@@ -114,7 +116,11 @@ function createToolCaller(rpc, timeoutMs) {
     const response = await rpc.call("tools/call", { name, arguments: args }, timeoutMs);
     const payload = firstJsonContent(response.result);
     if (response?.result?.isError === true) {
-      throw new Error(`${name} failed: ${String(payload?.error ?? "tool error")}`);
+      throw new Error(`${name} failed: ${JSON.stringify({
+        error: String(payload?.error ?? "tool error"),
+        error_code: payload?.error_code,
+        details: payload?.details,
+      })}`);
     }
     if (payload?.ok === false || payload?.status === "failed") {
       throw new Error(`${name} returned failure: ${JSON.stringify(payload)}`);

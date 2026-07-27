@@ -41,6 +41,11 @@ function normalizeViewportOverride(raw) {
       height: Math.round(height),
       deviceScaleFactor: dpr,
       mobile: raw.is_mobile === true || raw.mobile === true,
+      screenWidth: Math.round(width),
+      screenHeight: Math.round(height),
+      positionX: 0,
+      positionY: 0,
+      dontSetVisibleSize: false,
       ...(scale !== null ? { scale } : {}),
     },
   };
