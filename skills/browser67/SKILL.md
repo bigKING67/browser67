@@ -20,7 +20,7 @@ two paired MCP surfaces:
 
 - Use `browser67` for the project, package, CLI, docs, and runtime umbrella.
 - Keep `tmwd_browser` and `js-reverse` as MCP config keys.
-- Treat `tmwd-browser-mcp` as a legacy compatibility alias only.
+- Do not install or route through the retired `tmwd-browser-mcp` Skill.
 - Runtime home is resolved through `BROWSER67_HOME`, legacy
   `TMWD_BROWSER_MCP_HOME`, existing `~/.browser67`, existing
   `~/.tmwd-browser-mcp`, then fresh default `~/.browser67`.
@@ -83,6 +83,31 @@ two paired MCP surfaces:
     bounded `network_observation` options and inspect its idle/final summary.
     Snapshot `limitations` and `marker_policy` are authoritative for opaque
     cross-origin frames, closed shadow roots, document lifetime, and retention.
+
+## CAPTCHA and physical input
+
+- Treat `manual_required_captcha`, `manual_required_mfa`, and
+  `manual_required_sso` as handoff states. Start CAPTCHA assistance with
+  `browser_auth_ops.plan_captcha_assist`; it is a dry-run planner and must keep
+  screenshots region-bounded, redact provider data, and degrade inaccessible
+  cross-origin challenges to manual handoff.
+- Call `browser_auth_ops.assist_captcha` only on a browser67-owned managed tab
+  with the matching explicit coordinate-source confirmation and
+  `confirm_physical_input:true`. Never use token/cookie extraction, JS/CDP
+  clicks, or fullscreen screenshots to solve a challenge.
+- Configure JFBYM/Yunma only through the repo-external setup path, then run
+  `npm run check:captcha-router`, `npm run check:captcha-provider-jfbym`,
+  `npm run check:captcha-provider-jfbym-setup`, and
+  `npm run check:captcha-provider-jfbym-coordinate` after router/provider
+  changes. Protocol solving remains default-off and separately confirmed.
+- Run `npm run check:native-pointer` before physical click/drag work. The
+  optional GUI gate is `npm run check:captcha-assist-physical-live` and requires
+  the explicit physical/confirm environment flags; skipped or blocked runs are
+  not proof. Use `npm run check:ljqctrl` only as a diagnostic unless the guarded
+  execution bridge is explicitly enabled.
+- Wait at least five seconds after a failed physical attempt and hand off for
+  multi-round image/puzzle challenges. Do not keep trying selectors, unrelated
+  profiles, cross-origin IdP actions, or repeated submits.
 
 ## Quality bar
 

@@ -133,7 +133,7 @@ function main() {
     const codexConfig = path.resolve(tempRoot, "config.toml");
 
     mkdirSync(activeSkills, { recursive: true });
-    for (const skill of ["browser67", "tmwd-browser-mcp", "js-reverse"]) {
+    for (const skill of ["browser67", "js-reverse"]) {
       cpSync(path.resolve(repoRoot, "skills", skill), path.resolve(activeSkills, skill), { recursive: true });
     }
     writeExtension(extensionSource);

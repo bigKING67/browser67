@@ -18,13 +18,11 @@ owns observe/capture/rebuild workflows.
 | Copy-ready global prompt rules | `docs/global-prompt-snippet.md` |
 | Project-level prompt for this repo | `AGENTS.md` |
 | browser67 skill | `skills/browser67/` |
-| Legacy browser67 alias skill | `skills/tmwd-browser-mcp/` |
 | JS reverse skill | `skills/js-reverse/` |
 | JS reverse SOP entrypoint | `docs/js-reverse-SOP.md` |
 | Generic browser67 agent descriptor | `agents/openai.yaml` |
 | JS reverse agent descriptor | `skills/js-reverse/agents/openai.yaml` |
 | browser67 skill descriptor | `skills/browser67/agents/openai.yaml` |
-| Legacy alias skill descriptor | `skills/tmwd-browser-mcp/agents/openai.yaml` |
 | JS reverse reference docs | `docs/js-reverse/` and `skills/js-reverse/references/` |
 
 `docs/js-reverse/` and `skills/js-reverse/` should stay synchronized. Verify
@@ -82,7 +80,6 @@ This loads package skills from:
 
 ```text
 skills/browser67
-skills/tmwd-browser-mcp
 skills/js-reverse
 ```
 
@@ -90,10 +87,9 @@ Do not copy these skills into `~/.pi/agent/skills` when `~/.pi/agent` is an
 in-place `pi-67` checkout; keep browser67 as the source of truth.
 
 For Codex-style skill directories, synchronize the canonical browser67 and
-js-reverse skills into the user's active skill root. Copy `tmwd-browser-mcp`
-only when an older agent still routes by that legacy alias. Prefer the
-repo helper over hand-copying because it can diff first and creates backups
-before writes:
+js-reverse skills into the user's active skill root. The retired
+`tmwd-browser-mcp` Skill must not be installed. Prefer the repo helper over
+hand-copying because it can diff first and creates backups before writes:
 
 ```bash
 npm run skills:active:diff -- --target ~/.agents/skills
@@ -135,8 +131,8 @@ runtime readiness. After skill or AGENTS synchronization, start a new Agent
 session before treating loader discovery as verified.
 
 The active skill copy is only a loader-facing install artifact. Keep
-`skills/browser67`, `skills/tmwd-browser-mcp`, and `skills/js-reverse` as the
-version-controlled source of truth, and keep MCP configs pointed at
+`skills/browser67` and `skills/js-reverse` as the version-controlled source of
+truth, and keep MCP configs pointed at
 `src/mcp/browser/server.mjs` and `src/mcp/js-reverse/server.mjs`. See
 `docs/active-skill-runtime-model.md` for the full source/runtime/active-copy
 model.
@@ -146,15 +142,13 @@ For agents that consume YAML descriptors, use:
 ```text
 /path/to/browser67/agents/openai.yaml
 /path/to/browser67/skills/browser67/agents/openai.yaml
-/path/to/browser67/skills/tmwd-browser-mcp/agents/openai.yaml
 /path/to/browser67/skills/js-reverse/agents/openai.yaml
 ```
 
 The top-level descriptor mirrors the canonical browser67 skill descriptor.
 Keep its default prompt concise but explicit about managed-tab creation,
 user-tab adoption, `browser67.tool-outcome.v3`, and scoped finalization. The
-legacy alias descriptor remains available for explicit compatibility routing;
-new configurations should invoke `$browser67`.
+canonical browser workflow should invoke `$browser67`.
 
 ## Prompt rules to merge into global/project instructions
 

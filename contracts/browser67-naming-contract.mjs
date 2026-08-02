@@ -64,8 +64,6 @@ function assertDocsAndSkills() {
     "agents/openai.yaml",
     "skills/browser67/SKILL.md",
     "skills/browser67/agents/openai.yaml",
-    "skills/tmwd-browser-mcp/SKILL.md",
-    "skills/tmwd-browser-mcp/agents/openai.yaml",
     "skills/js-reverse/SKILL.md",
     "skills/js-reverse/agents/openai.yaml",
   ]) {
@@ -74,14 +72,12 @@ function assertDocsAndSkills() {
   assert.match(readText("AGENTS.md"), /# browser67 项目规范/);
   assert.match(readText("AGENTS.md"), /browser67.*canonical project\/package\/CLI\/runtime umbrella/);
   assert.match(readText("AGENTS.md"), /~\/\.browser67\/runtime/);
-  assert.match(readText("docs/naming-and-compatibility.md"), /tmwd-browser-mcp.*compatibility alias/s);
-  assert.match(readText("skills/tmwd-browser-mcp/SKILL.md"), /legacy skill name for browser67/);
+  assert.match(readText("docs/naming-and-compatibility.md"), /tmwd-browser-mcp.*Skill.*retired/s);
 }
 
 function assertAgentRoutingMetadata() {
   const topLevelDescriptor = readText("agents/openai.yaml");
   const browser67Descriptor = readText("skills/browser67/agents/openai.yaml");
-  const legacyDescriptor = readText("skills/tmwd-browser-mcp/agents/openai.yaml");
   const jsReverseDescriptor = readText("skills/js-reverse/agents/openai.yaml");
 
   assert.equal(
@@ -96,10 +92,6 @@ function assertAgentRoutingMetadata() {
   assert.match(browser67Descriptor, /finalize_task/);
   assert.match(browser67Descriptor, /value: "tmwd_browser"/);
   assert.match(browser67Descriptor, /value: "js-reverse"/);
-
-  assert.match(legacyDescriptor, /\$tmwd-browser-mcp/);
-  assert.match(legacyDescriptor, /prefer \$browser67/);
-  assert.match(legacyDescriptor, /compatibility/i);
 
   assert.match(jsReverseDescriptor, /\$js-reverse/);
   assert.match(jsReverseDescriptor, /request initiators/);
@@ -212,8 +204,6 @@ function assertAgentFacingPromptBranding() {
     "skills/browser67/agents/openai.yaml",
     "skills/js-reverse/SKILL.md",
     "skills/js-reverse/agents/openai.yaml",
-    "skills/tmwd-browser-mcp/SKILL.md",
-    "skills/tmwd-browser-mcp/agents/openai.yaml",
   ];
   const forbiddenPrimaryBrandPatterns = [
     /\bUse TMWD\b/,
@@ -240,7 +230,7 @@ function assertAgentFacingPromptBranding() {
     }
   }
   assert.match(readText("docs/agent-setup.md"), /skills\/browser67/);
-  assert.match(readText("skills/tmwd-browser-mcp/SKILL.md"), /Legacy alias for browser67/);
+  assert.doesNotMatch(readText("docs/agent-setup.md"), /skills\/tmwd-browser-mcp/);
   assertJsReverseSkillBoundary();
 }
 

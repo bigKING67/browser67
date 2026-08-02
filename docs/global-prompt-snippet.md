@@ -22,5 +22,4 @@ Recommended companion references:
 - `docs/codex-integration.md` for MCP configuration.
 - `docs/agent-setup.md` for complete agent setup.
 - `skills/browser67/SKILL.md` for browser67 project/runtime routing.
-- `skills/tmwd-browser-mcp/SKILL.md` remains the legacy browser67 routing alias.
 - `skills/js-reverse/SKILL.md` for JS reverse workflows.

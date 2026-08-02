@@ -15,11 +15,12 @@ browser67 is the canonical project, package, CLI, and runtime umbrella.
 
 ## Compatibility names
 
-`tmwd-browser-mcp` remains a compatibility alias only:
+The `tmwd-browser-mcp` Skill is retired. The name remains only where existing
+installations need migration or cleanup compatibility:
 
 - legacy npm/bin entrypoint;
-- legacy skill name for callers that have not switched to `skills/browser67`;
 - legacy runtime path `~/.tmwd-browser-mcp`;
+- legacy launchd labels that uninstall and migration tooling must remove;
 - historical docs or upstream provenance context.
 
 Do not use `tmwd-browser-mcp` as the umbrella project name in new docs. When the

@@ -15,7 +15,7 @@ import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const sourceRoot = path.resolve(repoRoot, "skills");
-const DEFAULT_SKILLS = ["browser67", "tmwd-browser-mcp", "js-reverse"];
+const DEFAULT_SKILLS = ["browser67", "js-reverse"];
 const DEFAULT_SHARED_ROOT = "~/.agents/skills";
 const DEFAULT_AUDIT_ROOTS = [
   DEFAULT_SHARED_ROOT,

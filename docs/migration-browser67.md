@@ -70,9 +70,9 @@ Use this checklist before any manual legacy-home cleanup:
 9. Ask the operator before archiving or deleting `~/.tmwd-browser-mcp`.
 
 Do not rename or delete `tmwd_cdp_bridge`: that name remains the extension and
-protocol provenance label. Keep the `tmwd_browser` MCP key and
-`tmwd-browser-mcp` bin/skill aliases until downstream Codex, Pi, grobot, and
-user configs have migrated.
+protocol provenance label. Keep the `tmwd_browser` MCP key. The
+`tmwd-browser-mcp` Skill is retired; retain the old bin/runtime identifiers
+only while downstream installations still need migration or cleanup.
 
 ## LaunchAgent
 

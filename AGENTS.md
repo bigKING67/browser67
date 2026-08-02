@@ -4,7 +4,7 @@
 
 ## 设计边界
 
-- `browser67` 是 canonical project/package/CLI/runtime umbrella；`tmwd-browser-mcp` 只作为 legacy compatibility alias，不再作为新文档或新配置的项目主称呼。
+- `browser67` 是 canonical project/package/CLI/runtime umbrella；`tmwd-browser-mcp` Skill 已退役，同名 CLI/runtime path 仅保留迁移和卸载兼容。
 - 默认路径是 browser67 用户真实浏览器：Chrome/Edge 扩展 + 本地 hub + MCP server；底层 transport/protocol 仍称 `tmwd`。
 - `tmwd_mode=tmwd` 是登录态任务默认值；不要静默 fallback 到 remote-debugging CDP。
 - `tmwd_mode=remote_cdp` 仅用于 CI、受控 debug Chrome、JS 逆向需要 Network/Debugger/Script source 的场景。
@@ -39,7 +39,7 @@
   - 刷新目标 tab，让 content script 重新注入
   - `npm run check:live:doctor`
   - 确认 `tmwd_ws_runtime` 或 `tmwd_link_runtime` 为 `extension_identity_ok`，不能只用磁盘文件一致代替 live service-worker 身份证明
-- 修改 browser67/tmwd-browser-mcp skill 或 Agent 安装规则后运行：
+- 修改 browser67/js-reverse skill 或 Agent 安装规则后运行：
   - `npm run check:active-skill-sync`
   - `npm run skills:active:diff -- --target ~/.agents/skills`
   - 仅在明确更新当前 active root 时运行 `npm run skills:active:sync -- --target ~/.agents/skills`，随后用新 Agent 会话验证 skill discovery

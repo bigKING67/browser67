@@ -5,8 +5,9 @@ browser67 exposes two paired MCP surfaces for Codex:
 - `tmwd_browser`: browser67 real Chrome/Edge profile automation tool key.
 - `js-reverse`: browser67-backed reverse workflows on the same browser runtime.
 
-Use `browser67` as the project/package/CLI name. `tmwd-browser-mcp` is only a
-legacy compatibility alias.
+Use `browser67` as the project/package/CLI and Skill name. The
+`tmwd-browser-mcp` Skill is retired; the old name remains only in bounded
+CLI/runtime migration compatibility.
 
 Recommended Codex MCP block:
 

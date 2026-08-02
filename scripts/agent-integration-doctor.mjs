@@ -233,7 +233,6 @@ function buildReport(options) {
     "src/mcp/browser/server.mjs",
     "src/mcp/js-reverse/server.mjs",
     "skills/browser67/SKILL.md",
-    "skills/tmwd-browser-mcp/SKILL.md",
     "skills/js-reverse/SKILL.md",
     "docs/codex-integration.md",
     "docs/agent-setup.md",

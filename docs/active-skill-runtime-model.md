@@ -23,7 +23,6 @@ The canonical skill source is committed in this repository:
 
 ```text
 skills/browser67
-skills/tmwd-browser-mcp
 skills/js-reverse
 ```
 
@@ -45,8 +44,6 @@ For example:
 ```text
 ~/.agents/skills/browser67/SKILL.md
 ~/.agents/skills/browser67/agents/openai.yaml
-~/.agents/skills/tmwd-browser-mcp/SKILL.md
-~/.agents/skills/tmwd-browser-mcp/agents/openai.yaml
 ~/.agents/skills/js-reverse/SKILL.md
 ~/.agents/skills/js-reverse/agents/openai.yaml
 ```

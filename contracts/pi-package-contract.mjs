@@ -16,8 +16,13 @@ function requireCondition(condition, message) {
 requireCondition(pkg.name === "browser67", "package name must be browser67");
 requireCondition(Array.isArray(pkg.keywords) && pkg.keywords.includes("pi-package"), "keywords must include pi-package");
 
-const expectedSkills = ["skills/browser67", "skills/tmwd-browser-mcp", "skills/js-reverse"];
+const expectedSkills = ["skills/browser67", "skills/js-reverse"];
 const actualSkills = Array.isArray(pkg.pi?.skills) ? pkg.pi.skills : [];
+
+requireCondition(
+  JSON.stringify(actualSkills) === JSON.stringify(expectedSkills),
+  `pi.skills must exactly match canonical skills: ${expectedSkills.join(", ")}`,
+);
 
 for (const skill of expectedSkills) {
   requireCondition(actualSkills.includes(skill), `pi.skills must include ${skill}`);

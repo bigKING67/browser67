@@ -16,7 +16,7 @@ import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const auditScript = path.resolve(repoRoot, "scripts/skills-roots-audit.mjs");
-const managedSkills = ["browser67", "tmwd-browser-mcp", "js-reverse"];
+const managedSkills = ["browser67", "js-reverse"];
 
 function copySkill(skill, targetRoot) {
   mkdirSync(targetRoot, { recursive: true });
@@ -78,7 +78,7 @@ function main() {
     assert.equal(shared.role, "shared_active_root");
     assert.equal(shared.sync_policy, "sync_allowed_when_intentional");
     assert.equal(shared.actionability, "active_root_actionable");
-    assert.equal(shared.summary.current_count, 3);
+    assert.equal(shared.summary.current_count, 2);
     assert.equal(shared.summary.drift_count, 0);
 
     const stale = report.roots.find((root) => root.path === staleRoot);
@@ -88,7 +88,7 @@ function main() {
     const staleJsReverse = stale.managed_skills.find((skill) => skill.skill === "js-reverse");
     assert.equal(staleJsReverse.status, "drift");
     assert.deepEqual(staleJsReverse.changed, ["SKILL.md"]);
-    assert.equal(stale.summary.missing_count, 2);
+    assert.equal(stale.summary.missing_count, 1);
 
     const pi = report.roots.find((root) => root.path === piRoot);
     const piBrowser67 = pi.managed_skills.find((skill) => skill.skill === "browser67");
@@ -99,7 +99,7 @@ function main() {
 
     const missing = report.roots.find((root) => root.path === missingRoot);
     assert.equal(missing.root_status, "missing");
-    assert.equal(missing.summary.missing_count, 3);
+    assert.equal(missing.summary.missing_count, 2);
     assert.equal(report.summary.actionable_drift_root_count, 0);
     assert.equal(report.summary.audit_only_not_actionable_root_count >= 1, true);
 

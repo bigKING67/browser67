@@ -690,7 +690,7 @@ async function buildAudit(args) {
   ] = await Promise.all([
     readPackageJson(),
     readText("README.md"),
-    readText("skills/tmwd-browser-mcp/SKILL.md"),
+    readText("skills/browser67/SKILL.md"),
   ]);
   const report = buildChangeSetReport(undefined, {
     include_empty_groups: true,
