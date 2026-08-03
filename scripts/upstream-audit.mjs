@@ -251,6 +251,14 @@ function hashFile(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function sourceFileHashes(sourceDir) {
+  if (!existsSync(sourceDir)) return [];
+  return listFiles(sourceDir).map((file) => ({
+    path: file,
+    sha256: hashFile(resolve(sourceDir, file)),
+  }));
+}
+
 function safeReadJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -297,8 +305,8 @@ function validateReviewRecord(record) {
   if (!isRecord(record)) {
     return ["review ledger root must be an object"];
   }
-  if (record.schema_version !== 1) {
-    errors.push("schema_version must be 1");
+  if (record.schema_version !== 2) {
+    errors.push("schema_version must be 2");
   }
   if (!isRecord(record.upstream)) {
     errors.push("upstream must be an object");
@@ -340,6 +348,15 @@ function validateReviewRecord(record) {
     }
     if (!Array.isArray(record.extension_review.per_file_decision)) {
       errors.push("extension_review.per_file_decision must be an array");
+    }
+    if (!Array.isArray(record.extension_review.reviewed_source_files)
+      || record.extension_review.reviewed_source_files.length === 0
+      || record.extension_review.reviewed_source_files.some((entry) => (
+        !isRecord(entry)
+        || typeof entry.path !== "string"
+        || !/^[0-9a-f]{64}$/i.test(String(entry.sha256 ?? ""))
+      ))) {
+      errors.push("extension_review.reviewed_source_files must contain path and sha256 records");
     }
   }
   return errors;
@@ -613,7 +630,34 @@ function summarizeExtensionReview(diff, localFeatures, sourceFeatures) {
   };
 }
 
-function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, extensionReview, sourceCheckoutMatchesRemoteMain }) {
+function normalizedSourceFiles(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((entry) => ({
+      path: String(entry?.path ?? ""),
+      sha256: String(entry?.sha256 ?? ""),
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function sourceFilesEqual(left, right) {
+  const normalizedLeft = normalizedSourceFiles(left);
+  const normalizedRight = normalizedSourceFiles(right);
+  return normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((entry, index) => (
+      entry.path === normalizedRight[index].path
+      && entry.sha256 === normalizedRight[index].sha256
+    ));
+}
+
+function summarizeUpstreamReview({
+  reviewFile,
+  review,
+  remote,
+  lockedCommit,
+  extensionReview,
+  sourceCheckoutMatchesRemoteMain,
+  checkedSourceFiles,
+}) {
   const record = review?.value ?? null;
   const validationErrors = review?.exists !== true
     ? []
@@ -634,6 +678,7 @@ function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, ext
       ?? record?.extension_review?.files,
   );
   const currentChangedFiles = sortedStrings((extensionReview?.files ?? []).map((item) => item.file));
+  const reviewedSourceFiles = normalizedSourceFiles(record?.extension_review?.reviewed_source_files);
   const remoteMainReviewed = reviewOk === true
     && remote.ok === true
     && Boolean(remote.commit)
@@ -642,7 +687,8 @@ function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, ext
   const currentExtensionReviewMatchesDecision = remoteMainReviewed === true
     && sourceCheckoutMatchesRemoteMain === true
     && reviewedMergeMode === extensionReview?.recommended_merge_mode
-    && (reviewedChangedFiles.length === 0 || arraysEqual(reviewedChangedFiles, currentChangedFiles));
+    && (reviewedChangedFiles.length === 0 || arraysEqual(reviewedChangedFiles, currentChangedFiles))
+    && sourceFilesEqual(reviewedSourceFiles, checkedSourceFiles);
   let status = "unknown_remote";
   let stale = null;
   let statusReason = "remote main was not checked";
@@ -697,6 +743,7 @@ function summarizeUpstreamReview({ reviewFile, review, remote, lockedCommit, ext
     pending_remote_review: pendingRemoteReview,
     reviewed_changed_files: reviewedChangedFiles,
     current_changed_files: currentChangedFiles,
+    reviewed_source_files_match: sourceFilesEqual(reviewedSourceFiles, checkedSourceFiles),
   };
 }
 
@@ -846,6 +893,7 @@ function buildAudit(args) {
     const localFeatures = featureMatrixFor(resolve(targetDir, "background.js"));
     const sourceFeatures = featureMatrixFor(resolve(resolvedArgs.sourceDir, "background.js"));
     const extensionReview = summarizeExtensionReview(diff, localFeatures, sourceFeatures);
+    const checkedSourceFiles = sourceFileHashes(resolvedArgs.sourceDir);
     const sourceCheckoutMatchesLockedCommit = Boolean(localStatus.head && lockedCommit && localStatus.head === lockedCommit);
     const sourceCheckoutMatchesRemoteMain = Boolean(localStatus.head && remote.commit && localStatus.head === remote.commit);
     const lockMatchesRemoteMain = Boolean(lockedCommit && remote.commit && lockedCommit === remote.commit);
@@ -856,6 +904,7 @@ function buildAudit(args) {
       lockedCommit,
       extensionReview,
       sourceCheckoutMatchesRemoteMain,
+      checkedSourceFiles,
     });
     const recommendation = buildRecommendation({
       diff,
@@ -889,6 +938,7 @@ function buildAudit(args) {
         latest_temp: latest.latest_checkout !== null,
         matches_locked_commit: sourceCheckoutMatchesLockedCommit,
         matches_remote_main: sourceCheckoutMatchesRemoteMain,
+        files: checkedSourceFiles,
       },
       source_checkout_matches_locked_commit: sourceCheckoutMatchesLockedCommit,
       source_checkout_matches_remote_main: sourceCheckoutMatchesRemoteMain,

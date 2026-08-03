@@ -45,8 +45,10 @@
   - 仅在明确更新当前 active root 时运行 `npm run skills:active:sync -- --target ~/.agents/skills`，随后用新 Agent 会话验证 skill discovery
   - `npm run doctor:agent -- --check --json`
 - 同步 GenericAgent 上游扩展后运行：
-  - `npm run extension:sync`
+  - 先运行 `npm run upstream:audit:latest` 并刷新 `UPSTREAM.review.json`
   - `npm run extension:check`
+  - 只有审计允许直接同步时才运行 `npm run extension:sync`；已确认的人工分叉必须显式使用 `-- --force-reviewed-sync`
+  - 需要证明字节完全一致时运行 `npm run extension:check:strict`
   - `npm run upstream:lock`
   - `npm run check`
 - 常规提交前优先运行：

@@ -639,11 +639,10 @@ standalone project from the local upstream checkout:
 ```bash
 cd /path/to/browser67
 npm run upstream:audit
+npm run upstream:audit:latest
 npm run check:upstream-audit
 npm run check:upstream-review
-npm run extension:sync
 npm run extension:check
-npm run upstream:lock
 npm run check
 npm run check:js-reverse-live
 ```
@@ -667,6 +666,12 @@ required local preserve-feature decisions. Audit output exposes
 `upstream_review.status`, `upstream_review.stale`, and
 `upstream_review.next_command`, so `status=stale` is a hard signal to refresh the
 ledger after a new manual upstream review.
+`npm run extension:check` treats per-file ledger coverage as
+`reviewed_divergence` and succeeds without pretending the files are byte-aligned.
+Use `npm run extension:check:strict` for exact alignment. The mutation command
+`npm run extension:sync` refuses drift unless the ledger allows direct sync or
+the caller explicitly passes `-- --force-reviewed-sync` after manual review;
+only then refresh `UPSTREAM.lock.json`.
 `npm run check:upstream-audit` covers the deterministic fixture contract for
 these decisions.
 

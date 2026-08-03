@@ -51,7 +51,7 @@ function assertStringArrayIncludesAll(value, required, label) {
 }
 
 function assertReviewLedgerSemantics(review) {
-  assert.equal(review.schema_version, 1);
+  assert.equal(review.schema_version, 2);
   assert.ok(isRecord(review.upstream), "upstream must be an object");
   assert.equal(review.upstream.name, "lsdefine/GenericAgent");
   assert.ok(
@@ -90,16 +90,23 @@ function assertReviewLedgerSemantics(review) {
   assert.equal(decisionByFile.get("background.js")?.risk, "high_if_blind_synced");
   assert.equal(decisionByFile.get("disable_dialogs.js")?.action, "keep_local_no_behavior_change");
   assert.equal(decisionByFile.get("disable_dialogs.js")?.risk, "none_final_newline_only");
+  const reviewedSourceFiles = review.extension_review.reviewed_source_files ?? [];
+  assert.ok(reviewedSourceFiles.length > 0, "reviewed_source_files must not be empty");
+  assert.ok(reviewedSourceFiles.every((entry) => (
+    typeof entry.path === "string"
+    && /^[0-9a-f]{64}$/i.test(entry.sha256)
+  )), "reviewed_source_files entries must contain path and sha256");
 }
 
 function assertSchemaShape(schema) {
   assert.equal(schema.$id, "https://browser67.local/schemas/upstream-review.schema.json");
   assert.equal(schema.title, "GenericAgent upstream review ledger");
-  assert.equal(schema.properties?.schema_version?.enum?.includes(1), true);
+  assert.equal(schema.properties?.schema_version?.enum?.includes(2), true);
   assert.equal(schema.properties?.upstream?.properties?.reviewed_commit?.pattern, "^[0-9a-fA-F]{40}$");
   assert.deepEqual(schema.properties?.decision?.properties?.extension_merge_mode?.enum, ALLOWED_MERGE_MODES);
   assert.equal(schema.properties?.extension_review?.properties?.changed_files?.$ref, "#/$defs/string_array");
   assert.equal(schema.properties?.extension_review?.properties?.per_file_decision?.items?.$ref, "#/$defs/per_file_decision");
+  assert.equal(schema.properties?.extension_review?.properties?.reviewed_source_files?.items?.$ref, "#/$defs/reviewed_source_file");
 }
 
 function assertInvalidReviewThrows(schema, validReview) {
@@ -137,6 +144,13 @@ function assertInvalidReviewThrows(schema, validReview) {
   assert.throws(
     () => validateSchemaValue(schema, schema, missingRequiredSchemaField),
     /per_file_decision is required/,
+  );
+
+  const missingReviewedSourceFiles = structuredClone(validReview);
+  delete missingReviewedSourceFiles.extension_review.reviewed_source_files;
+  assert.throws(
+    () => validateSchemaValue(schema, schema, missingReviewedSourceFiles),
+    /reviewed_source_files is required/,
   );
 }
 

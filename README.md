@@ -935,9 +935,9 @@ npm run check:js-reverse-upstream-audit
 npm run check:js-reverse-absorption-matrix
 npm run upstream:check
 npm run extension:check
+npm run extension:check:strict
 npm run extension:doctor
 npm run check:extension-install-doctor
-npm run extension:sync
 npm run upstream:lock
 ```
 
@@ -966,6 +966,12 @@ write path for `UPSTREAM.review.json`.
 When remote `main` has already been reviewed, `UPSTREAM.review.json` suppresses
 the pending-review warning while still keeping `safe_to_direct_sync:false` for
 known keep-local bridge drift.
+`npm run extension:check` accepts that ledger-covered local fork and reports
+`reviewed_divergence`; use `npm run extension:check:strict` only when byte-for-byte
+alignment is the intended invariant. `npm run extension:sync` refuses reviewed
+or unreviewed drift by default. Run it with `-- --force-reviewed-sync` only after
+an explicit manual review decides to replace the local files, then refresh
+`UPSTREAM.lock.json` and the review ledger.
 For local mirrors or tests, pass a different repo/ref:
 
 ```bash

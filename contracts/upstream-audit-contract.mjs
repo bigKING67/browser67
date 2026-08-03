@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -51,6 +52,26 @@ function copyExtensionSource(sourceDir) {
   }
 }
 
+function reviewedSourceFiles(sourceDir) {
+  const rows = [];
+  function walk(currentDir, prefix = "") {
+    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const absolutePath = path.resolve(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(absolutePath, relativePath);
+      } else if (entry.isFile() && relativePath !== "config.js") {
+        rows.push({
+          path: relativePath,
+          sha256: createHash("sha256").update(readFileSync(absolutePath)).digest("hex"),
+        });
+      }
+    }
+  }
+  walk(sourceDir);
+  return rows.sort((left, right) => left.path.localeCompare(right.path));
+}
+
 function createGenericAgentFixture(kind) {
   const root = mkdtempSync(path.join(tmpdir(), `genericagent-audit-${kind}-`));
   const sourceDir = path.resolve(root, "assets", "tmwd_cdp_bridge");
@@ -97,8 +118,9 @@ function runAudit(args, expectedStatus = 0) {
 }
 
 function writeReviewLedger(reviewFile, { reviewedCommit, changedFiles = ["background.js"] }) {
+  const sourceDir = path.resolve(path.dirname(reviewFile), "assets", "tmwd_cdp_bridge");
   writeFileSync(reviewFile, JSON.stringify({
-    schema_version: 1,
+    schema_version: 2,
     upstream: {
       name: "lsdefine/GenericAgent",
       remote: path.dirname(reviewFile),
@@ -135,6 +157,7 @@ function writeReviewLedger(reviewFile, { reviewedCommit, changedFiles = ["backgr
           risk: "high_if_blind_synced",
         },
       ],
+      reviewed_source_files: reviewedSourceFiles(sourceDir),
     },
     absorbed_reference: {
       paths: [

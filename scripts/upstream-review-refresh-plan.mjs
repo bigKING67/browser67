@@ -123,6 +123,25 @@ function sortedStrings(values) {
   return Array.from(new Set((Array.isArray(values) ? values : []).map((value) => String(value)).filter(Boolean))).sort();
 }
 
+function normalizedSourceFiles(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((entry) => ({
+      path: String(entry?.path ?? ""),
+      sha256: String(entry?.sha256 ?? ""),
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function sourceFilesEqual(left, right) {
+  const normalizedLeft = normalizedSourceFiles(left);
+  const normalizedRight = normalizedSourceFiles(right);
+  return normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((entry, index) => (
+      entry.path === normalizedRight[index].path
+      && entry.sha256 === normalizedRight[index].sha256
+    ));
+}
+
 function extensionActionFor(mode, directSyncAllowed) {
   if (directSyncAllowed) return "direct_sync_allowed_after_manual_review";
   if (mode === "manual_merge_preserve_local_bridge_features") {
@@ -182,7 +201,7 @@ function buildProposedReview({ currentReview, audit, args }) {
     : sortedStrings(currentReview?.extension_review?.background_preserve_features);
 
   return {
-    schema_version: 1,
+    schema_version: 2,
     upstream: {
       name: currentReview?.upstream?.name ?? "lsdefine/GenericAgent",
       remote: audit.remote_main?.remote ?? currentReview?.upstream?.remote ?? "https://github.com/lsdefine/GenericAgent.git",
@@ -204,6 +223,7 @@ function buildProposedReview({ currentReview, audit, args }) {
       changed_files: changedFiles,
       background_preserve_features: preservedFeatures,
       per_file_decision: (audit.extension_review?.files ?? []).map(perFileDecision),
+      reviewed_source_files: normalizedSourceFiles(audit.checked_source?.files),
     },
     absorbed_reference: currentReview?.absorbed_reference ?? {
       paths: [
@@ -221,8 +241,13 @@ function stableJson(value) {
 function buildPlan(args) {
   const currentReview = readJsonIfExists(args.review_file);
   const audit = runLatestAudit(args);
+  const sourceFilesCurrent = sourceFilesEqual(
+    currentReview?.extension_review?.reviewed_source_files,
+    audit.checked_source?.files,
+  );
   const needsRefresh = audit.upstream_review?.status !== "current"
-    || audit.upstream_review?.current_extension_review_matches_decision !== true;
+    || audit.upstream_review?.current_extension_review_matches_decision !== true
+    || !sourceFilesCurrent;
   const proposedReview = needsRefresh
     ? buildProposedReview({ currentReview, audit, args })
     : currentReview;

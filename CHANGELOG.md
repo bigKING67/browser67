@@ -24,10 +24,13 @@
 - Run the browser live contract in a scoped browser67-owned managed fixture tab,
   finalize it before reporting success, and include the contract in the
   verification manifest's live and verify tiers without operating on user tabs.
-- Refresh the GenericAgent review ledger through `4086d5c` after manual commit
-  comparisons confirmed that `7fede5a..4086d5c` only changes GenericAgent
-  model-reload handling and working-memory guidance, without touching
-  `assets/tmwd_cdp_bridge` or adding a browser67 capability to absorb.
+- Refresh the GenericAgent review ledger through `41e1fce` after manual commit
+  comparisons confirmed that `4086d5c..41e1fce` does not touch
+  `assets/tmwd_cdp_bridge`, retain the audited browser67 extension fork, make
+  `extension:check` distinguish reviewed divergence from strict byte alignment,
+  bind that decision to reviewed per-file SHA-256 values, and refuse extension
+  synchronization unless review policy or an explicit post-review force flag
+  allows mutation.
 
 ## 0.4.0 - 2026-07-23
 

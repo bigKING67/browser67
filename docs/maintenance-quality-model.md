@@ -108,6 +108,7 @@ Extension/upstream gates when bridge files change:
 
 ```bash
 npm run extension:check
+npm run extension:check:strict  # only when exact upstream byte alignment is intended
 npm run upstream:audit
 npm run upstream:audit:latest
 npm run upstream:lock

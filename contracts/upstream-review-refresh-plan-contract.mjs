@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   cpSync,
   mkdirSync,
@@ -64,9 +65,29 @@ function createGenericAgentFixture() {
   };
 }
 
-function writeStaleReview(reviewFile) {
+function reviewedSourceFiles(sourceDir) {
+  const rows = [];
+  function walk(currentDir, prefix = "") {
+    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const absolutePath = path.resolve(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(absolutePath, relativePath);
+      } else if (entry.isFile() && relativePath !== "config.js") {
+        rows.push({
+          path: relativePath,
+          sha256: createHash("sha256").update(readFileSync(absolutePath)).digest("hex"),
+        });
+      }
+    }
+  }
+  walk(sourceDir);
+  return rows.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function writeStaleReview(reviewFile, sourceDir) {
   writeFileSync(reviewFile, `${JSON.stringify({
-    schema_version: 1,
+    schema_version: 2,
     upstream: {
       name: "lsdefine/GenericAgent",
       remote: path.dirname(reviewFile),
@@ -103,6 +124,7 @@ function writeStaleReview(reviewFile) {
           risk: "high_if_blind_synced",
         },
       ],
+      reviewed_source_files: reviewedSourceFiles(sourceDir),
     },
     absorbed_reference: {
       paths: ["docs/upstream/genericagent/README.md"],
@@ -130,7 +152,7 @@ function main() {
   const tempRoot = mkdtempSync(path.join(tmpdir(), "browser67-review-plan-"));
   try {
     const reviewFile = path.resolve(tempRoot, "UPSTREAM.review.json");
-    writeStaleReview(reviewFile);
+    writeStaleReview(reviewFile, path.resolve(fixture.root, "assets", "tmwd_cdp_bridge"));
 
     const preview = runPlan([
       "--latest-repo", fixture.root,
@@ -150,6 +172,7 @@ function main() {
     assert.equal(preview.proposed_review.decision.extension_merge_mode, "manual_merge_preserve_local_bridge_features");
     assert.deepEqual(preview.proposed_review.extension_review.changed_files, ["background.js"]);
     assert.ok(preview.proposed_review.extension_review.background_preserve_features.includes("tabs_get"));
+    assert.ok(preview.proposed_review.extension_review.reviewed_source_files.length > 0);
     assert.ok(preview.commands.write_review.includes("--write --confirm-reviewed"));
 
     const missingConfirm = runPlan([
