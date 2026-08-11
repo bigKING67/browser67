@@ -25,6 +25,9 @@ BROWSER_STRUCTURED_TMWD_LINK_ENDPOINT = "http://127.0.0.1:18766/link"
 [mcp_servers.tmwd_browser.tools.browser_scan]
 approval_mode = "approve"
 
+[mcp_servers.tmwd_browser.tools.browser_instance_ops]
+approval_mode = "approve"
+
 [mcp_servers.tmwd_browser.tools.browser_execute_js]
 approval_mode = "approve"
 
@@ -119,6 +122,35 @@ approval_mode = "approve"
 - Computer Use: desktop UI and pure visual pointer/keyboard actions.
 - `remote_cdp`: explicit debug Chrome/CI/JS reverse protocol work, not ordinary login-state tasks.
 
+## Browser Profile and Browser Instance routing
+
+Each Chrome/Edge Browser Profile runs its own extension service worker, extension
+storage, tabs, and login state. Loading the same unpacked extension bundle in
+two Profiles therefore creates two independent browser67 bridge clients; an
+extension loaded in one Profile is not automatically enabled in another.
+
+browser67 assigns each Profile-local bridge an opaque UUID stored under
+`chrome.storage.local` key `browser67.browser_instance_id.v1`. The stable browser
+target identity is `(browser_instance_id, tab_id)`. The UUID is not derived from
+a Profile path/name, account, cookie, machine name, or extension ID.
+
+- Every `tmwd_browser` and `js-reverse` Tool accepts `browser_instance_id`.
+- Use `browser_instance_ops action=list` to enumerate opaque active instances;
+  use `set_default` or `clear_default` to manage the explicit default.
+- With one active instance, omission selects that sole instance. With multiple
+  active instances and no explicit/default instance, routing fails with
+  `AMBIGUOUS_TARGET` instead of choosing the first/latest tab.
+- If the explicit/default instance is disconnected, routing fails with
+  `BROWSER_INSTANCE_UNAVAILABLE`; it never falls back to another Profile.
+- Managed-tab registry v3, adoption/close tokens, policy leases, concurrency
+  keys, and page outcomes retain both identity components. Legacy registry rows
+  without an instance are `legacy_unresolved` and are not automatically reused,
+  pruned, or closed through a current/default Profile.
+
+Browser Profile is separate from a Pi Agent Profile, a Pi-67 native child JSONL
+Session, a worktree, and the credential records called login profiles. Do not
+reuse a generic `profile` field across these concepts.
+
 Validate the explicit remote CDP path with `npm run check:remote-cdp`. The gate
 launches an isolated headless Chrome profile and local fixture page, then runs
 doctor + live checks against that temporary `remote_cdp` endpoint. It pins the
@@ -131,8 +163,9 @@ target drift instead of falling back to a startup `about:blank` page. Set
 All `tmwd_browser` and `js-reverse` calls return JSON inside standard MCP text
 content using `browser67.tool-outcome.v3`. Read successful handler data from
 `outcome.data`; failures use `outcome.error.code/message/retryable/details`.
-`outcome.page` is either a redacted confirmed-page summary (`tab_id`, `title`,
-`url`, resolution source, and managed-tab state) or `null` when the operation
+`outcome.page` is either a redacted confirmed-page summary
+(`browser_instance_id`, `tab_id`, `session_key`, `title`, `url`, resolution
+source, and managed-tab state) or `null` when the operation
 has no unique page. This keeps the selected page title visible without parsing
 large session arrays.
 
@@ -143,6 +176,10 @@ does not change `main_only`, `text_only`, `max_chars`, `selector_limit`,
 `max_return_chars`, screenshot targets, or other content-scope parameters.
 Use compact for ordinary Agent work and full when diagnosing target/session or
 transport drift.
+
+- `browser_instance_ops`: `list`, `set_default`, or `clear_default` for opaque
+  Browser Instance routing. This Tool manages browser67 routing only; it does
+  not install the extension into another Chrome/Edge Browser Profile.
 
 - `browser_execute_js`: direct browser67/CDP JavaScript execution. Use
   `output_mode:"compact"` plus `max_return_chars` for large DOM/network payloads

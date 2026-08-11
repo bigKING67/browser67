@@ -23,6 +23,7 @@ import {
   resolveTmwd,
 } from "./tmwd-adapter.mjs";
 import { handleFinalizeTask } from "./finalizer.mjs";
+import { browserTabKey } from "../tab-workspace/identity.mjs";
 
 async function handleCheckBrowserHealth(args) {
   try {
@@ -68,8 +69,11 @@ async function handleSelectPage(args) {
   if (!id) {
     return { ok: false, error: "page_id or session_id is required" };
   }
-  markSessionSelected(id, { make_default: false });
-  return { ok: true, selected: id, ...sessionPointers() };
+  const selected = args?.browser_instance_id
+    ? browserTabKey({ browser_instance_id: args.browser_instance_id, tab_id: id })
+    : id;
+  markSessionSelected(selected, { make_default: false });
+  return { ok: true, selected, ...sessionPointers() };
 }
 
 async function handleNewPage(args) {
@@ -123,8 +127,10 @@ async function handleNewPage(args) {
   }
   const tabs = await bridgeCommand(args, { cmd: "tabs" });
   const liveTabs = Array.isArray(tabs.value) ? tabs.value : [];
+  const browserInstanceId = String(tabs.page?.browser_instance_id ?? args?.browser_instance_id ?? "").trim();
   const workspaceArgs = {
     ...args,
+    browser_instance_id: browserInstanceId,
     workspace_key: args?.workspace_key ?? "js-reverse",
   };
   const reusable = await findReusableManagedTab(workspaceArgs, url, liveTabs);
@@ -133,7 +139,12 @@ async function handleNewPage(args) {
     let record = reusable.record;
     let navigation;
     if (reusable.policy.navigate_reused && record.url !== reusable.policy.target.normalized_url) {
-      const navigationArgs = { ...args, session_id: record.tab_id, page_id: record.tab_id };
+      const navigationArgs = {
+        ...args,
+        browser_instance_id: record.browser_instance_id,
+        session_id: record.tab_id,
+        page_id: record.tab_id,
+      };
       const preferred = await resolveTmwd(navigationArgs);
       await assertManagedExecutionContext(preferred, browserArgs(navigationArgs));
       const authorization = await authorizeManagedExecutionNavigation(
@@ -156,11 +167,11 @@ async function handleNewPage(args) {
       record = await updateManagedTab(record.tab_id, {
         url,
         title: String(nav.value?.title ?? record.title ?? ""),
-      }) ?? record;
+      }, record.browser_instance_id) ?? record;
     } else {
-      record = await updateManagedTab(record.tab_id, { touch: true }) ?? record;
+      record = await updateManagedTab(record.tab_id, { touch: true }, record.browser_instance_id) ?? record;
     }
-    markSessionSelected(record.tab_id, { make_default: false });
+    markSessionSelected(record.session_key || record.tab_id, { make_default: false });
     return {
       ok: true,
       action: "new_page",
@@ -198,6 +209,7 @@ async function handleNewPage(args) {
   const record = await recordManagedTab({
     ...args,
     tab_id: tabId,
+    browser_instance_id: String(result.page?.browser_instance_id ?? args?.browser_instance_id ?? "").trim(),
     workspace_key: args?.workspace_key ?? "js-reverse",
     url,
     title: String(result?.value?.title ?? result?.value?.data?.title ?? ""),
@@ -205,7 +217,7 @@ async function handleNewPage(args) {
     keep: args?.keep === true,
   });
   if (record.tab_id) {
-    markSessionSelected(record.tab_id, { make_default: false });
+    markSessionSelected(record.session_key || record.tab_id, { make_default: false });
   }
   return {
     ok: true,

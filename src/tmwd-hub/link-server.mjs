@@ -3,9 +3,13 @@ import { createServer } from "node:http";
 import { extensionRuntimeInfo } from "./extension-identity.mjs";
 import { relayExecToExtension } from "./relay.mjs";
 import {
+  clearDefaultBrowserInstance,
   findSessions,
   listActiveSessions,
+  listBrowserInstances,
   pickSession,
+  resolveBrowserInstance,
+  setDefaultBrowserInstance,
 } from "./sessions.mjs";
 import { respondJson, toSerializableError } from "./socket-utils.mjs";
 import { nowIso } from "./time.mjs";
@@ -47,7 +51,25 @@ async function handleLinkCommand(hub, config, res, chunks) {
   const cmd = String(payload.cmd ?? "").trim();
 
   if (cmd === "get_all_sessions") {
-    respondJson(res, 200, { r: listActiveSessions(hub, config.sessionTtlMs) });
+    try {
+      const browserInstanceId = resolveBrowserInstance(
+        hub,
+        payload.browser_instance_id ?? payload.browserInstanceId,
+      );
+      respondJson(res, 200, {
+        r: listActiveSessions(hub, config.sessionTtlMs).filter((session) => (
+          session.browser_instance_id === browserInstanceId
+        )),
+      });
+    } catch (error) {
+      respondJson(res, 200, {
+        r: {
+          error: toSerializableError(error).message,
+          errorCode: error?.errorCode,
+          details: error?.details,
+        },
+      });
+    }
     return;
   }
 
@@ -57,7 +79,44 @@ async function handleLinkCommand(hub, config, res, chunks) {
   }
 
   if (cmd === "find_session") {
-    respondJson(res, 200, { r: findSessions(hub, config.sessionTtlMs, payload.url_pattern) });
+    try {
+      respondJson(res, 200, {
+        r: findSessions(
+          hub,
+          config.sessionTtlMs,
+          payload.url_pattern,
+          payload.browser_instance_id ?? payload.browserInstanceId,
+        ),
+      });
+    } catch (error) {
+      respondJson(res, 200, {
+        r: {
+          error: toSerializableError(error).message,
+          errorCode: error?.errorCode,
+          details: error?.details,
+        },
+      });
+    }
+    return;
+  }
+
+  if (cmd === "browser_instance_ops") {
+    const action = String(payload.action ?? "list").trim();
+    if (action === "set_default") {
+      setDefaultBrowserInstance(hub, payload.browser_instance_id);
+    } else if (action === "clear_default") {
+      clearDefaultBrowserInstance(hub);
+    } else if (action !== "list") {
+      respondJson(res, 200, { r: { ok: false, error: `unknown browser instance action: ${action}` } });
+      return;
+    }
+    respondJson(res, 200, {
+      r: {
+        ok: true,
+        default_browser_instance_id: hub.defaultBrowserInstanceId || null,
+        browser_instances: listBrowserInstances(hub),
+      },
+    });
     return;
   }
 
@@ -70,7 +129,24 @@ async function handleLinkCommand(hub, config, res, chunks) {
 }
 
 async function handleExecuteJs(hub, config, res, payload) {
-  const session = pickSession(hub, config.sessionTtlMs, payload.sessionId);
+  let session;
+  try {
+    session = pickSession(
+      hub,
+      config.sessionTtlMs,
+      payload.sessionId,
+      payload.browser_instance_id ?? payload.browserInstanceId,
+    );
+  } catch (error) {
+    respondJson(res, 200, {
+      r: {
+        error: toSerializableError(error).message,
+        errorCode: error?.errorCode,
+        details: error?.details,
+      },
+    });
+    return;
+  }
   if (!session) {
     respondJson(res, 200, { r: { error: "no active session available" } });
     return;
@@ -84,7 +160,8 @@ async function handleExecuteJs(hub, config, res, payload) {
   let execResult;
   try {
     execResult = await relayExecToExtension(hub, {
-      sessionId: session.id,
+      browserInstanceId: session.browser_instance_id,
+      sessionId: session.tab_id,
       code: payload.code,
       timeoutMs,
       monitorNewTabs: payload.monitorNewTabs !== false,

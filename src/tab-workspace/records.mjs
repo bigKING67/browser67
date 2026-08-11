@@ -4,13 +4,20 @@ import {
   normalizeWorkspaceKey,
   parseUrlParts,
 } from "./policy.mjs";
+import {
+  browserInstanceIdFrom,
+  browserTabKey,
+} from "./identity.mjs";
 
 function buildManagedRecord(input = {}) {
   const url = String(input.url ?? "").trim() || "about:blank";
   const parts = parseUrlParts(url);
   const now = nowIso();
-  return {
+  const browserInstanceId = browserInstanceIdFrom(input);
+  const record = {
     tab_id: String(input.tab_id ?? input.tabId ?? "").trim() || randomId("tmwd_tab"),
+    browser_instance_id: browserInstanceId,
+    browser_instance_identity: browserInstanceId ? "resolved" : "legacy_unresolved",
     owner: "tmwd",
     managed: true,
     ownership_origin: String(input.ownership_origin ?? "agent_created"),
@@ -60,11 +67,18 @@ function buildManagedRecord(input = {}) {
     updated_at: String(input.updated_at ?? now),
     last_used_at: String(input.last_used_at ?? now),
   };
+  return {
+    ...record,
+    session_key: browserTabKey(record),
+  };
 }
 
 function managedTabPayload(record) {
   return {
     tab_id: record.tab_id,
+    browser_instance_id: record.browser_instance_id || undefined,
+    browser_instance_identity: record.browser_instance_identity,
+    session_key: record.session_key,
     owner: record.owner,
     managed: true,
     ownership_origin: record.ownership_origin,
@@ -120,6 +134,7 @@ function managedTabFinalizeHint(record, options = {}) {
     : (payload.task_id ? { task_id: payload.task_id } : {});
   const suggestedArguments = {
     ...(includeAction ? { action } : {}),
+    ...(payload.browser_instance_id ? { browser_instance_id: payload.browser_instance_id } : {}),
     ...scopeArgs,
     prune_stale: true,
   };

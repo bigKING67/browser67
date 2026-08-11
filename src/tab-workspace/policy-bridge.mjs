@@ -123,6 +123,7 @@ async function releaseManagedTabPolicy(args, record, options = {}) {
   try {
     const preferred = await resolvePreferredBrowserContext({
       ...args,
+      browser_instance_id: record.browser_instance_id || args?.browser_instance_id,
       switch_tab_id: record.tab_id,
       session_id: record.tab_id,
     }, options);

@@ -9,6 +9,13 @@ function normalizeIdToken(raw) {
   return value.length > 0 ? value : "";
 }
 
+function selectionError(code, message, details = {}) {
+  return Object.assign(new Error(message), {
+    errorCode: code,
+    details,
+  });
+}
+
 function createSessionRegistry(options = {}) {
   const retainMs = Math.max(0, Number(options.retain_ms ?? SESSION_RETAIN_MS));
   const maxRecords = Math.max(1, Number(options.max_records ?? MAX_SESSION_RECORDS));
@@ -22,10 +29,14 @@ function createSessionRegistry(options = {}) {
   }
 
   function sessionPointers() {
+    const activeRecord = sessions.get(activeTargetId);
+    const defaultRecord = sessions.get(defaultSessionId);
     return {
       active_session_id: activeTargetId || null,
       default_session_id: defaultSessionId || null,
       latest_session_id: latestSessionId || null,
+      active_browser_instance_id: activeRecord?.browser_instance_id || null,
+      default_browser_instance_id: defaultRecord?.browser_instance_id || null,
     };
   }
 
@@ -72,6 +83,9 @@ function createSessionRegistry(options = {}) {
       if (!existing) {
         sessions.set(target.id, {
           id: target.id,
+          tab_id: target.tab_id ?? target.id,
+          browser_instance_id: target.browser_instance_id ?? "",
+          browser_instance_default: target.browser_instance_default === true,
           url: target.url,
           title: target.title,
           type: "ext_ws",
@@ -84,6 +98,9 @@ function createSessionRegistry(options = {}) {
       }
       sessions.set(target.id, {
         ...existing,
+        tab_id: target.tab_id ?? target.id,
+        browser_instance_id: target.browser_instance_id ?? "",
+        browser_instance_default: target.browser_instance_default === true,
         url: target.url,
         title: target.title,
         disconnect_at: null,
@@ -109,6 +126,9 @@ function createSessionRegistry(options = {}) {
       if (!includeDisconnected && !active) continue;
       rows.push({
         id: record.id,
+        tab_id: record.tab_id,
+        browser_instance_id: record.browser_instance_id,
+        browser_instance_default: record.browser_instance_default,
         url: record.url,
         title: record.title,
         type: record.type,
@@ -143,55 +163,98 @@ function createSessionRegistry(options = {}) {
 
   function selectTarget(targets, args) {
     if (!Array.isArray(targets) || targets.length === 0) throw new Error("no candidate targets");
+    const explicitBrowserInstanceId = normalizeIdToken(args?.browser_instance_id ?? args?.browserInstanceId);
+    const availableBrowserInstanceIds = [...new Set(targets
+      .map((item) => normalizeIdToken(item.browser_instance_id))
+      .filter(Boolean))].sort();
+    let browserInstanceId = explicitBrowserInstanceId;
+    let instanceSelectedBy = explicitBrowserInstanceId ? "browser_instance_id" : "";
+    if (browserInstanceId && !availableBrowserInstanceIds.includes(browserInstanceId)) {
+      throw selectionError(
+        "BROWSER_INSTANCE_UNAVAILABLE",
+        `browser instance is unavailable: ${browserInstanceId}`,
+        { browser_instance_id: browserInstanceId, available_browser_instance_ids: availableBrowserInstanceIds },
+      );
+    }
+    if (!browserInstanceId && availableBrowserInstanceIds.length > 0) {
+      const defaults = [...new Set(targets
+        .filter((item) => item.browser_instance_default === true)
+        .map((item) => item.browser_instance_id))];
+      if (defaults.length === 1) {
+        browserInstanceId = defaults[0];
+        instanceSelectedBy = "default_browser_instance";
+      } else if (availableBrowserInstanceIds.length === 1) {
+        browserInstanceId = availableBrowserInstanceIds[0];
+        instanceSelectedBy = "sole_active_browser_instance";
+      } else {
+        throw selectionError(
+          "AMBIGUOUS_TARGET",
+          "multiple browser instances are active; specify browser_instance_id or set an explicit default",
+          { available_browser_instance_ids: availableBrowserInstanceIds },
+        );
+      }
+    }
+    const candidateTargets = browserInstanceId
+      ? targets.filter((item) => item.browser_instance_id === browserInstanceId)
+      : targets;
+    if (candidateTargets.length === 0) {
+      throw selectionError("BROWSER_INSTANCE_UNAVAILABLE", "selected browser instance has no active tabs");
+    }
     const explicitTabId = normalizeIdToken(args?.switch_tab_id ?? args?.tab_id ?? args?.tabId);
     const explicitSessionId = normalizeIdToken(args?.session_id ?? args?.sessionId);
     const explicitSessionPattern = String(args?.session_url_pattern ?? args?.url_pattern ?? "").trim();
     const urlHint = String(args?.target_url_contains ?? "").trim();
     let selected = null;
     let selectedBy = "";
-    let selectionWarning = "";
     if (explicitTabId) {
-      selected = targets.find((item) => item.id === explicitTabId) ?? null;
+      selected = candidateTargets.find((item) => (
+        item.id === explicitTabId || normalizeIdToken(item.tab_id) === explicitTabId
+      )) ?? null;
       if (!selected) throw new Error(`tab not found: ${explicitTabId}`);
       selectedBy = "tab_id";
     }
     if (!selected && explicitSessionId) {
-      selected = targets.find((item) => item.id === explicitSessionId) ?? null;
-      if (selected) selectedBy = "session_id";
+      selected = candidateTargets.find((item) => (
+        item.id === explicitSessionId || normalizeIdToken(item.tab_id) === explicitSessionId
+      )) ?? null;
+      if (!selected) throw new Error(`session not found: ${explicitSessionId}`);
+      selectedBy = "session_id";
     }
     if (!selected && explicitSessionPattern) {
-      const matched = resolveByPattern(targets, explicitSessionPattern);
-      if (matched.length > 0) {
+      const matched = resolveByPattern(candidateTargets, explicitSessionPattern);
+      if (matched.length > 1) {
+        throw selectionError("AMBIGUOUS_TARGET", "session_url_pattern matched multiple tabs");
+      }
+      if (matched.length === 1) {
         selected = matched[0];
         selectedBy = "session_url_pattern";
       }
     }
     if (!selected && urlHint) {
-      selected = targets.find((item) => item.url.includes(urlHint)) ?? null;
+      const matched = candidateTargets.filter((item) => item.url.includes(urlHint));
+      if (matched.length > 1) throw selectionError("AMBIGUOUS_TARGET", "target_url_contains matched multiple tabs");
+      selected = matched[0] ?? null;
       if (selected) selectedBy = "target_url_contains";
     }
     if (!selected && activeTargetId) {
-      selected = targets.find((item) => item.id === activeTargetId) ?? null;
+      selected = candidateTargets.find((item) => item.id === activeTargetId) ?? null;
       if (selected) selectedBy = "active_target";
     }
     if (!selected && defaultSessionId) {
-      selected = targets.find((item) => item.id === defaultSessionId) ?? null;
+      selected = candidateTargets.find((item) => item.id === defaultSessionId) ?? null;
       if (selected) selectedBy = "default_session";
     }
     if (!selected) {
-      selected = targets.find((item) => item.active) ?? targets[0];
+      selected = candidateTargets.find((item) => item.active) ?? candidateTargets[0];
       selectedBy = selected?.active ? "browser_active" : "first_target";
     }
     if (!selected) throw new Error("no target selected");
-    if (explicitSessionId && selected.id !== explicitSessionId) {
-      selectionWarning = `session_id=${explicitSessionId} unavailable, fallback=${selected.id}`;
-      defaultSessionId = selected.id;
-    }
     return {
       target: selected,
       selection: {
         selected_by: selectedBy || "unknown",
-        warning: selectionWarning || undefined,
+        browser_instance_id: selected.browser_instance_id || undefined,
+        browser_instance_selected_by: instanceSelectedBy || undefined,
       },
     };
   }
@@ -199,6 +262,8 @@ function createSessionRegistry(options = {}) {
   function asShortTabs(targets) {
     return targets.map((item) => ({
       id: item.id,
+      tab_id: item.tab_id,
+      browser_instance_id: item.browser_instance_id,
       url: compactText(item.url, 50),
       title: compactText(item.title, 80),
       active: item.id === activeTargetId || item.active,

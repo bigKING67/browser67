@@ -45,14 +45,17 @@ async function assertManagedExecutionContext(preferred, args = {}, options = {})
     }
     return { required: false, reason: "explicit_remote_cdp" };
   }
-  const tabId = String(preferred?.context?.target?.id ?? "").trim();
+  const tabId = String(
+    preferred?.context?.target?.tab_id ?? preferred?.context?.target?.id ?? "",
+  ).trim();
+  const browserInstanceId = String(preferred?.context?.target?.browser_instance_id ?? "").trim();
   if (!tabId) {
     throw createToolError("TAB_NOT_FOUND", "browser execution did not resolve a target tab", {
       retryable: true,
     });
   }
   const lookup = options.get_managed_tab ?? getManagedTab;
-  let record = await lookup(tabId);
+  let record = await lookup(tabId, browserInstanceId);
   if (!record) {
     throw createToolError(
       "TAB_NOT_MANAGED",
@@ -61,6 +64,7 @@ async function assertManagedExecutionContext(preferred, args = {}, options = {})
         retryable: false,
         details: {
           tab_id: tabId,
+          browser_instance_id: browserInstanceId || undefined,
           next_actions: ["browser_tab_lifecycle.inspect_adoption", "browser_tab_lifecycle.adopt_existing"],
         },
       },
@@ -97,7 +101,7 @@ async function assertManagedExecutionContext(preferred, args = {}, options = {})
       record = await persistUpdate(tabId, {
         ...reconciliation.record,
         touch: false,
-      }) ?? reconciliation.record;
+      }, browserInstanceId) ?? reconciliation.record;
     } else {
       record = reconciliation.record;
     }
@@ -115,6 +119,7 @@ async function assertManagedExecutionContext(preferred, args = {}, options = {})
   }
   return {
     required: true,
+    browser_instance_id: browserInstanceId || undefined,
     tab_id: tabId,
     ownership_origin: record.ownership_origin,
     workspace_key: record.workspace_key,
@@ -127,11 +132,14 @@ async function authorizeManagedExecutionNavigation(preferred, args = {}, reason 
   if (preferred?.transport === "cdp") {
     return { status: "not_applicable", authorized: false, reason: "explicit_remote_cdp" };
   }
-  const tabId = String(preferred?.context?.target?.id ?? "").trim();
+  const tabId = String(
+    preferred?.context?.target?.tab_id ?? preferred?.context?.target?.id ?? "",
+  ).trim();
+  const browserInstanceId = String(preferred?.context?.target?.browser_instance_id ?? "").trim();
   const lookup = options.get_managed_tab ?? getManagedTab;
   const persistUpdate = options.update_managed_tab ?? updateManagedTab;
   const authorize = options.authorize_navigation ?? authorizeManagedTabNavigation;
-  const record = await lookup(tabId);
+  const record = await lookup(tabId, browserInstanceId);
   if (!record || record.ownership_origin !== "user_adopted") {
     return { status: "not_applicable", authorized: false };
   }
@@ -154,7 +162,7 @@ async function authorizeManagedExecutionNavigation(preferred, args = {}, reason 
     navigation_authorized_until: authorization.navigation_authorized_until,
     navigation_authorized_reason: authorization.navigation_authorized_reason,
     touch: false,
-  });
+  }, browserInstanceId);
   return {
     status: "authorized",
     authorized: true,

@@ -51,6 +51,13 @@ async function run() {
     assert.match(background, /importScripts\('browser67\/build-identity\.js', 'browser67\/runtime\.js'\)/);
     assert.match(background, /browser67HandleCommand/);
     assert.match(background, /extension_identity: globalThis\.__browser67BuildIdentity \?\? null/);
+    assert.match(background, /browser67\.browser_instance_id\.v1/);
+    assert.match(background, /crypto\.randomUUID\(\)/);
+    assert.match(background, /browser_instance_id: await browser67GetInstanceId\(\)/);
+    assert.match(
+      background,
+      /type: 'ack', id: data\.id, browser_instance_id: await browser67GetInstanceId\(\)/,
+    );
     assert.match(background, /const monitorNewTabs = data\.monitorNewTabs !== false/);
     assert.match(background, /monitorNewTabs && newTabIds\.size === 0/);
     assert.match(background, /if \(monitorNewTabs\) chrome\.tabs\.onCreated\.addListener/);
@@ -73,7 +80,7 @@ async function run() {
     assert.equal(typeof buildIdentity.build_revision, "string");
     assert.equal(typeof buildIdentity.build_inputs_dirty, "boolean");
     assert.match(buildIdentity.source_digest, /^[a-f0-9]{64}$/);
-    assert.equal(buildIdentity.protocol_revision, 1);
+    assert.equal(buildIdentity.protocol_revision, 2);
     assert.deepEqual(result.extension_identity, buildIdentity);
     assert.match(buildIdentityJavaScript, /globalThis\.__browser67BuildIdentity = Object\.freeze/);
     const batchContext = vm.createContext({});
@@ -143,6 +150,7 @@ async function run() {
       page_execution_runtime_parity: true,
       extension_identity_generated: true,
       extension_identity_handshake_injected: true,
+      browser_instance_identity_injected: true,
     })}\n`);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });

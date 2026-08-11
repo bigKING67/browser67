@@ -13,7 +13,7 @@ import {
   settlePendingFromExtension,
 } from "./relay.mjs";
 import {
-  markAllExtensionSessionsDisconnected,
+  markBrowserInstanceSessionsDisconnected,
   registerTabs,
 } from "./sessions.mjs";
 import { sendWsPayload } from "./socket-utils.mjs";
@@ -30,20 +30,35 @@ function handleSocketMessage(hub, config, socket, raw) {
   }
 
   const type = String(message.type ?? "").trim();
-  if (type === "ext_ready" || type === "tabs_update") {
-    const newExtensionSocket = socket !== hub.extensionSocket;
-    hub.extensionSocket = socket;
-    if (type === "ext_ready" || newExtensionSocket) {
-      registerExtensionHandshake(hub, message.extension_identity);
-    } else if (Object.prototype.hasOwnProperty.call(message, "extension_identity")) {
-      updateExtensionIdentity(hub, message.extension_identity);
+  if (type === "ext_ready") {
+    const browserInstanceId = String(message.browser_instance_id ?? "").trim();
+    const record = registerExtensionHandshake(hub, browserInstanceId, socket, message.extension_identity);
+    if (!record || record.identity_status !== "valid") {
+      sendWsPayload(socket, {
+        type: "error",
+        errorCode: "EXTENSION_PROTOCOL_INCOMPATIBLE",
+        error: "browser67 extension handshake requires protocol revision 2 and browser_instance_id",
+      });
+      if (record) markExtensionDisconnected(hub, browserInstanceId, socket);
+      return;
     }
-    registerTabs(hub, message.tabs ?? [], config.sessionTtlMs);
+    registerTabs(hub, browserInstanceId, message.tabs ?? [], config.sessionTtlMs);
     return;
   }
 
-  if (socket === hub.extensionSocket && (type === "result" || type === "error" || type === "ack")) {
-    settlePendingFromExtension(hub, message);
+  const socketBrowserInstanceId = hub.socketBrowserInstances.get(socket);
+  if (type === "tabs_update" && socketBrowserInstanceId) {
+    const browserInstanceId = String(message.browser_instance_id ?? "").trim();
+    if (browserInstanceId !== socketBrowserInstanceId) return;
+    if (Object.prototype.hasOwnProperty.call(message, "extension_identity")) {
+      updateExtensionIdentity(hub, browserInstanceId, message.extension_identity);
+    }
+    registerTabs(hub, browserInstanceId, message.tabs ?? [], config.sessionTtlMs);
+    return;
+  }
+
+  if (socketBrowserInstanceId && (type === "result" || type === "error" || type === "ack")) {
+    settlePendingFromExtension(hub, socket, message);
     return;
   }
 
@@ -72,11 +87,11 @@ function createWsHubServer(hub, config) {
     socket.on("close", () => {
       hub.clientSockets.delete(socket);
       clearPendingByControllerSocket(hub, socket, "tmwd controller websocket closed");
-      if (socket === hub.extensionSocket) {
-        hub.extensionSocket = null;
-        markExtensionDisconnected(hub);
-        markAllExtensionSessionsDisconnected(hub);
-        clearPendingExec(hub, "tmwd extension websocket closed");
+      const browserInstanceId = hub.socketBrowserInstances.get(socket);
+      if (browserInstanceId) {
+        markExtensionDisconnected(hub, browserInstanceId, socket);
+        markBrowserInstanceSessionsDisconnected(hub, browserInstanceId);
+        clearPendingExec(hub, "tmwd extension websocket closed", browserInstanceId);
       }
     });
     socket.on("error", () => {

@@ -1,4 +1,12 @@
 export {
+  browserInstanceIdFrom,
+  browserTabIdFrom,
+  browserTabKey,
+  normalizeBrowserInstanceId,
+  normalizeBrowserTabId,
+  sameBrowserTab,
+} from "./identity.mjs";
+export {
   buildReusePolicy,
   normalizeOwnershipPolicy,
   normalizeReuseKey,

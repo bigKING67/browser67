@@ -1,6 +1,8 @@
+import { normalizeBrowserInstanceId } from "./browser-instance.mjs";
+import { listBrowserInstances } from "./sessions.mjs";
 import { nowIso } from "./time.mjs";
 
-const HUB_RUNTIME_INFO_SCHEMA = "browser67.hub-runtime-info.v1";
+const HUB_RUNTIME_INFO_SCHEMA = "browser67.hub-runtime-info.v2";
 const EXTENSION_IDENTITY_SCHEMA = "browser67.extension-identity.v1";
 
 function normalizedString(raw) {
@@ -27,44 +29,78 @@ function normalizeExtensionIdentity(raw) {
     || !identity.manifest_version
     || !identity.build_revision
     || !identity.build_revision_source
-    || !/^[a-f0-9]{64}$/.test(identity.source_digest)
+    || !/^[a-f0-9]{64}$/u.test(identity.source_digest)
     || !Number.isInteger(identity.protocol_revision)
-    || identity.protocol_revision < 1
-  ) {
-    return null;
-  }
+    || identity.protocol_revision < 2
+  ) return null;
   return identity;
 }
 
-function registerExtensionHandshake(hub, rawIdentity) {
+function registerExtensionHandshake(hub, browserInstanceId, socket, rawIdentity) {
+  const instanceId = normalizeBrowserInstanceId(browserInstanceId);
+  if (!instanceId) return null;
   const identity = normalizeExtensionIdentity(rawIdentity);
-  hub.extensionIdentity = identity;
-  hub.extensionIdentityStatus = identity ? "valid" : (rawIdentity ? "invalid" : "missing");
-  hub.extensionIdentityReceivedAt = nowIso();
-  hub.extensionConnectedAt = hub.extensionIdentityReceivedAt;
-  hub.extensionDisconnectedAt = null;
+  const now = nowIso();
+  const previous = hub.browserInstances.get(instanceId);
+  if (previous?.socket && previous.socket !== socket) hub.socketBrowserInstances.delete(previous.socket);
+  const record = {
+    socket,
+    identity,
+    identity_status: identity ? "valid" : (rawIdentity ? "invalid" : "missing"),
+    identity_received_at: now,
+    connected_at: now,
+    disconnected_at: null,
+  };
+  hub.browserInstances.set(instanceId, record);
+  hub.socketBrowserInstances.set(socket, instanceId);
+  return record;
 }
 
-function updateExtensionIdentity(hub, rawIdentity) {
+function updateExtensionIdentity(hub, browserInstanceId, rawIdentity) {
+  const instanceId = normalizeBrowserInstanceId(browserInstanceId);
+  const record = hub.browserInstances.get(instanceId);
+  if (!record) return null;
   const identity = normalizeExtensionIdentity(rawIdentity);
-  hub.extensionIdentity = identity;
-  hub.extensionIdentityStatus = identity ? "valid" : (rawIdentity ? "invalid" : "missing");
-  hub.extensionIdentityReceivedAt = nowIso();
+  record.identity = identity;
+  record.identity_status = identity ? "valid" : (rawIdentity ? "invalid" : "missing");
+  record.identity_received_at = nowIso();
+  return record;
 }
 
-function markExtensionDisconnected(hub) {
-  hub.extensionDisconnectedAt = nowIso();
+function markExtensionDisconnected(hub, browserInstanceId, socket) {
+  const instanceId = normalizeBrowserInstanceId(browserInstanceId);
+  const record = hub.browserInstances.get(instanceId);
+  if (!record || record.socket !== socket) return;
+  record.socket = null;
+  record.disconnected_at = nowIso();
+  hub.socketBrowserInstances.delete(socket);
 }
 
 function extensionRuntimeInfo(hub) {
+  const instances = listBrowserInstances(hub).map((summary) => {
+    const record = hub.browserInstances.get(summary.browser_instance_id);
+    return {
+      ...summary,
+      extension_identity_status: record?.identity_status ?? "missing",
+      extension_identity_received_at: record?.identity_received_at ?? null,
+      extension_identity: record?.identity ?? null,
+    };
+  });
+  const selectedId = hub.defaultBrowserInstanceId
+    || (instances.filter((instance) => instance.active).length === 1
+      ? instances.find((instance) => instance.active)?.browser_instance_id
+      : "");
+  const selected = selectedId ? instances.find((instance) => instance.browser_instance_id === selectedId) : null;
   return {
     schema: HUB_RUNTIME_INFO_SCHEMA,
-    extension_connected: hub.extensionSocket !== null,
-    extension_connected_at: hub.extensionConnectedAt,
-    extension_disconnected_at: hub.extensionDisconnectedAt,
-    extension_identity_status: hub.extensionIdentityStatus,
-    extension_identity_received_at: hub.extensionIdentityReceivedAt,
-    extension_identity: hub.extensionIdentity,
+    extension_connected: instances.some((instance) => instance.active),
+    extension_connected_at: selected?.connected_at ?? null,
+    extension_disconnected_at: selected?.disconnected_at ?? null,
+    extension_identity_status: selected?.extension_identity_status ?? "missing",
+    extension_identity_received_at: selected?.extension_identity_received_at ?? null,
+    extension_identity: selected?.extension_identity ?? null,
+    default_browser_instance_id: hub.defaultBrowserInstanceId || null,
+    browser_instances: instances,
   };
 }
 

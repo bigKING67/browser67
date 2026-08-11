@@ -73,12 +73,15 @@ function sameScope(record, scope) {
 }
 
 function targetId(target = {}) {
-  return String(target.id ?? target.tab_id ?? target.tabId ?? target.targetId ?? "").trim();
+  return String(target.tab_id ?? target.tabId ?? target.id ?? target.targetId ?? "").trim();
 }
 
-function findTarget(preferred, tabId) {
+function findTarget(preferred, tabId, browserInstanceId = "") {
   const targets = Array.isArray(preferred?.context?.targets) ? preferred.context.targets : [];
-  return targets.find((target) => targetId(target) === tabId) ?? null;
+  return targets.find((target) => (
+    targetId(target) === tabId
+    && (!browserInstanceId || target.browser_instance_id === browserInstanceId)
+  )) ?? null;
 }
 
 function routeArguments(args = {}) {
@@ -87,7 +90,33 @@ function routeArguments(args = {}) {
     || key === "cdp_endpoint"
     || key === "timeout_ms"
     || key === "include_disconnected"
+    || key === "browser_instance_id"
   )));
+}
+
+function assertTokenTargetMatches(args, token, action) {
+  const requestedBrowserInstanceId = String(
+    args.browser_instance_id ?? args.browserInstanceId ?? "",
+  ).trim();
+  const requestedTabId = String(args.tab_id ?? args.tabId ?? "").trim();
+  if (
+    (requestedBrowserInstanceId && requestedBrowserInstanceId !== token.browser_instance_id)
+    || (requestedTabId && requestedTabId !== token.tab_id)
+  ) {
+    throw createToolError(
+      "ADOPTION_TARGET_CHANGED",
+      `${action} target does not match the Browser Instance and tab bound to the inspection token`,
+      {
+        retryable: false,
+        details: {
+          token_browser_instance_id: token.browser_instance_id,
+          token_tab_id: token.tab_id,
+          requested_browser_instance_id: requestedBrowserInstanceId || undefined,
+          requested_tab_id: requestedTabId || undefined,
+        },
+      },
+    );
+  }
 }
 
 function purgeExpiredTokens(options = {}) {
@@ -105,11 +134,15 @@ function purgeExpiredTokens(options = {}) {
 async function closeAdoptedTab(routeArgs, record, options = {}) {
   const preferred = await resolvePreferredBrowserContext({
     ...routeArgs,
+    browser_instance_id: record.browser_instance_id,
     switch_tab_id: record.tab_id,
   }, options);
   let transport = "cdp";
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    const result = await executeTmwdCommandWithPreferred(routeArgs, preferred, {
+    const result = await executeTmwdCommandWithPreferred({
+      ...routeArgs,
+      browser_instance_id: record.browser_instance_id,
+    }, preferred, {
       cmd: "tabs",
       method: "close",
       tabId: record.tab_id,
@@ -127,7 +160,10 @@ async function closeAdoptedTab(routeArgs, record, options = {}) {
   }
   const startedAt = Date.now();
   do {
-    const live = await readBrowserTabById(routeArgs, preferred, record.tab_id, options);
+    const live = await readBrowserTabById({
+      ...routeArgs,
+      browser_instance_id: record.browser_instance_id,
+    }, preferred, record.tab_id, options);
     if (!live) {
       return { closed: true, close_verified: true, transport };
     }
@@ -145,7 +181,20 @@ async function inspectAdoption(args = {}, options = {}) {
   if (!tabId) {
     throw createToolError("INVALID_ARGUMENT", "tab_id is required when action=inspect_adoption");
   }
-  const existing = await getManagedTab(tabId);
+  const preferred = await resolvePreferredBrowserContext({ ...args, switch_tab_id: tabId }, options);
+  const target = findTarget(
+    preferred,
+    tabId,
+    String(preferred.context?.target?.browser_instance_id ?? args.browser_instance_id ?? "").trim(),
+  );
+  if (!target) {
+    throw createToolError("TAB_NOT_AVAILABLE", "adoption target is not present in the live browser", {
+      retryable: true,
+      details: { tab_id: tabId, browser_instance_id: args.browser_instance_id },
+    });
+  }
+  const browserInstanceId = String(target.browser_instance_id ?? preferred.context?.target?.browser_instance_id ?? "").trim();
+  const existing = await getManagedTab(tabId, browserInstanceId);
   if (existing && !sameScope(existing, scope)) {
     throw createToolError("TAB_OWNED_BY_OTHER_SCOPE", "tab is owned by another workspace/task", {
       retryable: false,
@@ -157,24 +206,17 @@ async function inspectAdoption(args = {}, options = {}) {
       retryable: false,
     });
   }
-  const preferred = await resolvePreferredBrowserContext({ ...args, switch_tab_id: tabId }, options);
-  const target = findTarget(preferred, tabId);
-  if (!target) {
-    throw createToolError("TAB_NOT_AVAILABLE", "adoption target is not present in the live browser", {
-      retryable: true,
-      details: { tab_id: tabId },
-    });
-  }
   const token = randomId("adopt");
   const expiresAtMs = nowMs(state) + state.token_ttl_ms;
   state.putAdoptionToken(token, {
     token,
     tab_id: tabId,
+    browser_instance_id: browserInstanceId,
     scope,
     document_identity: browserDocumentIdentity(target),
     connection_generation: browserConnectionGeneration(preferred),
     ownership_generation: existing?.ownership_generation ?? "unmanaged",
-    route_args: routeArguments(args),
+    route_args: routeArguments({ ...args, browser_instance_id: browserInstanceId }),
     expires_at_ms: expiresAtMs,
   });
   return {
@@ -184,6 +226,7 @@ async function inspectAdoption(args = {}, options = {}) {
     expires_at: new Date(expiresAtMs).toISOString(),
     target: {
       tab_id: tabId,
+      browser_instance_id: browserInstanceId,
       url: String(target.url ?? ""),
       title: String(target.title ?? ""),
     },
@@ -213,11 +256,12 @@ async function adoptExisting(args = {}, options = {}) {
       retryable: false,
     });
   }
+  assertTokenTargetMatches(args, token, "adopt_existing");
   state.adoptionTokens.delete(tokenValue);
   if (token.expires_at_ms <= nowMs(state)) {
     throw createToolError("ADOPTION_TOKEN_EXPIRED", "adoption token expired", { retryable: false });
   }
-  const existing = await getManagedTab(token.tab_id);
+  const existing = await getManagedTab(token.tab_id, token.browser_instance_id);
   if (existing && !sameScope(existing, token.scope)) {
     throw createToolError("TAB_OWNED_BY_OTHER_SCOPE", "tab is owned by another workspace/task", {
       retryable: false,
@@ -230,9 +274,10 @@ async function adoptExisting(args = {}, options = {}) {
   }
   const preferred = await resolvePreferredBrowserContext({
     ...token.route_args,
+    browser_instance_id: token.browser_instance_id,
     switch_tab_id: token.tab_id,
   }, options);
-  const target = findTarget(preferred, token.tab_id);
+  const target = findTarget(preferred, token.tab_id, token.browser_instance_id);
   if (
     !target
     || browserDocumentIdentity(target) !== token.document_identity
@@ -246,6 +291,7 @@ async function adoptExisting(args = {}, options = {}) {
   const leaseId = randomId("lease");
   const candidate = {
     tab_id: token.tab_id,
+    browser_instance_id: token.browser_instance_id,
     url: String(target.url ?? "about:blank"),
     title: String(target.title ?? ""),
     workspace_key: token.scope.workspace_key,
@@ -310,13 +356,14 @@ async function adoptExisting(args = {}, options = {}) {
 async function releaseAdopted(args = {}, options = {}) {
   const scope = options.scope ?? normalizedScope(args);
   const tabId = String(args.tab_id ?? "").trim();
-  const record = await getManagedTab(tabId);
+  const record = await getManagedTab(tabId, args.browser_instance_id);
   if (!record || record.ownership_origin !== "user_adopted") {
     return {
       status: "success",
       action: "release_adopted",
       released: false,
       tab_id: tabId,
+      browser_instance_id: args.browser_instance_id || undefined,
       note: "tab is not user-adopted",
     };
   }
@@ -331,13 +378,14 @@ async function releaseAdopted(args = {}, options = {}) {
     });
   }
   const policyRelease = await releaseManagedTabPolicy(args, record, options);
-  await deleteManagedTab(tabId);
+  await deleteManagedTab(tabId, record.browser_instance_id);
   return {
     status: "success",
     action: "release_adopted",
     released: true,
     closed: false,
     tab_id: tabId,
+    browser_instance_id: record.browser_instance_id,
     ownership_origin: "user_unmanaged",
     policy_release: policyRelease,
   };
@@ -347,7 +395,7 @@ async function inspectCloseAdopted(args = {}, _options = {}) {
   const state = purgeExpiredTokens(_options);
   const scope = normalizedScope(args);
   const tabId = String(args.tab_id ?? "").trim();
-  const record = await getManagedTab(tabId);
+  const record = await getManagedTab(tabId, args.browser_instance_id);
   if (!record || record.ownership_origin !== "user_adopted") {
     throw createToolError("TAB_NOT_ADOPTED", "tab is not user-adopted", { retryable: false });
   }
@@ -360,10 +408,11 @@ async function inspectCloseAdopted(args = {}, _options = {}) {
   const expiresAtMs = nowMs(state) + state.close_token_ttl_ms;
   state.putCloseToken(closeToken, {
     tab_id: tabId,
+    browser_instance_id: record.browser_instance_id,
     scope,
     ownership_generation: record.ownership_generation,
     lease_id: record.lease_id,
-    route_args: routeArguments(args),
+    route_args: routeArguments({ ...args, browser_instance_id: record.browser_instance_id }),
     expires_at_ms: expiresAtMs,
   });
   return {
@@ -393,8 +442,9 @@ async function closeAdopted(args = {}, options = {}) {
       retryable: false,
     });
   }
+  assertTokenTargetMatches(args, token, "close_adopted");
   state.closeTokens.delete(tokenValue);
-  const record = await getManagedTab(token.tab_id);
+  const record = await getManagedTab(token.tab_id, token.browser_instance_id);
   if (
     !record
     || record.ownership_origin !== "user_adopted"
@@ -407,13 +457,14 @@ async function closeAdopted(args = {}, options = {}) {
     });
   }
   const result = await closeAdoptedTab(token.route_args, record, options);
-  await deleteManagedTab(record.tab_id);
+  await deleteManagedTab(record.tab_id, record.browser_instance_id);
   return {
     status: "success",
     action: "close_adopted",
     closed: true,
     close_verified: result.close_verified === true,
     tab_id: record.tab_id,
+    browser_instance_id: record.browser_instance_id,
     transport: result.transport,
   };
 }
@@ -430,9 +481,10 @@ async function releaseExpiredAdoptions(options = {}) {
       && Date.parse(record.lease_expires_at) <= now
     ) {
       const policyRelease = await releaseManagedTabPolicy({}, record, options);
-      await deleteManagedTab(record.tab_id);
+      await deleteManagedTab(record.tab_id, record.browser_instance_id);
       released.push({
         tab_id: record.tab_id,
+        browser_instance_id: record.browser_instance_id || undefined,
         workspace_key: record.workspace_key,
         task_id: record.task_id,
         reason: "released_after_runtime_loss",
@@ -458,20 +510,35 @@ async function renewOwnedAdoptions(options = {}) {
       lease_renewed_at: now,
       lease_expires_at: new Date(nowMs(state) + state.lease_ms).toISOString(),
       touch: false,
-    });
+    }, record.browser_instance_id);
     if (!updated || updated.management_policy_applied !== true) continue;
     try {
-      const preferred = await resolvePreferredBrowserContext({ switch_tab_id: updated.tab_id }, options);
+      const preferred = await resolvePreferredBrowserContext({
+        browser_instance_id: updated.browser_instance_id,
+        switch_tab_id: updated.tab_id,
+      }, options);
       await applyManagedTabPolicy({}, preferred, updated, { ...options, renew: true });
-      await updateManagedTab(updated.tab_id, { management_policy_status: "renewed", touch: false });
-      renewed.push({ tab_id: updated.tab_id, status: "renewed" });
+      await updateManagedTab(
+        updated.tab_id,
+        { management_policy_status: "renewed", touch: false },
+        updated.browser_instance_id,
+      );
+      renewed.push({
+        tab_id: updated.tab_id,
+        browser_instance_id: updated.browser_instance_id,
+        status: "renewed",
+      });
     } catch {
       await updateManagedTab(updated.tab_id, {
         management_policy_status: "renewal_failed",
         suspended: true,
         touch: false,
+      }, updated.browser_instance_id);
+      renewed.push({
+        tab_id: updated.tab_id,
+        browser_instance_id: updated.browser_instance_id,
+        status: "renewal_failed",
       });
-      renewed.push({ tab_id: updated.tab_id, status: "renewal_failed" });
     }
   }
   return renewed;
@@ -487,6 +554,7 @@ async function disposeAdoptionState(state) {
   for (const record of owned) {
     released.push(await releaseAdopted({
       tab_id: record.tab_id,
+      browser_instance_id: record.browser_instance_id,
       workspace_key: record.workspace_key,
       task_id: record.task_id,
     }, {

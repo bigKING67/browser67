@@ -1,5 +1,9 @@
 import { listSessionsSnapshot, normalizeIdToken } from "./sessions/registry.mjs";
 import { getManagedTab } from "../tab-workspace/registry.mjs";
+import {
+  browserTabKey,
+  normalizeBrowserInstanceId,
+} from "../tab-workspace/identity.mjs";
 
 const PAGE_CONTEXT_RESOLUTION = new Set(["confirmed", "inferred"]);
 
@@ -51,12 +55,32 @@ function resolvePageId(args = {}, data = {}) {
   );
 }
 
-function sessionForId(tabId, data = {}, sessionStore = null) {
+function resolvePageBrowserInstanceId(args = {}, data = {}) {
+  const target = targetCandidate(data);
+  const jobArgs = jobArgsCandidate(data);
+  return normalizeBrowserInstanceId(firstText(
+    data.page?.browser_instance_id,
+    data.browser_instance_id,
+    target?.browser_instance_id,
+    data.session?.browser_instance_id,
+    jobArgs?.browser_instance_id,
+    args.browser_instance_id,
+  ));
+}
+
+function sessionForId(tabId, browserInstanceId, data = {}, sessionStore = null) {
   const dataSessions = Array.isArray(data.sessions) ? data.sessions : [];
-  return dataSessions.find((session) => normalizeIdToken(session?.id ?? session?.tab_id) === tabId)
-    ?? (sessionStore?.list({ include_disconnected: true })
-      ?? listSessionsSnapshot({ include_disconnected: true }))
-      .find((session) => normalizeIdToken(session?.id) === tabId)
+  const matches = [
+    ...dataSessions,
+    ...((sessionStore?.list({ include_disconnected: true })
+      ?? listSessionsSnapshot({ include_disconnected: true }))),
+  ].filter((session) => (
+    normalizeIdToken(session?.tab_id ?? session?.id) === tabId
+    && (!browserInstanceId || session?.browser_instance_id === browserInstanceId)
+  ));
+  return matches.length === 1
+    ? matches[0]
+    : matches.find((session) => session?.browser_instance_id === browserInstanceId)
     ?? null;
 }
 
@@ -87,16 +111,19 @@ async function resolvePageContext(_toolName, args = {}, data = {}, options = {})
   const resultTabId = resolvePageId({}, data);
   const tabId = resultTabId || resolvePageId(args, {});
   if (!tabId) return null;
+  const resultBrowserInstanceId = resolvePageBrowserInstanceId({}, data);
+  const browserInstanceId = resultBrowserInstanceId || resolvePageBrowserInstanceId(args, {});
 
   const target = targetCandidate(data);
   const session = typeof options.session_for_id === "function"
-    ? options.session_for_id(tabId, data)
-    : sessionForId(tabId, data, options.runtime?.sessionStore);
+    ? options.session_for_id(tabId, data, browserInstanceId)
+    : sessionForId(tabId, browserInstanceId, data, options.runtime?.sessionStore);
+  const resolvedBrowserInstanceId = browserInstanceId || session?.browser_instance_id || "";
   let managedRecord = null;
   try {
     managedRecord = typeof options.get_managed_tab === "function"
-      ? await options.get_managed_tab(tabId)
-      : await getManagedTab(tabId);
+      ? await options.get_managed_tab(tabId, resolvedBrowserInstanceId)
+      : await getManagedTab(tabId, resolvedBrowserInstanceId);
   } catch {
     // Outcome presentation must never turn a completed tool call into a failure.
   }
@@ -131,7 +158,16 @@ async function resolvePageContext(_toolName, args = {}, data = {}, options = {})
   );
 
   return {
+    ...((resolvedBrowserInstanceId || managedRecord?.browser_instance_id)
+      ? { browser_instance_id: resolvedBrowserInstanceId || managedRecord.browser_instance_id }
+      : {}),
     tab_id: tabId,
+    session_key: resolvedBrowserInstanceId || managedRecord?.browser_instance_id
+      ? browserTabKey({
+          browser_instance_id: resolvedBrowserInstanceId || managedRecord?.browser_instance_id,
+          tab_id: tabId,
+        })
+      : tabId,
     title,
     url,
     source,
@@ -142,5 +178,6 @@ async function resolvePageContext(_toolName, args = {}, data = {}, options = {})
 
 export {
   resolvePageContext,
+  resolvePageBrowserInstanceId,
   resolvePageId,
 };

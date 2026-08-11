@@ -8,7 +8,7 @@ import {
 import { relative, resolve } from "node:path";
 
 const EXTENSION_IDENTITY_SCHEMA = "browser67.extension-identity.v1";
-const EXTENSION_HANDSHAKE_PROTOCOL_REVISION = 1;
+const EXTENSION_HANDSHAKE_PROTOCOL_REVISION = 2;
 
 function listExtensionSourceFiles(rootDir) {
   const files = [];

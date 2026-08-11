@@ -6,6 +6,7 @@ import {
   listManagedTabRecords,
 } from "../tab-workspace/index.mjs";
 import { bridgeCommand } from "./tmwd-adapter.mjs";
+import { browserTabKey } from "../tab-workspace/identity.mjs";
 
 function resolveFinalizeScope(args = {}) {
   const taskId = String(args.task_id ?? args.taskId ?? "").trim();
@@ -42,15 +43,58 @@ function summarizeRecords(records) {
   };
 }
 
-async function pruneStaleRegistryRecords(args, scope) {
-  const tabs = await bridgeCommand(args, { cmd: "tabs" });
-  const liveIds = new Set((Array.isArray(tabs.value) ? tabs.value : [])
-    .map((tab) => String(tab?.id ?? tab?.tab_id ?? tab?.tabId ?? "").trim())
-    .filter(Boolean));
-  const scoped = await recordsInScope(scope);
-  const stale = scoped.filter((record) => !liveIds.has(String(record.tab_id)));
+async function pruneStaleRegistryRecords(args, scope, dependencies = {}) {
+  const readScopedRecords = dependencies.recordsInScope ?? recordsInScope;
+  const runBridgeCommand = dependencies.bridgeCommand ?? bridgeCommand;
+  const removeManagedTab = dependencies.deleteManagedTab ?? deleteManagedTab;
+  const scoped = await readScopedRecords(scope);
+  const legacy = scoped.filter((record) => record.browser_instance_identity !== "resolved");
+  const recordsByInstance = new Map();
+  for (const record of scoped) {
+    if (record.browser_instance_identity !== "resolved") continue;
+    const browserInstanceId = String(record.browser_instance_id ?? "").trim();
+    if (!browserInstanceId) continue;
+    const records = recordsByInstance.get(browserInstanceId) ?? [];
+    records.push(record);
+    recordsByInstance.set(browserInstanceId, records);
+  }
+
+  const instanceChecks = await Promise.all([...recordsByInstance.entries()].map(async ([browserInstanceId, records]) => {
+    try {
+      const tabs = await runBridgeCommand({
+        ...args,
+        browser_instance_id: browserInstanceId,
+      }, { cmd: "tabs" });
+      const liveIds = new Set((Array.isArray(tabs.value) ? tabs.value : [])
+        .filter((tab) => String(tab?.browser_instance_id ?? "").trim() === browserInstanceId)
+        .map((tab) => browserTabKey(tab))
+        .filter(Boolean));
+      const stale = records.filter((record) => !liveIds.has(browserTabKey(record)));
+      const kept = records.filter((record) => liveIds.has(browserTabKey(record)));
+      return {
+        browser_instance_id: browserInstanceId,
+        ok: true,
+        checked_count: records.length,
+        stale,
+        kept,
+        transport: tabs.transport,
+        transport_attempts: tabs.transport_attempts,
+      };
+    } catch (error) {
+      return {
+        browser_instance_id: browserInstanceId,
+        ok: false,
+        checked_count: records.length,
+        stale: [],
+        kept: records,
+        error: String(error?.message ?? error),
+        error_code: String(error?.code ?? error?.errorCode ?? "") || undefined,
+      };
+    }
+  }));
+  const stale = instanceChecks.flatMap((check) => check.stale);
   if (args?.dry_run !== true) {
-    await Promise.all(stale.map((record) => deleteManagedTab(record.tab_id)));
+    await Promise.all(stale.map((record) => removeManagedTab(record.tab_id, record.browser_instance_id)));
   }
   return {
     ok: true,
@@ -59,8 +103,43 @@ async function pruneStaleRegistryRecords(args, scope) {
     checked_count: scoped.length,
     pruned_count: args?.dry_run === true ? 0 : stale.length,
     would_prune_count: stale.length,
-    transport: tabs.transport,
-    transport_attempts: tabs.transport_attempts,
+    preserved_count: scoped.length - stale.length,
+    kept: [
+      ...legacy.map((record) => ({
+        tab_id: record.tab_id,
+        browser_instance_id: record.browser_instance_id || undefined,
+        session_key: record.session_key,
+        reason: "legacy_browser_instance_unresolved",
+      })),
+      ...instanceChecks.flatMap((check) => check.kept.map((record) => ({
+        tab_id: record.tab_id,
+        browser_instance_id: record.browser_instance_id,
+        session_key: record.session_key,
+        reason: check.ok ? "live" : "live_check_unavailable",
+        error: check.ok ? undefined : check.error,
+        error_code: check.ok ? undefined : check.error_code,
+      }))),
+    ],
+    pruned: stale.map((record) => ({
+      tab_id: record.tab_id,
+      browser_instance_id: record.browser_instance_id,
+      session_key: record.session_key,
+      reason: "not_live_in_browser_instance",
+    })),
+    instance_checks: instanceChecks.map((check) => ({
+      browser_instance_id: check.browser_instance_id,
+      ok: check.ok,
+      checked_count: check.checked_count,
+      would_prune_count: check.stale.length,
+      preserved_count: check.kept.length,
+      transport: check.transport,
+      error: check.error,
+      error_code: check.error_code,
+    })),
+    transport: "per_browser_instance",
+    transport_attempts: instanceChecks.flatMap((check) => (
+      Array.isArray(check.transport_attempts) ? check.transport_attempts : []
+    )),
   };
 }
 
@@ -71,7 +150,13 @@ async function closeUnkeptScopedRecords(args, scope) {
       return { closed: { tab_id: record.tab_id, closed: false, dry_run: true, reason: "dry_run" } };
     }
     try {
-      const result = await bridgeCommand(args, {
+      if (record.browser_instance_identity !== "resolved") {
+        throw new Error("legacy managed tab has no Browser Instance identity");
+      }
+      const result = await bridgeCommand({
+        ...args,
+        browser_instance_id: record.browser_instance_id,
+      }, {
         cmd: "tabs",
         method: "close",
         tabId: record.tab_id,
@@ -79,10 +164,11 @@ async function closeUnkeptScopedRecords(args, scope) {
       if (result.value?.closed !== true) {
         throw new Error("tabs.close did not confirm closed=true");
       }
-      await deleteManagedTab(record.tab_id);
+      await deleteManagedTab(record.tab_id, record.browser_instance_id);
       return {
         closed: {
           tab_id: record.tab_id,
+          browser_instance_id: record.browser_instance_id,
           closed: true,
           transport: result.transport,
           transport_attempts: result.transport_attempts,
@@ -169,4 +255,5 @@ async function handleFinalizeTask(args) {
 
 export {
   handleFinalizeTask,
+  pruneStaleRegistryRecords,
 };

@@ -31,7 +31,7 @@ function extensionIdentity() {
     build_revision_source: "git",
     build_inputs_dirty: false,
     source_digest: "a".repeat(64),
-    protocol_revision: 1,
+    protocol_revision: 2,
   };
 }
 

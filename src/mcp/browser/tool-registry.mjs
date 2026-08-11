@@ -5,6 +5,7 @@ import {
   handleBrowserClipboardOps,
   handleBrowserDownloadOps,
   handleBrowserFileOps,
+  handleBrowserInstanceOps,
   handleBrowserTabLifecycle,
 } from "../../browser-wrappers/index.mjs";
 import {
@@ -58,6 +59,7 @@ const HANDLERS = {
   browser_tab_lifecycle: handleBrowserTabLifecycle,
   browser_auth_ops: handleBrowserAuthOps,
   browser_clipboard_ops: handleBrowserClipboardOps,
+  browser_instance_ops: handleBrowserInstanceOps,
 };
 
 function topLevelClosedSchema(inputSchema = {}) {
@@ -101,7 +103,10 @@ function createBrowserToolRegistry(options = {}) {
       defaultOutputMode: inputSchema.properties?.output_mode?.default ?? "full",
       compactPolicy: compactToolData,
       pagePolicy: resolvePageContext,
-      concurrencyKey: (args = {}) => String(args.tab_id || args.switch_tab_id || args.session_id || "runtime"),
+      concurrencyKey: (args = {}) => [
+        args.browser_instance_id || "runtime",
+        args.tab_id || args.switch_tab_id || args.session_id || "runtime",
+      ].join(":"),
     });
   }
   return Object.freeze(registry);

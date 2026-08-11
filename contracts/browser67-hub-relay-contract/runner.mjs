@@ -9,6 +9,7 @@ import { pickFreePortPair, sleep, waitForPort } from "./ports.mjs";
 import {
   runNewTabMonitoringRelayCase,
   runNoExtensionCase,
+  runMultiBrowserInstanceRelayCase,
   runRuntimeIdentityCase,
   runTabsCreateRelayCase,
   runTabsListCase,
@@ -32,6 +33,7 @@ async function runHubRelayContract() {
     await runRuntimeIdentityCase(controllerWs, linkUrl);
     await runTabsCreateRelayCase(extensionWs, controllerWs);
     await runNewTabMonitoringRelayCase(extensionWs, controllerWs, linkUrl);
+    await runMultiBrowserInstanceRelayCase(extensionWs, controllerWs, linkUrl, wsUrl);
     await runNoExtensionCase(extensionWs, controllerWs);
 
     await sleep(100);
@@ -49,6 +51,12 @@ async function runHubRelayContract() {
       monitor_new_tabs_ws_relay_ok: true,
       monitor_new_tabs_link_relay_ok: true,
       monitor_new_tabs_default_compatible: true,
+      multi_browser_instance_same_tab_id_ok: true,
+      ambiguous_target_fail_closed: true,
+      default_browser_instance_no_fallback: true,
+      pending_relay_instance_bound: true,
+      link_session_selection_instance_bound: true,
+      multi_instance_doctor_identity_aggregate_ok: true,
       no_extension_error_nonfatal: true,
     })}\n`);
   } finally {

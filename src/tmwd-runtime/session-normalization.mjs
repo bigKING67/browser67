@@ -13,8 +13,15 @@ function normalizeTmwdSessions(raw) {
       if (!id) {
         return null;
       }
+      const browserInstanceId = normalizeIdToken(item.browser_instance_id ?? item.browserInstanceId);
+      const tabId = normalizeIdToken(item.tab_id ?? item.tabId ?? id);
+      const sessionKey = normalizeIdToken(item.session_key ?? item.sessionKey)
+        || (browserInstanceId ? `${browserInstanceId}:${tabId}` : id);
       return {
-        id,
+        id: sessionKey,
+        tab_id: tabId,
+        browser_instance_id: browserInstanceId,
+        browser_instance_default: item.browser_instance_default === true,
         title: String(item.title ?? ""),
         url: String(item.url ?? ""),
         active: true,

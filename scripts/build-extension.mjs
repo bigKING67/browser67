@@ -62,6 +62,7 @@ function patchExtensionIdentityHandshake(source) {
   ].join("\n");
   const readyReplacement = [
     "      type: 'ext_ready',",
+    "      browser_instance_id: await browser67GetInstanceId(),",
     "      extension_identity: globalThis.__browser67BuildIdentity ?? null,",
     "      tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
   ].join("\n");
@@ -71,6 +72,7 @@ function patchExtensionIdentityHandshake(source) {
   ].join("\n");
   const updateReplacement = [
     "    type: 'tabs_update',",
+    "    browser_instance_id: await browser67GetInstanceId(),",
     "    extension_identity: globalThis.__browser67BuildIdentity ?? null,",
     "    tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
   ].join("\n");
@@ -80,6 +82,68 @@ function patchExtensionIdentityHandshake(source) {
   return source
     .replace(readyAnchor, readyReplacement)
     .replace(updateAnchor, updateReplacement);
+}
+
+function patchBrowserInstanceIdentity(source) {
+  const anchor = "function connectWS() {";
+  if (!source.includes(anchor)) {
+    throw new Error("upstream extension websocket anchor changed; review the Browser Instance overlay transform");
+  }
+  const helper = [
+    "const BROWSER67_INSTANCE_STORAGE_KEY = 'browser67.browser_instance_id.v1';",
+    "let browser67InstanceIdPromise = null;",
+    "async function browser67GetInstanceId() {",
+    "  if (browser67InstanceIdPromise) return browser67InstanceIdPromise;",
+    "  browser67InstanceIdPromise = (async () => {",
+    "    const stored = await chrome.storage.local.get(BROWSER67_INSTANCE_STORAGE_KEY);",
+    "    const existing = String(stored[BROWSER67_INSTANCE_STORAGE_KEY] || '').trim();",
+    "    if (/^[A-Za-z0-9._-]{1,128}$/.test(existing)) return existing;",
+    "    const created = crypto.randomUUID();",
+    "    await chrome.storage.local.set({ [BROWSER67_INSTANCE_STORAGE_KEY]: created });",
+    "    return created;",
+    "  })();",
+    "  return browser67InstanceIdPromise;",
+    "}",
+    "",
+  ].join("\n");
+  return source.replace(anchor, `${helper}${anchor}`);
+}
+
+function patchBrowserInstanceResponseIdentity(source) {
+  const replacements = [
+    [
+      "ws.send(JSON.stringify({ type: 'ack', id: data.id }));",
+      "ws.send(JSON.stringify({ type: 'ack', id: data.id, browser_instance_id: await browser67GetInstanceId() }));",
+    ],
+    [
+      "ws.send(JSON.stringify({ type: 'error', id: data.id, error: 'invalid or missing numeric tabId' }));",
+      "ws.send(JSON.stringify({ type: 'error', id: data.id, browser_instance_id: await browser67GetInstanceId(), error: 'invalid or missing numeric tabId' }));",
+    ],
+    [
+      "ws.send(JSON.stringify({ type: 'result', id: data.id, result: res.data, newTabs }));",
+      "ws.send(JSON.stringify({ type: 'result', id: data.id, browser_instance_id: await browser67GetInstanceId(), result: res.data, newTabs }));",
+    ],
+    [
+      "ws.send(JSON.stringify({ type: 'error', id: data.id, error: res?.error || 'Unknown error', newTabs }));",
+      "ws.send(JSON.stringify({ type: 'error', id: data.id, browser_instance_id: await browser67GetInstanceId(), error: res?.error || 'Unknown error', newTabs }));",
+    ],
+    [
+      "ws.send(JSON.stringify({ type: 'error', id: data.id, error: { name: e.name || 'Error', message: e.message || String(e), stack: e.stack || '' } }));",
+      "ws.send(JSON.stringify({ type: 'error', id: data.id, browser_instance_id: await browser67GetInstanceId(), error: { name: e.name || 'Error', message: e.message || String(e), stack: e.stack || '' } }));",
+    ],
+    [
+      "ws.send(JSON.stringify({ type: res.ok ? 'result' : 'error', id: data.id, result: res.data ?? res.results ?? res, error: res.error }));",
+      "ws.send(JSON.stringify({ type: res.ok ? 'result' : 'error', id: data.id, browser_instance_id: await browser67GetInstanceId(), result: res.data ?? res.results ?? res, error: res.error }));",
+    ],
+  ];
+  let next = source;
+  for (const [anchor, replacement] of replacements) {
+    if (!next.includes(anchor)) {
+      throw new Error("upstream extension response anchor changed; review the Browser Instance overlay transform");
+    }
+    next = next.replaceAll(anchor, replacement);
+  }
+  return next;
 }
 
 function patchSharedExecutionRuntime(source) {
@@ -148,7 +212,9 @@ function buildBackground(source) {
     throw new Error("failed to inject browser67 command routing into background.js");
   }
   return patchExtensionIdentityHandshake(
-    patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed)),
+    patchBrowserInstanceResponseIdentity(
+      patchBrowserInstanceIdentity(patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed))),
+    ),
   );
 }
 

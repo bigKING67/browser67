@@ -2,6 +2,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import { createJsReverseRpcClient } from "../js-reverse-mcp-common/rpc-client.mjs";
+import { runBrowserInstancePruneCases } from "./browser-instance-prune.mjs";
 import { parseArgs } from "./cli.mjs";
 import { runLifecycleCases } from "./lifecycle-cases.mjs";
 import {
@@ -23,6 +24,7 @@ async function runJsReverseMcpContract(argv) {
     defaultTimeoutMs: cli.timeout_ms,
   });
   try {
+    await runBrowserInstancePruneCases();
     const tools = await initializeJsReverseContractSession(rpc, cli.timeout_ms);
     const names = assertRequiredTools(tools);
     await runLifecycleCases(rpc, cli);

@@ -25,7 +25,16 @@ async function resolveTmwdContextViaLink(args, options = {}) {
   const timeoutMs = options.probe === true
     ? Math.min(1_500, normalizeTimeoutMs(args?.timeout_ms))
     : undefined;
-  const tmwd = await callTmwdLink(args, { cmd: "get_all_sessions" }, timeoutMs);
+  const tmwd = await callTmwdLink(args, {
+    cmd: "get_all_sessions",
+    browser_instance_id: args?.browser_instance_id ?? args?.browserInstanceId,
+  }, timeoutMs);
+  if (tmwd.value && typeof tmwd.value === "object" && !Array.isArray(tmwd.value) && tmwd.value.error) {
+    throw Object.assign(new Error(String(tmwd.value.error)), {
+      errorCode: tmwd.value.errorCode,
+      details: tmwd.value.details,
+    });
+  }
   const targets = normalizeTmwdSessions(tmwd.value);
   if (targets.length === 0) {
     throw new Error("tmwd get_all_sessions returned empty");
@@ -104,6 +113,9 @@ async function resolveTmwdContext(args, options = {}) {
         health: candidate.health,
         message: String(error?.message ?? error),
       });
+      if (["AMBIGUOUS_TARGET", "BROWSER_INSTANCE_UNAVAILABLE"].includes(String(error?.errorCode ?? ""))) {
+        throw withTransportAttempts(error, attempts);
+      }
       if (transport !== "auto") {
         throw withTransportAttempts(error, attempts);
       }

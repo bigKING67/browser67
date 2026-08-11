@@ -32,7 +32,10 @@ async function pageEval(args, body, input = {}, runtimeOptions = {}) {
     transport: normalizeTransport(result.context.tmwd_transport),
     transport_attempts: result.transport_attempts,
     page: {
-      id: result.context.target.id,
+      id: result.context.target.tab_id ?? result.context.target.id,
+      tab_id: result.context.target.tab_id ?? result.context.target.id,
+      session_key: result.context.target.id,
+      browser_instance_id: result.context.target.browser_instance_id,
       url: result.context.target.url,
       title: result.context.target.title,
     },
@@ -49,7 +52,10 @@ async function bridgeCommand(args, command) {
     transport: normalizeTransport(result.context.tmwd_transport),
     transport_attempts: result.transport_attempts,
     page: {
-      id: result.context.target.id,
+      id: result.context.target.tab_id ?? result.context.target.id,
+      tab_id: result.context.target.tab_id ?? result.context.target.id,
+      session_key: result.context.target.id,
+      browser_instance_id: result.context.target.browser_instance_id,
       url: result.context.target.url,
       title: result.context.target.title,
     },

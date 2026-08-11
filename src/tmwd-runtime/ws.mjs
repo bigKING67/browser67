@@ -23,7 +23,10 @@ function normalizeSessionCacheTtlMs(raw) {
 
 function cachedTabsCanSatisfySelection(args, tabs) {
   const sessionId = String(args?.session_id ?? args?.sessionId ?? args?.switch_tab_id ?? "").trim();
-  if (sessionId && !tabs.some((tab) => String(tab.id) === sessionId)) return false;
+  const browserInstanceId = String(args?.browser_instance_id ?? args?.browserInstanceId ?? "").trim();
+  if (!browserInstanceId) return false;
+  if (browserInstanceId && !tabs.some((tab) => tab.browser_instance_id === browserInstanceId)) return false;
+  if (sessionId && !tabs.some((tab) => String(tab.id) === sessionId || String(tab.tab_id) === sessionId)) return false;
   const urlPattern = String(args?.session_url_pattern ?? args?.url_pattern ?? "").trim();
   if (!urlPattern) return true;
   try {
@@ -133,6 +136,8 @@ function createTmwdWsRuntime(options = {}) {
       pending.resolve({
         success: false,
         error: payload.error ?? "tmwd ws returned error",
+        errorCode: payload.errorCode,
+        details: payload.details,
         result: payload.result,
         newTabs: Array.isArray(payload.newTabs) ? payload.newTabs : [],
       });
@@ -242,6 +247,7 @@ function createTmwdWsRuntime(options = {}) {
     });
     socket.send(JSON.stringify({
       id: requestId,
+      browser_instance_id: payload.browser_instance_id,
       tabId: payload.tabId,
       code: payload.code,
       monitorNewTabs: payload.monitorNewTabs !== false,
@@ -275,8 +281,16 @@ function createTmwdWsRuntime(options = {}) {
         },
       };
     }
-    const response = await send(args, { code: { cmd: "tabs" } }, timeoutMs);
-    if (!response.success) throw new Error(String(response.error ?? "tmwd ws tabs failed"));
+    const response = await send(args, {
+      browser_instance_id: args?.browser_instance_id ?? args?.browserInstanceId,
+      code: { cmd: "tabs" },
+    }, timeoutMs);
+    if (!response.success) {
+      throw Object.assign(new Error(String(response.error ?? "tmwd ws tabs failed")), {
+        errorCode: response.errorCode,
+        details: response.details,
+      });
+    }
     const tabs = normalizeTmwdTabsPayload(response.result);
     updateSessionCache(tabs, "pull_tabs");
     return {

@@ -48,8 +48,75 @@ async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
   assert.equal(externalListPayload?.summary?.registry_count, 1);
   assert.equal(externalListPayload?.managed_tabs?.[0]?.tab_id, "external-disk-tab");
 
+  const sharedTabId = "same-tab-id";
+  const baseRecord = {
+    tab_id: sharedTabId,
+    owner: "tmwd",
+    source: "contract",
+    workspace_key: "multi-instance-workspace",
+    reuse_key: "http://multi.example/path",
+    url: "http://multi.example/path/page",
+    title: "Multi-instance tab",
+    origin: "http://multi.example",
+    path_scope: "/path",
+    keep: false,
+    dry_run: false,
+    status: "open",
+    created_at: now,
+    updated_at: now,
+    last_used_at: now,
+  };
   await writeFile(registryPath, `${JSON.stringify({
-    version: 1,
+    version: 3,
+    updated_at: new Date().toISOString(),
+    managed_tabs: [
+      { ...baseRecord, browser_instance_id: "browser-instance-a" },
+      { ...baseRecord, browser_instance_id: "browser-instance-b" },
+    ],
+  }, null, 2)}\n`);
+  const multiInstanceListCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: { action: "list_managed", include_disconnected: true },
+    },
+    timeoutMs,
+  );
+  const multiInstanceListPayload = firstJsonContent(multiInstanceListCall.result);
+  assert.equal(multiInstanceListPayload?.summary?.registry_count, 2);
+  assert.deepEqual(
+    multiInstanceListPayload?.managed_tabs?.map((row) => row.session_key).sort(),
+    ["browser-instance-a:same-tab-id", "browser-instance-b:same-tab-id"],
+  );
+
+  const markInstanceACall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "mark_keep",
+        browser_instance_id: "browser-instance-a",
+        tab_id: sharedTabId,
+        keep: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(markInstanceACall?.result?.isError, undefined);
+  const persistedMultiInstanceRegistry = JSON.parse(await readFile(registryPath, "utf8"));
+  assert.equal(persistedMultiInstanceRegistry.version, 3);
+  assert.equal(persistedMultiInstanceRegistry.managed_tabs.length, 2);
+  assert.equal(
+    persistedMultiInstanceRegistry.managed_tabs.find((row) => row.browser_instance_id === "browser-instance-a")?.keep,
+    true,
+  );
+  assert.equal(
+    persistedMultiInstanceRegistry.managed_tabs.find((row) => row.browser_instance_id === "browser-instance-b")?.keep,
+    false,
+  );
+
+  await writeFile(registryPath, `${JSON.stringify({
+    version: 3,
     updated_at: new Date().toISOString(),
     managed_tabs: [],
   }, null, 2)}\n`);

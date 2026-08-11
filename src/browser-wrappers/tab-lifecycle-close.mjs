@@ -99,12 +99,25 @@ async function closeOneManagedTab(args, record, preferred = null, options = {}) 
       reason: "dry_run",
     };
   }
-  const resolved = preferred ?? await resolvePreferredBrowserContext(
-    { ...args, refresh_sessions: true },
+  if (!record.browser_instance_id && String(args?.tmwd_mode ?? "tmwd") !== "remote_cdp") {
+    throw createToolError(
+      "BROWSER_INSTANCE_UNRESOLVED",
+      "legacy managed tab has no Browser Instance identity and cannot be closed automatically",
+      { retryable: false, details: { tab_id: record.tab_id } },
+    );
+  }
+  const recordArgs = record.browser_instance_id
+    ? { ...args, browser_instance_id: record.browser_instance_id }
+    : args;
+  const preferredInstanceId = String(preferred?.context?.target?.browser_instance_id ?? "").trim();
+  const resolved = preferred && preferredInstanceId === String(record.browser_instance_id ?? "").trim()
+    ? preferred
+    : await resolvePreferredBrowserContext(
+    { ...recordArgs, refresh_sessions: true },
     options,
   );
   if (resolved.transport === "tmwd_ws" || resolved.transport === "tmwd_link") {
-    const result = await executeTmwdCommandWithPreferred(args, resolved, {
+    const result = await executeTmwdCommandWithPreferred(recordArgs, resolved, {
       cmd: "tabs",
       method: "close",
       tabId: record.tab_id,
@@ -115,7 +128,7 @@ async function closeOneManagedTab(args, record, preferred = null, options = {}) 
         "tabs.close did not confirm closed=true; reload the TMWD browser extension if it is still running old bridge code",
       );
     }
-    const closeVerification = await verifyTabClosed(args, resolved, record.tab_id, options);
+    const closeVerification = await verifyTabClosed(recordArgs, resolved, record.tab_id, options);
     if (closeVerification.verified !== true) {
       throw createToolError(
         "EXECUTION_ERROR",
@@ -135,10 +148,10 @@ async function closeOneManagedTab(args, record, preferred = null, options = {}) 
       transport_attempts: result.transport_attempts,
     };
   }
-  await cdpRunCommand({ ...args, switch_tab_id: record.tab_id }, "Target.closeTarget", {
+  await cdpRunCommand({ ...recordArgs, switch_tab_id: record.tab_id }, "Target.closeTarget", {
     targetId: record.tab_id,
   }, options);
-  const closeVerification = await verifyTabClosed(args, resolved, record.tab_id, options);
+  const closeVerification = await verifyTabClosed(recordArgs, resolved, record.tab_id, options);
   if (closeVerification.verified !== true) {
     throw createToolError(
       "EXECUTION_ERROR",
@@ -161,20 +174,20 @@ async function closeOneManagedTab(args, record, preferred = null, options = {}) 
 async function closeUnkeptManagedTabs(args, options = {}) {
   const closeScope = resolveCloseScope(args ?? {});
   const unmanagedTabId = String(args?.tab_id ?? args?.session_id ?? "").trim();
-  const unmanagedRecord = unmanagedTabId ? await getManagedTab(unmanagedTabId) : null;
+  const unmanagedRecord = unmanagedTabId
+    ? await getManagedTab(unmanagedTabId, args?.browser_instance_id)
+    : null;
   const unmanagedIgnored = unmanagedTabId && !unmanagedRecord ? [unmanagedTabId] : [];
-  const candidates = (await listManagedTabRecords(closeScope.all
-    ? {}
-    : { task_id: closeScope.taskId, workspace_key: closeScope.workspaceKey }))
+  const candidates = (await listManagedTabRecords({
+    ...(closeScope.all ? {} : { task_id: closeScope.taskId, workspace_key: closeScope.workspaceKey }),
+    ...(args?.browser_instance_id ? { browser_instance_id: args.browser_instance_id } : {}),
+  }))
     .filter((record) => record.keep !== true && record.close_on_finalize === true);
   const closed = [];
   const errors = [];
-  const preferred = args?.dry_run === true || candidates.length === 0
-    ? null
-    : await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, options);
   const outcomes = await Promise.all(candidates.map(async (record) => {
     try {
-      const result = await closeOneManagedTab(args, record, preferred, options);
+      const result = await closeOneManagedTab(args, record, null, options);
       return { record, result };
     } catch (error) {
       return {
@@ -196,9 +209,9 @@ async function closeUnkeptManagedTabs(args, options = {}) {
       await updateManagedTab(record.tab_id, {
         status: result.closed ? "closed" : record.status,
         touch: false,
-      });
+      }, record.browser_instance_id);
       if (result.closed) {
-        await deleteManagedTab(record.tab_id);
+        await deleteManagedTab(record.tab_id, record.browser_instance_id);
       }
     }
   }));
@@ -261,6 +274,7 @@ async function finalizeManagedTask(args = {}, options = {}) {
     } else {
       releasedAdopted.push(await releaseAdopted({
         tab_id: record.tab_id,
+        browser_instance_id: record.browser_instance_id,
         workspace_key: record.workspace_key,
         task_id: record.task_id,
       }, {
@@ -328,18 +342,39 @@ async function pruneStaleManagedTabs(args = {}, options = {}) {
       ...sessionStore.sessionPointers(),
     };
   }
-  const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, options);
-  const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
-  const liveById = liveTabMap(liveTabs);
-  const livenessRows = await Promise.all(records.map(async (record) => ({
-    record,
-    liveness: await resolveManagedRecordLiveness(args, preferred, record, liveById, options),
-  })));
+  const livenessRows = await Promise.all(records.map(async (record) => {
+    if (!record.browser_instance_id && String(args?.tmwd_mode ?? "tmwd") !== "remote_cdp") {
+      return { record, liveness: { live: true, reason: "legacy_browser_instance_unresolved" } };
+    }
+    const recordArgs = record.browser_instance_id
+      ? { ...args, browser_instance_id: record.browser_instance_id }
+      : args;
+    try {
+      const preferred = await resolvePreferredBrowserContext({ ...recordArgs, refresh_sessions: true }, options);
+      const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
+      return {
+        record,
+        liveness: await resolveManagedRecordLiveness(
+          recordArgs,
+          preferred,
+          record,
+          liveTabMap(liveTabs),
+          options,
+        ),
+        transport: preferred.transport,
+        transport_attempts: preferred.transport_attempts,
+      };
+    } catch (error) {
+      return { record, liveness: { live: true, reason: "live_check_unavailable", error: String(error?.message ?? error) } };
+    }
+  }));
   const pruned = [];
   const kept = [];
   await Promise.all(livenessRows.map(async ({ record, liveness }) => {
     const payload = {
       tab_id: record.tab_id,
+      browser_instance_id: record.browser_instance_id || undefined,
+      session_key: record.session_key,
       workspace_key: record.workspace_key,
       url: record.url,
       reason: liveness.reason,
@@ -350,7 +385,7 @@ async function pruneStaleManagedTabs(args = {}, options = {}) {
     }
     pruned.push(payload);
     if (args?.dry_run !== true) {
-      await deleteManagedTab(record.tab_id);
+      await deleteManagedTab(record.tab_id, record.browser_instance_id);
     }
   }));
   const prunedLimit = limitedList(pruned, maxItems, summaryOnly);
@@ -359,8 +394,8 @@ async function pruneStaleManagedTabs(args = {}, options = {}) {
     status: "success",
     action: "prune_stale",
     dry_run: args?.dry_run === true,
-    transport: preferred.transport,
-    transport_attempts: Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [],
+    transport: "per_browser_instance",
+    transport_attempts: livenessRows.flatMap((row) => Array.isArray(row.transport_attempts) ? row.transport_attempts : []),
     pruned_count: args?.dry_run === true ? 0 : pruned.length,
     would_prune_count: pruned.length,
     pruned: prunedLimit.values,

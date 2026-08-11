@@ -37,6 +37,14 @@ two paired MCP surfaces:
    installed roots instead of trusting disk files alone.
 3. For legacy runtime migration, run `browser67 migrate-home --dry-run` before
    `browser67 migrate-home --write`.
+   - Each Chrome/Edge Browser Profile must load/enable the extension separately.
+     browser67 identifies its bridge with the Profile-local opaque
+     `browser67.browser_instance_id.v1` UUID; the target identity is
+     `(browser_instance_id, tab_id)`.
+   - With multiple active Browser Instances, call `browser_instance_ops list`
+     and pass `browser_instance_id`, or set an explicit default. Treat
+     `AMBIGUOUS_TARGET` and `BROWSER_INSTANCE_UNAVAILABLE` as fail-closed routing
+     states; never choose the first/latest surviving Profile.
 4. For real browser work, select/create browser67-owned managed tabs and finalize
    the current `workspace_key`/`task_id` before handoff; report the returned
    `delivery_summary` so tab cleanup state is visible.
@@ -73,6 +81,7 @@ two paired MCP surfaces:
    read success data from `data` or failure details from `error`. Read the
    top-level `page` for the confirmed tab id/title/URL/managed state; `page:null`
    means the operation did not resolve one unique page.
+   A TMWD page includes `browser_instance_id`, `tab_id`, and `session_key`.
    - All `tmwd_browser` tools accept `output_mode:"compact"|"full"`. Prefer
      compact for routine work and full for transport/session/target diagnosis.
      Output mode only changes repeated diagnostics; content scope remains under
@@ -123,6 +132,9 @@ two paired MCP surfaces:
   `native-live-linux` applies only to an explicitly scoped Linux desktop.
 - Keep docs, skills, schemas, and contracts synchronized for externally visible
   behavior changes.
+- Browser Profile, Pi Agent Profile, native child Session, login profile, and
+  worktree are separate concepts. `browser_instance_id` belongs only to
+  browser67 Tool routing and must not be inferred from private Profile data.
 - Ordinary tabs must retain native CSP/dialog behavior and receive no
   browser67 badge, marker, content bridge, or network observer.
 - Run `npm run check:mcp`, `npm run check:js-reverse-mcp`,

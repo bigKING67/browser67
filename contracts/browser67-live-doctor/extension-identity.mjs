@@ -98,17 +98,38 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
   const runtimeInfo = runtimeProbe?.runtime_info && typeof runtimeProbe.runtime_info === "object"
     ? runtimeProbe.runtime_info
     : null;
-  const observed = normalizeExtensionIdentity(runtimeInfo?.extension_identity);
   const expectedIdentity = expected?.identity ?? null;
+  const activeInstances = (Array.isArray(runtimeInfo?.browser_instances)
+    ? runtimeInfo.browser_instances
+    : []).filter((instance) => instance?.active === true);
+  const activeInstanceIdentities = activeInstances.map((instance) => ({
+    browser_instance_id: String(instance?.browser_instance_id ?? ""),
+    identity_status: String(instance?.extension_identity_status ?? "missing"),
+    identity: normalizeExtensionIdentity(instance?.extension_identity),
+  }));
+  const observed = normalizeExtensionIdentity(runtimeInfo?.extension_identity)
+    ?? (activeInstanceIdentities.length === 1 ? activeInstanceIdentities[0].identity : null);
   const mismatches = [];
-  if (observed && expectedIdentity) {
+  const observedForComparison = activeInstanceIdentities.length > 0
+    ? activeInstanceIdentities.map((entry) => entry.identity)
+    : [observed];
+  if (expectedIdentity) {
     for (const field of IDENTITY_FIELDS) {
-      if (observed[field] !== expectedIdentity[field]) mismatches.push(field);
+      if (observedForComparison.some((identity) => !identity || identity[field] !== expectedIdentity[field])) {
+        mismatches.push(field);
+      }
     }
   }
   const connected = runtimeInfo?.extension_connected === true;
-  const identityStatus = String(runtimeInfo?.extension_identity_status ?? "missing");
-  const identityMatch = Boolean(observed && expectedIdentity && mismatches.length === 0);
+  const identityStatus = activeInstanceIdentities.length > 0
+    ? (activeInstanceIdentities.every((entry) => entry.identity_status === "valid" && entry.identity) ? "valid" : "invalid")
+    : String(runtimeInfo?.extension_identity_status ?? "missing");
+  const identityMatch = Boolean(
+    expectedIdentity
+    && observedForComparison.length > 0
+    && observedForComparison.every(Boolean)
+    && mismatches.length === 0,
+  );
   const installedCandidates = (Array.isArray(expected?.installed_candidates)
     ? expected.installed_candidates
     : []).map((candidate) => {
@@ -153,6 +174,15 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
     identity_match: identityMatch,
     mismatches,
     observed_identity: observed,
+    observed_browser_instances: activeInstanceIdentities.map((entry) => ({
+      browser_instance_id: entry.browser_instance_id,
+      identity_status: entry.identity_status,
+      identity_match: Boolean(
+        entry.identity
+        && expectedIdentity
+        && IDENTITY_FIELDS.every((field) => entry.identity[field] === expectedIdentity[field]),
+      ),
+    })),
     expected_identity: expectedIdentity,
     installed_identity_candidates: installedCandidates,
     matching_installed_paths: installedCandidates

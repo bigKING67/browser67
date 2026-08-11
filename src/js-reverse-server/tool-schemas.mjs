@@ -71,6 +71,12 @@ const TOOL_SCHEMAS = Object.fromEntries(
       inputSchema: {
         type: "object",
         properties: {
+          browser_instance_id: {
+            type: "string",
+            minLength: 1,
+            maxLength: 128,
+            pattern: "^[A-Za-z0-9._-]+$",
+          },
           page_id: { type: "string" },
           session_id: { type: "string" },
           session_url_pattern: { type: "string" },

@@ -78,6 +78,8 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
     };
   }
   const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, runtimeOptions);
+  const browserInstanceId = String(preferred.context?.target?.browser_instance_id ?? args?.browser_instance_id ?? "").trim();
+  const instanceArgs = browserInstanceId ? { ...args, browser_instance_id: browserInstanceId } : args;
   let tabId = "";
   let title = "";
   let transport = preferred.transport;
@@ -101,11 +103,12 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
   if (!tabId) {
     throw createToolError("EXECUTION_ERROR", "managed tab create did not return tab id");
   }
-  const visible = await waitForManagedTabVisible(args, preferred, tabId, { url, title }, runtimeOptions);
+  const visible = await waitForManagedTabVisible(instanceArgs, preferred, tabId, { url, title }, runtimeOptions);
   const visibleTab = visible.tab;
   let record = await recordManagedTab({
     ...args,
     tab_id: tabId,
+    browser_instance_id: browserInstanceId,
     url: String(visibleTab?.url ?? "").trim() || url,
     title: String(visibleTab?.title ?? title ?? ""),
     keep: args?.keep === true,
@@ -118,12 +121,12 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
   });
   let policyApplication;
   try {
-    policyApplication = await applyManagedTabPolicy(args, preferred, record, runtimeOptions);
+    policyApplication = await applyManagedTabPolicy(instanceArgs, preferred, record, runtimeOptions);
     record = await updateManagedTab(record.tab_id, {
       management_policy_applied: policyApplication.applied === true,
       management_policy_status: policyApplication.status,
       touch: false,
-    }) ?? record;
+    }, record.browser_instance_id) ?? record;
   } catch (error) {
     policyApplication = {
       status: "unavailable",
@@ -135,9 +138,9 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
       management_policy_applied: false,
       management_policy_status: "unavailable",
       touch: false,
-    }) ?? record;
+    }, record.browser_instance_id) ?? record;
   }
-  sessionStore.select(tabId, { make_default: false });
+  sessionStore.select(record.session_key || tabId, { make_default: false });
   return {
     status: "success",
     action: options.action ?? "create_managed",
@@ -187,7 +190,7 @@ async function findLiveReusableManagedTab(
       reusable_liveness: reusableLiveness,
     };
   }
-  await deleteManagedTab(reusable.record.tab_id);
+  await deleteManagedTab(reusable.record.tab_id, reusable.record.browser_instance_id);
   return findLiveReusableManagedTab(
     args,
     preferred,
@@ -225,10 +228,12 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
     return createManagedTab(args, { action: "select_or_create" }, runtimeOptions);
   }
   const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, runtimeOptions);
+  const browserInstanceId = String(preferred.context?.target?.browser_instance_id ?? args?.browser_instance_id ?? "").trim();
+  const instanceArgs = browserInstanceId ? { ...args, browser_instance_id: browserInstanceId } : args;
   const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
   const liveById = liveTabMap(liveTabs);
   const { reusable, reusable_liveness: reusableLiveness } = await findLiveReusableManagedTab(
-    args,
+    instanceArgs,
     preferred,
     url,
     liveTabs,
@@ -236,19 +241,29 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
     5,
     runtimeOptions,
   );
-  const unmanagedIgnored = await summarizeUnmanagedMatches(args, url, liveTabs);
+  const unmanagedIgnored = await summarizeUnmanagedMatches(instanceArgs, url, liveTabs);
   if (reusable.record) {
     let record = reusable.record;
     let navigation;
     if (reusable.policy.navigate_reused && record.url !== reusable.policy.target.normalized_url) {
       const navigationAuthorization = await authorizeManagedExecutionNavigation(
         preferred,
-        { ...args, session_id: record.tab_id, switch_tab_id: record.tab_id },
+        {
+          ...args,
+          browser_instance_id: record.browser_instance_id,
+          session_id: record.tab_id,
+          switch_tab_id: record.tab_id,
+        },
         "managed_tab_reuse_navigation",
         runtimeOptions,
       );
       const nav = await executeBrowserScript(
-        { ...args, session_id: record.tab_id, switch_tab_id: record.tab_id },
+        {
+          ...args,
+          browser_instance_id: record.browser_instance_id,
+          session_id: record.tab_id,
+          switch_tab_id: record.tab_id,
+        },
         "if (location.href !== input.url) location.href = input.url; return { url: location.href, title: document.title };",
         { url },
         { ...runtimeOptions, preferred },
@@ -262,11 +277,11 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
       record = await updateManagedTab(record.tab_id, {
         url,
         title: String(nav.value?.title ?? record.title ?? ""),
-      }) ?? record;
+      }, record.browser_instance_id) ?? record;
     } else {
-      record = await updateManagedTab(record.tab_id, { touch: true }) ?? record;
+      record = await updateManagedTab(record.tab_id, { touch: true }, record.browser_instance_id) ?? record;
     }
-    sessionStore.select(record.tab_id, { make_default: false });
+    sessionStore.select(record.session_key || record.tab_id, { make_default: false });
     return {
       status: "success",
       action: "select_or_create",
@@ -283,7 +298,7 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
       ...sessionStore.sessionPointers(),
     };
   }
-  const created = await createManagedTab(args, { action: "select_or_create" }, runtimeOptions);
+  const created = await createManagedTab(instanceArgs, { action: "select_or_create" }, runtimeOptions);
   return {
     ...created,
     reuse_policy: reusable.policy,
@@ -298,7 +313,8 @@ async function markManagedTabKeep(args) {
     throw createToolError("INVALID_ARGUMENT", "tab_id or session_id is required when action=mark_keep");
   }
   const keep = args?.keep !== false;
-  const record = await getManagedTab(tabId);
+  const browserInstanceId = String(args?.browser_instance_id ?? "").trim();
+  const record = await getManagedTab(tabId, browserInstanceId);
   if (!record) {
     return {
       status: "success",
@@ -309,7 +325,7 @@ async function markManagedTabKeep(args) {
       note: "tab is not managed by browser_tab_lifecycle; unmanaged user tabs are ignored",
     };
   }
-  const updated = await updateManagedTab(tabId, { keep });
+  const updated = await updateManagedTab(tabId, { keep }, record.browser_instance_id);
   const payloadRecord = updated ?? record;
   return {
     status: "success",

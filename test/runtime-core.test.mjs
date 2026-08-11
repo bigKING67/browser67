@@ -37,6 +37,8 @@ import {
 } from "../src/runtime/sessions/registry.mjs";
 import { createTabScheduler } from "../src/runtime/tab-scheduler.mjs";
 import { createTmwdTransportHealthStore } from "../src/tmwd-runtime/health.mjs";
+import { browserDocumentIdentity } from "../src/tab-workspace/navigation-guard.mjs";
+import { browserTabKey } from "../src/tab-workspace/identity.mjs";
 import {
   capabilityPayload,
   summarizeCapabilities,
@@ -179,6 +181,43 @@ test("session registry selects targets, retains pointers, and enforces bounds", 
   assert.equal(store.stats().session_count, 3);
   await store.dispose();
   assert.equal(store.stats().session_count, 0);
+});
+
+test("Browser Instance identity prevents cross-profile tab collisions", () => {
+  const store = createSessionRegistry();
+  const targets = [
+    {
+      id: "browser-a:123",
+      tab_id: "123",
+      browser_instance_id: "browser-a",
+      url: "https://a.example/",
+      title: "A",
+      active: true,
+    },
+    {
+      id: "browser-b:123",
+      tab_id: "123",
+      browser_instance_id: "browser-b",
+      url: "https://b.example/",
+      title: "B",
+      active: true,
+    },
+  ];
+  store.sync(targets);
+  assert.throws(
+    () => store.selectTarget(targets, { tab_id: "123" }),
+    (error) => hasErrorCode(error, "AMBIGUOUS_TARGET"),
+  );
+  assert.equal(
+    store.selectTarget(targets, { browser_instance_id: "browser-b", tab_id: "123" }).target.id,
+    "browser-b:123",
+  );
+  assert.notEqual(
+    browserDocumentIdentity({ browser_instance_id: "browser-a", tab_id: "123", url: "https://same.example/" }),
+    browserDocumentIdentity({ browser_instance_id: "browser-b", tab_id: "123", url: "https://same.example/" }),
+  );
+  assert.equal(browserTabKey(targets[0]), "browser-a:123");
+  assert.equal(browserTabKey(targets[1]), "browser-b:123");
 });
 
 test("default session compatibility surface delegates to the canonical store", () => {
@@ -399,6 +438,7 @@ test("page context resolves result, session, and managed ownership without brows
   });
   assert.deepEqual(page, {
     tab_id: "tab-1",
+    session_key: "tab-1",
     title: "Session title",
     url: "https://example.test/",
     source: "tool_result",

@@ -8,14 +8,20 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   const names = tools
     .map((entry) => (typeof entry?.name === "string" ? entry.name : ""))
     .filter((name) => name.length > 0);
-  assert.equal(tools.length, 17);
+  assert.equal(tools.length, 18);
   for (const tool of tools) {
     assert.deepEqual(
       tool?.inputSchema?.properties?.output_mode?.enum,
       ["full", "compact"],
       `${tool?.name} must expose full/compact output_mode`,
     );
+    assert.equal(
+      tool?.inputSchema?.properties?.browser_instance_id?.type,
+      "string",
+      `${tool?.name} must expose browser_instance_id`,
+    );
   }
+  assert.equal(names.includes("browser_instance_ops"), true);
   assert.equal(names.includes("browser_scan"), true);
   assert.equal(names.includes("browser_execute_js"), true);
   assert.equal(names.includes("browser_extract"), true);
@@ -32,6 +38,12 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(names.includes("browser_tab_lifecycle"), true);
   assert.equal(names.includes("browser_auth_ops"), true);
   assert.equal(names.includes("browser_clipboard_ops"), true);
+
+  const browserInstanceTool = tools.find((entry) => entry?.name === "browser_instance_ops");
+  assert.deepEqual(
+    browserInstanceTool?.inputSchema?.properties?.action?.enum,
+    ["list", "set_default", "clear_default"],
+  );
 
   const executeJsTool = tools.find((entry) => entry?.name === "browser_execute_js");
   const nativeInputTool = tools.find((entry) => entry?.name === "browser_native_input");

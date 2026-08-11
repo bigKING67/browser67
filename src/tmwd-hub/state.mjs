@@ -1,16 +1,13 @@
 function createHubState() {
   return {
-    defaultSessionId: "",
-    latestSessionId: "",
+    defaultBrowserInstanceId: "",
+    defaultSessionByInstance: new Map(),
+    latestSessionKey: "",
     sessions: new Map(),
     pendingExec: new Map(),
     clientSockets: new Set(),
-    extensionSocket: null,
-    extensionIdentity: null,
-    extensionIdentityStatus: "missing",
-    extensionIdentityReceivedAt: null,
-    extensionConnectedAt: null,
-    extensionDisconnectedAt: null,
+    browserInstances: new Map(),
+    socketBrowserInstances: new Map(),
   };
 }
 

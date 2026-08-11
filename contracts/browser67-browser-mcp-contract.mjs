@@ -28,6 +28,7 @@ import { assertManagedTabCleanupBaselineContract } from "./browser67-browser-mcp
 import { assertRunWaitHealthOpsContract } from "./browser67-browser-mcp-contract/run-wait-health-ops.mjs";
 import { assertScreenshotOpsContract } from "./browser67-browser-mcp-contract/screenshot-ops.mjs";
 import { assertEvidenceBundleOpsContract } from "./browser67-browser-mcp-contract/evidence-bundle-ops.mjs";
+import { assertAdoptionBrowserInstanceBinding } from "./browser67-browser-mcp-contract/adoption-browser-instance.mjs";
 
 function parseArgs(argv) {
   const parsed = {
@@ -82,6 +83,7 @@ async function run() {
   await runContractCase("physical-live-gate", assertPhysicalLiveGateContract);
   await runContractCase("readiness-ljqctrl", assertReadinessLjqCtrlProbeContract);
   await runContractCase("managed-tab-cleanup-baseline", assertManagedTabCleanupBaselineContract);
+  await runContractCase("adoption-browser-instance", assertAdoptionBrowserInstanceBinding);
 
   const previousTabRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
   const previousLoginProfileDir = process.env.BROWSER_STRUCTURED_LOGIN_PROFILE_DIR;

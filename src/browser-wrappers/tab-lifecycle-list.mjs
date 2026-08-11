@@ -10,6 +10,7 @@ import {
   liveTabMap,
   resolveManagedRecordLiveness,
 } from "./shared.mjs";
+import { browserTabKey } from "../tab-workspace/identity.mjs";
 import {
   DEFAULT_LIST_MANAGED_MAX_ITEMS,
   DEFAULT_LIST_MANAGED_MAX_STALE_ITEMS,
@@ -48,10 +49,12 @@ async function listManagedTabs(args = {}, options = {}) {
     };
     if (registryRecords.length > 0) {
       let preferred = null;
+      let liveCheckUnavailable = false;
       try {
         preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, options);
       } catch (error) {
-        liveFilter.warning = `live browser check unavailable; returning only tabs known in the active session registry: ${String(error?.message ?? error)}`;
+        liveCheckUnavailable = true;
+        liveFilter.warning = `live browser check unavailable; returning registry records without liveness filtering: ${String(error?.message ?? error)}`;
       }
       if (preferred) {
         const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : liveSessions;
@@ -69,6 +72,8 @@ async function listManagedTabs(args = {}, options = {}) {
           }
           stale.push({
             tab_id: record.tab_id,
+            browser_instance_id: record.browser_instance_id || undefined,
+            session_key: record.session_key,
             workspace_key: record.workspace_key,
             url: record.url,
             reason: liveness.reason,
@@ -83,13 +88,15 @@ async function listManagedTabs(args = {}, options = {}) {
           stale_count: stale.length,
           stale,
         };
-      } else {
+      } else if (!liveCheckUnavailable) {
         const liveById = liveTabMap(liveSessions);
-        const kept = registryRecords.filter((record) => liveById.has(record.tab_id));
+        const kept = registryRecords.filter((record) => liveById.has(browserTabKey(record)));
         const stale = registryRecords
-          .filter((record) => !liveById.has(record.tab_id))
+          .filter((record) => !liveById.has(browserTabKey(record)))
           .map((record) => ({
             tab_id: record.tab_id,
+            browser_instance_id: record.browser_instance_id || undefined,
+            session_key: record.session_key,
             workspace_key: record.workspace_key,
             url: record.url,
             reason: "live_check_unavailable",
@@ -101,6 +108,15 @@ async function listManagedTabs(args = {}, options = {}) {
           after_count: kept.length,
           stale_count: stale.length,
           stale,
+        };
+      } else {
+        managedRecords = registryRecords;
+        liveFilter = {
+          ...liveFilter,
+          applied: false,
+          source: "unavailable",
+          reason: "live_browser_selection_unavailable",
+          after_count: registryRecords.length,
         };
       }
     }

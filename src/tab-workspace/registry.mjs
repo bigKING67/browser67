@@ -15,9 +15,14 @@ import {
   parseUrlParts,
   resolveRegistryPath,
 } from "./policy.mjs";
+import {
+  browserTabKey,
+  normalizeBrowserInstanceId,
+  normalizeBrowserTabId,
+} from "./identity.mjs";
 
 const managedTabs = new Map();
-const deletedTabIds = new Set();
+const deletedTabKeys = new Set();
 const registryPath = resolveRegistryPath();
 let registryLoaded = false;
 let registryLoadPromise = null;
@@ -95,7 +100,19 @@ function replaceManagedTabs(records) {
   managedTabs.clear();
   records
     .filter((record) => record.dry_run !== true && record.status !== "closed")
-    .forEach((record) => managedTabs.set(record.tab_id, record));
+    .forEach((record) => managedTabs.set(browserTabKey(record), record));
+}
+
+function managedTabLookupKey(tabId, browserInstanceId = "") {
+  const raw = normalizeBrowserTabId(tabId);
+  if (!raw) return "";
+  if (managedTabs.has(raw)) return raw;
+  const normalizedInstanceId = normalizeBrowserInstanceId(browserInstanceId);
+  if (normalizedInstanceId) return browserTabKey(raw, normalizedInstanceId);
+  const matchingKeys = [...managedTabs.entries()]
+    .filter(([, record]) => record.tab_id === raw)
+    .map(([key]) => key);
+  return matchingKeys.length === 1 ? matchingKeys[0] : "";
 }
 
 async function readRegistryRecordsFromDisk() {
@@ -149,22 +166,22 @@ async function persistRegistry() {
     const diskRecords = await readRegistryRecordsFromDisk();
     diskRecords
       .filter((record) => record.dry_run !== true && record.status !== "closed")
-      .forEach((record) => merged.set(record.tab_id, record));
-    deletedTabIds.forEach((tabId) => merged.delete(tabId));
+      .forEach((record) => merged.set(browserTabKey(record), record));
+    deletedTabKeys.forEach((key) => merged.delete(key));
     Array.from(managedTabs.values()).forEach((record) => {
       if (record.dry_run === true) {
         return;
       }
       if (record.status === "closed") {
-        merged.delete(record.tab_id);
+        merged.delete(browserTabKey(record));
         return;
       }
-      merged.set(record.tab_id, record);
+      merged.set(browserTabKey(record), record);
     });
 
     await fs.mkdir(dirname(registryPath), { recursive: true });
     const payload = {
-      version: 2,
+      version: 3,
       updated_at: nowIso(),
       managed_tabs: Array.from(merged.values()).map((record) => managedTabPayload(record)),
     };
@@ -173,8 +190,8 @@ async function persistRegistry() {
     await fs.rename(tempPath, registryPath);
 
     managedTabs.clear();
-    Array.from(merged.values()).forEach((record) => managedTabs.set(record.tab_id, record));
-    deletedTabIds.clear();
+    Array.from(merged.values()).forEach((record) => managedTabs.set(browserTabKey(record), record));
+    deletedTabKeys.clear();
     registryDiskFingerprint = await registryFingerprintFromDisk();
   } finally {
     await releaseRegistryLock(lock);
@@ -187,20 +204,21 @@ async function recordManagedTab(input) {
     return planManagedTab(input);
   }
   const record = buildManagedRecord(input);
-  managedTabs.set(record.tab_id, record);
+  managedTabs.set(browserTabKey(record), record);
   await persistRegistry();
   return record;
 }
 
-async function getManagedTab(tabId) {
+async function getManagedTab(tabId, browserInstanceId = "") {
   await refreshRegistryFromDiskIfChanged();
-  return managedTabs.get(String(tabId ?? "").trim()) ?? null;
+  const key = managedTabLookupKey(tabId, browserInstanceId);
+  return key ? managedTabs.get(key) ?? null : null;
 }
 
-async function updateManagedTab(tabId, patch = {}) {
+async function updateManagedTab(tabId, patch = {}, browserInstanceId = "") {
   await refreshRegistryFromDiskIfChanged();
-  const normalizedTabId = String(tabId ?? "").trim();
-  const existing = managedTabs.get(normalizedTabId);
+  const key = managedTabLookupKey(tabId, browserInstanceId || patch.browser_instance_id);
+  const existing = key ? managedTabs.get(key) : null;
   if (!existing) {
     return null;
   }
@@ -213,6 +231,9 @@ async function updateManagedTab(tabId, patch = {}) {
     ...existing,
     ...recordPatch,
     tab_id: existing.tab_id,
+    browser_instance_id: existing.browser_instance_id,
+    browser_instance_identity: existing.browser_instance_identity,
+    session_key: existing.session_key,
     owner: "tmwd",
     url: parts.normalized_url,
     origin: parts.origin,
@@ -221,19 +242,19 @@ async function updateManagedTab(tabId, patch = {}) {
     updated_at: nowIso(),
     last_used_at: touch === false ? existing.last_used_at : nowIso(),
   };
-  managedTabs.set(normalizedTabId, next);
+  managedTabs.set(key, next);
   await persistRegistry();
   return next;
 }
 
-async function deleteManagedTab(tabId) {
+async function deleteManagedTab(tabId, browserInstanceId = "") {
   await refreshRegistryFromDiskIfChanged();
-  const normalizedTabId = String(tabId ?? "").trim();
-  if (!normalizedTabId) {
+  const key = managedTabLookupKey(tabId, browserInstanceId);
+  if (!key) {
     return;
   }
-  managedTabs.delete(normalizedTabId);
-  deletedTabIds.add(normalizedTabId);
+  managedTabs.delete(key);
+  deletedTabKeys.add(key);
   await persistRegistry();
 }
 
@@ -248,6 +269,9 @@ async function listManagedTabRecords(options = {}) {
       return false;
     }
     if (options.workspace_key && record.workspace_key !== options.workspace_key) {
+      return false;
+    }
+    if (options.browser_instance_id && record.browser_instance_id !== options.browser_instance_id) {
       return false;
     }
     return true;

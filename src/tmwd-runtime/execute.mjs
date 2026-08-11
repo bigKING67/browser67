@@ -20,10 +20,11 @@ function runtimeServices(options = {}) {
 async function executeTmwdJs(args, tmwdContext, code, options = {}) {
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms);
   if (tmwdContext.tmwd_transport === "ws") {
-    const numericTargetTabId = Number(tmwdContext.target.id);
+    const targetTabId = tmwdContext.target.tab_id ?? tmwdContext.target.id;
+    const numericTargetTabId = Number(targetTabId);
     const bridgeTabId = Number.isFinite(numericTargetTabId)
       ? numericTargetTabId
-      : tmwdContext.target.id;
+      : targetTabId;
     const codePayload = typeof code === "object" && code !== null
       ? { ...code, tabId: code.tabId ?? bridgeTabId }
       : String(code ?? "");
@@ -33,6 +34,7 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
         tmwd_ws_endpoint: tmwdContext.endpoint,
       },
       {
+        browser_instance_id: tmwdContext.target.browser_instance_id,
         tabId: bridgeTabId,
         code: codePayload,
         monitorNewTabs: args?.no_monitor !== true,
@@ -70,7 +72,8 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
     },
     {
       cmd: "execute_js",
-      sessionId: tmwdContext.target.id,
+      sessionId: tmwdContext.target.tab_id ?? tmwdContext.target.id,
+      browser_instance_id: tmwdContext.target.browser_instance_id,
       code,
       timeout: String(timeoutSecs),
       monitorNewTabs: args?.no_monitor !== true,
@@ -97,7 +100,8 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload, options
       const executed = await executeTmwdJs(
         {
           ...args,
-          session_id: context.target.id,
+          browser_instance_id: context.target.browser_instance_id ?? args?.browser_instance_id,
+          session_id: context.target.tab_id ?? context.target.id,
         },
         context,
         codePayload,
@@ -137,9 +141,12 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload, options
     let fallbackContext;
     try {
       fallbackContext = await resolveTmwdContextWithTransport(
-        args,
+        {
+          ...args,
+          browser_instance_id: tmwdContext.target.browser_instance_id ?? args?.browser_instance_id,
+        },
         fallbackTransport,
-        tmwdContext.target.id,
+        tmwdContext.target.tab_id ?? tmwdContext.target.id,
         options,
       );
       appendTransportAttempt(attempts, fallbackTransport, "resolve_context", "ok", {

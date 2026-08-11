@@ -13,6 +13,11 @@ import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
 } from "../tmwd-runtime/index.mjs";
+import {
+  browserTabIdFrom,
+  browserTabKey,
+  normalizeBrowserInstanceId,
+} from "../tab-workspace/identity.mjs";
 
 function normalizeAction(args, supported) {
   const action = String(args?.action ?? "").trim().toLowerCase();
@@ -205,18 +210,24 @@ function normalizeWaitOptions(args = {}) {
   };
 }
 
-function normalizeTabSummary(raw) {
+function normalizeTabSummary(raw, fallbackBrowserInstanceId = "") {
   const row = raw?.data && typeof raw.data === "object" ? raw.data : raw;
   if (!row || typeof row !== "object") {
     return null;
   }
-  const id = String(row.id ?? row.tab_id ?? row.tabId ?? row.sessionId ?? "").trim();
-  if (!id) {
+  const tabId = browserTabIdFrom(row);
+  if (!tabId) {
     return null;
   }
+  const browserInstanceId = normalizeBrowserInstanceId(
+    row.browser_instance_id ?? row.browserInstanceId ?? fallbackBrowserInstanceId,
+  );
   const url = String(row.url ?? "");
   return {
-    id,
+    id: tabId,
+    tab_id: tabId,
+    browser_instance_id: browserInstanceId || undefined,
+    session_key: browserInstanceId ? `${browserInstanceId}:${tabId}` : tabId,
     url,
     title: String(row.title ?? ""),
     active: row.active === true,
@@ -225,17 +236,17 @@ function normalizeTabSummary(raw) {
   };
 }
 
-function normalizeTabList(raw) {
+function normalizeTabList(raw, fallbackBrowserInstanceId = "") {
   const rows = Array.isArray(raw)
     ? raw
     : (Array.isArray(raw?.data) ? raw.data : []);
-  return rows.map((row) => normalizeTabSummary(row)).filter((row) => row !== null);
+  return rows.map((row) => normalizeTabSummary(row, fallbackBrowserInstanceId)).filter((row) => row !== null);
 }
 
 function liveTabMap(liveTabs = []) {
   return new Map(
     (Array.isArray(liveTabs) ? liveTabs : [])
-      .map((item) => [String(item?.id ?? item?.tab_id ?? item?.tabId ?? "").trim(), item])
+      .map((item) => [browserTabKey(item), item])
       .filter(([id]) => id.length > 0),
   );
 }
@@ -246,13 +257,16 @@ async function readBrowserTabById(args, preferred, tabId, runtimeOptions = {}) {
     return null;
   }
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
+    const browserInstanceId = normalizeBrowserInstanceId(
+      args?.browser_instance_id ?? preferred.context?.target?.browser_instance_id,
+    );
     try {
       const got = await executeTmwdCommandWithPreferred(args, preferred, {
         cmd: "tabs",
         method: "get",
         tabId: normalizedTabId,
       }, runtimeOptions);
-      const summary = normalizeTabSummary(got.value);
+      const summary = normalizeTabSummary(got.value, browserInstanceId);
       if (summary?.id === normalizedTabId) {
         return summary;
       }
@@ -265,7 +279,7 @@ async function readBrowserTabById(args, preferred, tabId, runtimeOptions = {}) {
         method: "list",
         includeUnscriptable: true,
       }, runtimeOptions);
-      return normalizeTabList(listed.value).find((tab) => tab.id === normalizedTabId) ?? null;
+      return normalizeTabList(listed.value, browserInstanceId).find((tab) => tab.id === normalizedTabId) ?? null;
     } catch {
       return null;
     }
@@ -294,7 +308,7 @@ async function readRoutableBrowserTabById(args, tabId, runtimeOptions = {}) {
       refresh_sessions: true,
     }, runtimeOptions);
     const target = preferred.context?.target;
-    return String(target?.id ?? "").trim() === normalizedTabId
+    return browserTabIdFrom(target) === normalizedTabId
       ? normalizeTabSummary(target)
       : null;
   } catch {
@@ -369,10 +383,13 @@ async function resolveManagedRecordLiveness(args, preferred, record, liveById, r
   if (record.dry_run === true) {
     return { live: true, reason: "dry_run" };
   }
-  if (liveById?.has(record.tab_id)) {
+  if (liveById?.has(browserTabKey(record))) {
     return { live: true, reason: "live_session_registry" };
   }
-  const exactTab = await readBrowserTabById(args, preferred, record.tab_id, runtimeOptions);
+  const exactTab = await readBrowserTabById({
+    ...args,
+    browser_instance_id: record.browser_instance_id || args?.browser_instance_id,
+  }, preferred, record.tab_id, runtimeOptions);
   if (exactTab) {
     return {
       live: true,

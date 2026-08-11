@@ -3,9 +3,10 @@ import { hashText, randomId } from "../runtime/identity.mjs";
 const NAVIGATION_AUTHORIZATION_TTL_MS = 5_000;
 
 function browserDocumentIdentity(target = {}) {
-  const tabId = String(target.id ?? target.tab_id ?? target.tabId ?? "").trim();
+  const tabId = String(target.tab_id ?? target.tabId ?? target.id ?? "").trim();
+  const browserInstanceId = String(target.browser_instance_id ?? target.browserInstanceId ?? "").trim();
   const url = String(target.url ?? "").trim();
-  return hashText(`${tabId}|${url}`);
+  return hashText(`${browserInstanceId}|${tabId}|${url}`);
 }
 
 function browserConnectionGeneration(preferred = {}) {
@@ -122,7 +123,11 @@ function reconcileAdoptedNavigation(record, observation = {}, options = {}) {
         ...basePatch,
         url: observedUrl || record.url,
         title: observedTitle || record.title,
-        adopted_document_identity: browserDocumentIdentity({ id: record.tab_id, url: observedUrl }),
+        adopted_document_identity: browserDocumentIdentity({
+          browser_instance_id: record.browser_instance_id,
+          tab_id: record.tab_id,
+          url: observedUrl,
+        }),
         connection_generation: observedConnectionGeneration || record.connection_generation,
         navigation_generation: policy.navigation_generation,
         navigation_authorization_id: "",

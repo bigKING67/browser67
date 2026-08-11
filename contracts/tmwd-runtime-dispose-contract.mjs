@@ -43,6 +43,8 @@ async function startMockTmwdWs() {
           result: [
             {
               id: "mock-tab",
+              tab_id: "mock-tab",
+              browser_instance_id: "mock-browser-instance",
               url: "https://example.test/runtime-dispose",
               title: "Runtime dispose mock",
             },
@@ -99,16 +101,19 @@ async function run() {
       tmwd_transport: "ws",
       tmwd_ws_endpoint: mock.endpoint,
       session_id: "mock-tab",
+      browser_instance_id: "mock-browser-instance",
       timeout_ms: 2_000,
     };
     const preferred = await resolvePreferredBrowserContext(args);
     assert.equal(preferred.transport, "tmwd_ws");
-    assert.equal(preferred.context.target.id, "mock-tab");
+    assert.equal(preferred.context.target.id, "mock-browser-instance:mock-tab");
     assert.equal(preferred.context.session_cache.hit, false);
     assert.equal(mock.tabs_request_count, 1);
 
     mock.push_tabs([{
       id: "mock-tab",
+      tab_id: "mock-tab",
+      browser_instance_id: "mock-browser-instance",
       url: "https://example.test/runtime-dispose",
       title: "Runtime dispose pushed",
     }]);

@@ -5,12 +5,17 @@ import {
   parseUrlParts,
 } from "./policy.mjs";
 import { listManagedTabRecords } from "./registry.mjs";
+import {
+  browserTabIdFrom,
+  browserTabKey,
+  normalizeBrowserInstanceId,
+} from "./identity.mjs";
 
 function liveTabMap(liveTabs = []) {
   const rows = Array.isArray(liveTabs) ? liveTabs : [];
   return new Map(
     rows
-      .map((item) => [String(item?.id ?? item?.tab_id ?? item?.tabId ?? "").trim(), item])
+      .map((item) => [browserTabKey(item), item])
       .filter(([id]) => id.length > 0),
   );
 }
@@ -22,7 +27,7 @@ function recordIsLive(record, liveById) {
   if (!liveById || liveById.size === 0) {
     return record.status !== "closed";
   }
-  if (liveById.has(record.tab_id)) {
+  if (liveById.has(browserTabKey(record))) {
     return true;
   }
   return isManagedTabWithinLiveGrace(record);
@@ -87,6 +92,8 @@ function scoreCandidate(record, target, policy) {
 
 async function findReusableManagedTab(args = {}, url = "", liveTabs = []) {
   const policy = buildReusePolicy(args, url);
+  const browserInstanceId = normalizeBrowserInstanceId(args.browser_instance_id ?? args.browserInstanceId);
+  const explicitRemoteCdp = ["remote_cdp", "cdp"].includes(String(args.tmwd_mode ?? ""));
   if (policy.force_fresh) {
     return {
       record: null,
@@ -98,6 +105,11 @@ async function findReusableManagedTab(args = {}, url = "", liveTabs = []) {
   const liveById = liveTabMap(liveTabs);
   const candidates = (await listManagedTabRecords())
     .filter((record) => record.dry_run !== true)
+    .filter((record) => (
+      explicitRemoteCdp
+        ? record.browser_instance_identity !== "resolved"
+        : Boolean(browserInstanceId && record.browser_instance_id === browserInstanceId)
+    ))
     .filter((record) => recordIsLive(record, liveById))
     .filter((record) => candidateMatches(record, policy.target, policy))
     .map((record) => ({
@@ -132,11 +144,15 @@ async function findReusableManagedTab(args = {}, url = "", liveTabs = []) {
 
 async function summarizeUnmanagedMatches(args = {}, url = "", liveTabs = []) {
   const policy = buildReusePolicy(args, url);
-  const managedIds = new Set((await listManagedTabRecords({ include_closed: true })).map((record) => record.tab_id));
+  const browserInstanceId = normalizeBrowserInstanceId(args.browser_instance_id ?? args.browserInstanceId);
+  const managedIds = new Set((await listManagedTabRecords({ include_closed: true })).map((record) => browserTabKey(record)));
   return (Array.isArray(liveTabs) ? liveTabs : [])
     .filter((tab) => {
-      const id = String(tab?.id ?? tab?.tab_id ?? tab?.tabId ?? "").trim();
-      if (!id || managedIds.has(id)) {
+      if (browserInstanceId && normalizeBrowserInstanceId(tab?.browser_instance_id) !== browserInstanceId) {
+        return false;
+      }
+      const key = browserTabKey(tab);
+      if (!key || managedIds.has(key)) {
         return false;
       }
       const candidate = parseUrlParts(tab?.url ?? "");
@@ -150,7 +166,9 @@ async function summarizeUnmanagedMatches(args = {}, url = "", liveTabs = []) {
     })
     .slice(0, 5)
     .map((tab) => ({
-      tab_id: String(tab?.id ?? tab?.tab_id ?? tab?.tabId ?? ""),
+      browser_instance_id: normalizeBrowserInstanceId(tab?.browser_instance_id) || undefined,
+      tab_id: browserTabIdFrom(tab),
+      session_key: browserTabKey(tab),
       url: compactText(tab?.url ?? "", 90),
       title: compactText(tab?.title ?? "", 90),
       reason: "user_unmanaged_tab_not_reused",
@@ -172,7 +190,7 @@ async function managedTabGroups(records = null) {
     if (record.keep === true) {
       existing.kept_count += 1;
     }
-    existing.tabs.push(record.tab_id);
+    existing.tabs.push(record.session_key || browserTabKey(record));
     groups.set(key, existing);
   }
   return Array.from(groups.values()).sort((left, right) => left.workspace_key.localeCompare(right.workspace_key));

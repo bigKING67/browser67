@@ -51,6 +51,7 @@ args = ["/path/to/browser67/src/mcp/js-reverse/server.mjs"]
 8. **Structured evidence** — `record_reverse_evidence` 统一写入 `evidence.v1` 结构；每条证据标注 source、confidence、request/script/artifact 关联，便于 run artifact、报告和 handoff 复用。
 9. **Microfrontend-aware scope** — 先用 `detect_microfrontends` 判断 qiankun / Garfish / single-spa / micro-app / iframe / shadow DOM / sandbox 边界，再决定 hook scope。不能 hook 时必须说明是 cross-origin、closed shadow root、sandbox、还是需要 extension/CDP frame path。
 10. **Native fallback is last-mile evidence** — anti-bot / `isTrusted` 问题先用 Observe/Hook/Network 证明边界；物理输入只作为 browser67 native fallback 的最后一跳执行能力。GenericAgent 的 `ljqCtrl` / `macljqCtrl` / AX 路径只作为 audited reference 和 diagnostic，不替代默认 JS reverse 观察、取证、补环境链路。
+11. **Browser Instance 显式路由** — Chrome/Edge 每个 Browser Profile 都是独立 bridge；目标身份是 `(browser_instance_id, tab_id)`。多实例且没有 selector/default 时接受 `AMBIGUOUS_TARGET` 并先用 `tmwd_browser.browser_instance_ops list` 选择，不得按 first/latest 猜测；default 失联时的 `BROWSER_INSTANCE_UNAVAILABLE` 也不得 fallback。`browser_instance_id` 仅是 browser67 路由参数，不是 Pi Agent Profile、原生子代理 Profile 或 worktree。
 
 ---
 
