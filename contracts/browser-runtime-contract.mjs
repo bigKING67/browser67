@@ -124,32 +124,49 @@ async function run() {
   );
 
   assert.deepEqual(buildLiveTargetRoute({
+    browser_instance_id: "browser-instance-a",
     target_tab_id: "fixture",
     target_url_contains: "http://127.0.0.1:4567/",
   }), {
+    browser_instance_id: "browser-instance-a",
     switch_tab_id: "fixture",
   });
   const liveGateArgs = parseLiveGateArgs([
+    "--browser-instance-id", "browser-instance-a",
     "--target-tab-id", "fixture",
     "--target-url-contains", "http://127.0.0.1:4567/",
   ]);
+  assert.equal(liveGateArgs.browser_instance_id, "browser-instance-a");
   assert.equal(liveGateArgs.target_tab_id, "fixture");
   assert.deepEqual(
-    buildLiveArgs(liveGateArgs).slice(-4),
-    ["--target-tab-id", "fixture", "--target-url-contains", "http://127.0.0.1:4567/"],
+    buildLiveArgs(liveGateArgs).slice(-6),
+    [
+      "--browser-instance-id", "browser-instance-a",
+      "--target-tab-id", "fixture",
+      "--target-url-contains", "http://127.0.0.1:4567/",
+    ],
   );
   const liveContractArgs = parseLiveContractArgs([
+    "--browser-instance-id", "browser-instance-a",
     "--target-tab-id", "fixture",
     "--target-url-contains", "http://127.0.0.1:4567/",
   ]);
+  assert.equal(liveContractArgs.browser_instance_id, "browser-instance-a");
   assert.equal(liveContractArgs.target_tab_id, "fixture");
-  const scanPayload = { metadata: { active_tab: "fixture" } };
+  const scanPayload = {
+    metadata: {
+      active_tab: "browser-instance-a:fixture",
+      active_browser_instance_id: "browser-instance-a",
+    },
+  };
   const executePayload = {
-    tab_id: "fixture",
+    tab_id: "browser-instance-a:fixture",
+    selection: { browser_instance_id: "browser-instance-a" },
     js_return: { href: "http://127.0.0.1:4567/" },
   };
   assert.doesNotThrow(() => assertLiveTargetIdentity({
     cli: {
+      browser_instance_id: "browser-instance-a",
       target_tab_id: "fixture",
       target_url_contains: "http://127.0.0.1:4567/",
     },
@@ -158,10 +175,26 @@ async function run() {
   }));
   assert.throws(
     () => assertLiveTargetIdentity({
+      cli: {
+        browser_instance_id: "browser-instance-a",
+        target_tab_id: "fixture",
+      },
+      scanPayload,
+      executePayload: {
+        tab_id: "browser-instance-b:fixture",
+        selection: { browser_instance_id: "browser-instance-b" },
+        js_return: { href: "http://127.0.0.1:4567/" },
+      },
+    }),
+    /live execute browser instance mismatch/,
+  );
+  assert.throws(
+    () => assertLiveTargetIdentity({
       cli: { target_url_contains: "http://127.0.0.1:4567/" },
       scanPayload,
       executePayload: {
-        tab_id: "startup",
+        tab_id: "browser-instance-a:startup",
+        selection: { browser_instance_id: "browser-instance-a" },
         js_return: { href: "about:blank" },
       },
     }),
@@ -172,7 +205,8 @@ async function run() {
       cli: {},
       scanPayload,
       executePayload: {
-        tab_id: "startup",
+        tab_id: "browser-instance-a:startup",
+        selection: { browser_instance_id: "browser-instance-a" },
         js_return: { href: "about:blank" },
       },
     }),

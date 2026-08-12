@@ -27,7 +27,11 @@ async function run(argv = process.argv.slice(2)) {
       fixtureContext = await createManagedLiveFixture({ rpc, cli, commonArgs: baseArgs });
     }
     const effectiveCli = fixtureContext
-      ? { ...cli, target_tab_id: fixtureContext.tab_id }
+      ? {
+          ...cli,
+          browser_instance_id: fixtureContext.browser_instance_id || cli.browser_instance_id,
+          target_tab_id: fixtureContext.tab_id,
+        }
       : cli;
     const scanPayload = await runScanCase({ rpc, cli: effectiveCli, commonArgs: baseArgs });
     const executePayload = await runExecuteCase({
@@ -44,6 +48,7 @@ async function run(argv = process.argv.slice(2)) {
       transport_attempts: executePayload.transport_attempts,
       tabs_count: tabsCount,
       active_tab: scanPayload?.metadata?.active_tab,
+      browser_instance_id: effectiveCli.browser_instance_id || null,
       tab_id: executePayload?.tab_id,
       title: executePayload?.js_return?.title,
       href: executePayload?.js_return?.href,

@@ -130,6 +130,30 @@ async function runRuntimeIdentityCase(controllerWs, linkUrl) {
   });
   assert.equal(verified.ok, true);
   assert.equal(verified.identity_match, true);
+  const packagedVerified = compareExtensionRuntimeIdentity({
+    endpoint: "ws://127.0.0.1:fixture",
+    ok: true,
+    latency_ms: 1,
+    detail: "ws_runtime_info_ok",
+    runtime_info: wsResponse.result,
+  }, {
+    available: true,
+    path: "/fixture/package-build-identity.json",
+    identity: { ...extensionIdentity, build_revision_source: "package_git_head" },
+    installed_candidates: [{
+      available: true,
+      basis: "packaged",
+      path: "/fixture/installed-build-identity.json",
+      identity: { ...extensionIdentity, build_revision_source: "package_git_head" },
+      error: "",
+    }],
+    error: "",
+  });
+  assert.equal(packagedVerified.ok, true);
+  assert.equal(packagedVerified.identity_match, true);
+  assert.deepEqual(packagedVerified.mismatches, []);
+  assert.equal(packagedVerified.observed_browser_instances[0]?.identity_match, true);
+  assert.deepEqual(packagedVerified.matching_installed_paths, ["/fixture/installed-build-identity.json"]);
   const mismatch = compareExtensionRuntimeIdentity({
     endpoint: "ws://127.0.0.1:fixture",
     ok: true,

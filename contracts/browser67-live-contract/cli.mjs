@@ -32,6 +32,7 @@ function parseArgs(argv) {
     tmwd_ws_endpoint: "ws://127.0.0.1:18765",
     tmwd_link_endpoint: "http://127.0.0.1:18766/link",
     cdp_endpoint: "http://127.0.0.1:9222",
+    browser_instance_id: "",
     target_tab_id: "",
     target_url_contains: "",
     require_cookie: false,
@@ -74,6 +75,11 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (token === "--browser-instance-id") {
+      parsed.browser_instance_id = parseRequiredString(argv[index + 1], "--browser-instance-id");
+      index += 1;
+      continue;
+    }
     if (token === "--target-tab-id") {
       parsed.target_tab_id = parseRequiredString(argv[index + 1], "--target-tab-id");
       index += 1;
@@ -102,6 +108,7 @@ function commonArgs(cli) {
     tmwd_ws_endpoint: cli.tmwd_ws_endpoint,
     tmwd_link_endpoint: cli.tmwd_link_endpoint,
     cdp_endpoint: cli.cdp_endpoint,
+    ...(cli.browser_instance_id ? { browser_instance_id: cli.browser_instance_id } : {}),
   };
 }
 

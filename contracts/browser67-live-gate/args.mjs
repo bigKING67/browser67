@@ -19,6 +19,9 @@ function buildDoctorArgs(config) {
 
 function buildLiveArgs(config) {
   const args = [...buildCommonArgs(config)];
+  if (config.browser_instance_id) {
+    args.push("--browser-instance-id", config.browser_instance_id);
+  }
   if (config.target_tab_id) {
     args.push("--target-tab-id", config.target_tab_id);
   }

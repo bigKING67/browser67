@@ -45,12 +45,14 @@ async function createManagedLiveFixture({ rpc, cli, commonArgs }) {
       },
     });
     const tabId = String(created?.managed_tab?.tab_id ?? "").trim();
+    const browserInstanceId = String(created?.managed_tab?.browser_instance_id ?? "").trim();
     if (!tabId || created?.ready !== true) {
       throw new Error(`managed live fixture did not become ready: ${JSON.stringify(created)}`);
     }
     return {
       fixture,
       tab_id: tabId,
+      browser_instance_id: browserInstanceId,
       workspace_key: workspaceKey,
       task_id: taskId,
       created: created?.created === true,

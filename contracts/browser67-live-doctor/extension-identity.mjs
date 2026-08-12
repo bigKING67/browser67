@@ -11,13 +11,13 @@ import { resolveBrowser67Home } from "../../src/runtime/paths/home.mjs";
 import { normalizeExtensionIdentity } from "../../src/tmwd-hub/extension-identity.mjs";
 import { buildExtension } from "../../scripts/build-extension.mjs";
 
-const IDENTITY_FIELDS = [
+// The same immutable package uses package_git_head after leaving its Git checkout.
+const MATCHING_IDENTITY_FIELDS = [
   "schema",
   "product",
   "extension_version",
   "manifest_version",
   "build_revision",
-  "build_revision_source",
   "build_inputs_dirty",
   "source_digest",
   "protocol_revision",
@@ -114,7 +114,7 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
     ? activeInstanceIdentities.map((entry) => entry.identity)
     : [observed];
   if (expectedIdentity) {
-    for (const field of IDENTITY_FIELDS) {
+    for (const field of MATCHING_IDENTITY_FIELDS) {
       if (observedForComparison.some((identity) => !identity || identity[field] !== expectedIdentity[field])) {
         mismatches.push(field);
       }
@@ -137,7 +137,7 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
     const candidateMatchesObserved = Boolean(
       observed
       && candidateIdentity
-      && IDENTITY_FIELDS.every((field) => observed[field] === candidateIdentity[field]),
+      && MATCHING_IDENTITY_FIELDS.every((field) => observed[field] === candidateIdentity[field]),
     );
     return {
       basis: String(candidate?.basis ?? "unknown"),
@@ -180,7 +180,7 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
       identity_match: Boolean(
         entry.identity
         && expectedIdentity
-        && IDENTITY_FIELDS.every((field) => entry.identity[field] === expectedIdentity[field]),
+        && MATCHING_IDENTITY_FIELDS.every((field) => entry.identity[field] === expectedIdentity[field]),
       ),
     })),
     expected_identity: expectedIdentity,

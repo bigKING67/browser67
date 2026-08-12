@@ -9,6 +9,7 @@ function parseArgs(argv) {
     tmwd_ws_endpoint: "ws://127.0.0.1:18765",
     tmwd_link_endpoint: "http://127.0.0.1:18766/link",
     cdp_endpoint: "http://127.0.0.1:9222",
+    browser_instance_id: "",
     target_tab_id: "",
     target_url_contains: "",
     require_cookie: false,
@@ -75,6 +76,15 @@ function parseArgs(argv) {
     }
     if (token === "--target-url-contains") {
       parsed.target_url_contains = String(argv[index + 1] ?? "").trim();
+      index += 1;
+      continue;
+    }
+    if (token === "--browser-instance-id") {
+      const value = String(argv[index + 1] ?? "").trim();
+      if (!value) {
+        throw new Error("invalid --browser-instance-id value");
+      }
+      parsed.browser_instance_id = value;
       index += 1;
       continue;
     }
