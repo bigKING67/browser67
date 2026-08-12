@@ -9,6 +9,7 @@ function parseArgs(argv) {
   const parsed = {
     endpoint: normalizeTmwdWsEndpoint(process.env.BROWSER_STRUCTURED_TMWD_WS_ENDPOINT),
     timeoutMs: 5_000,
+    browserInstanceId: "",
     json: false,
     help: false,
   };
@@ -21,6 +22,11 @@ function parseArgs(argv) {
     }
     if (token === "--timeout-ms") {
       parsed.timeoutMs = normalizeTimeoutMs(requiredValue(argv, index, token));
+      index += 1;
+      continue;
+    }
+    if (token === "--browser-instance-id") {
+      parsed.browserInstanceId = requiredValue(argv, index, token);
       index += 1;
       continue;
     }
@@ -55,7 +61,7 @@ function normalizeTimeoutMs(raw) {
 
 function usage() {
   return [
-    "Usage: node scripts/reload-extension-live.mjs [--ws-endpoint <url>] [--timeout-ms <ms>] [--json]",
+    "Usage: node scripts/reload-extension-live.mjs [--ws-endpoint <url>] [--timeout-ms <ms>] [--browser-instance-id <id>] [--json]",
     "",
     "Schedules a self-reload of the currently connected browser67 extension.",
     "Run npm run setup first so the unpacked extension directory contains current files.",
@@ -75,7 +81,10 @@ function reloadBrowser67Extension(options = {}) {
     options.endpoint ?? process.env.BROWSER_STRUCTURED_TMWD_WS_ENDPOINT,
   );
   const timeoutMs = normalizeTimeoutMs(options.timeoutMs ?? 5_000);
-  const requestId = `browser67_reload_${randomUUID()}`;
+  const browserInstanceId = String(options.browserInstanceId ?? "").trim();
+  const requestToken = randomUUID();
+  const tabsRequestId = `browser67_reload_tabs_${requestToken}`;
+  const reloadRequestId = `browser67_reload_${requestToken}`;
 
   return new Promise((resolvePromise, rejectPromise) => {
     const socket = new WebSocket(endpoint);
@@ -103,9 +112,9 @@ function reloadBrowser67Extension(options = {}) {
 
     socket.once("open", () => {
       socket.send(JSON.stringify({
-        id: requestId,
-        tabId: 1,
-        code: { cmd: "management", method: "reload" },
+        id: tabsRequestId,
+        ...(browserInstanceId ? { browser_instance_id: browserInstanceId } : {}),
+        code: { cmd: "tabs", method: "list" },
       }));
     });
     socket.on("message", (raw) => {
@@ -115,7 +124,34 @@ function reloadBrowser67Extension(options = {}) {
       } catch {
         return;
       }
-      if (String(message?.id ?? "") !== requestId || message?.type === "ack") {
+      const messageId = String(message?.id ?? "");
+      if (messageId === tabsRequestId) {
+        if (message?.type === "ack") return;
+        if (message?.success !== true || !Array.isArray(message?.result) || message.result.length === 0) {
+          finish(new Error(toErrorMessage(message?.error ?? "no active browser tab is available for extension reload")));
+          return;
+        }
+        const target = message.result.find((row) => Number.isFinite(Number(row?.tab_id ?? row?.id)));
+        if (!target) {
+          finish(new Error("extension reload could not resolve a numeric live tab id"));
+          return;
+        }
+        const targetBrowserInstanceId = String(
+          message?.browser_instance_id ?? target?.browser_instance_id ?? browserInstanceId,
+        ).trim();
+        if (!targetBrowserInstanceId) {
+          finish(new Error("extension reload could not resolve browser_instance_id"));
+          return;
+        }
+        socket.send(JSON.stringify({
+          id: reloadRequestId,
+          browser_instance_id: targetBrowserInstanceId,
+          tabId: Number(target.tab_id ?? target.id),
+          code: { cmd: "management", method: "reload" },
+        }));
+        return;
+      }
+      if (messageId !== reloadRequestId || message?.type === "ack") {
         return;
       }
       if (message?.type !== "result" || message?.result?.ok !== true) {
@@ -126,7 +162,7 @@ function reloadBrowser67Extension(options = {}) {
         ok: true,
         status: "reload_scheduled",
         endpoint,
-        request_id: requestId,
+        request_id: reloadRequestId,
         next_steps: [
           "Wait for the extension to reconnect to the browser67 Hub.",
           "Refresh existing target tabs when content-script changes must be reinjected.",
@@ -154,6 +190,7 @@ async function main(argv = process.argv.slice(2)) {
   const result = await reloadBrowser67Extension({
     endpoint: args.endpoint,
     timeoutMs: args.timeoutMs,
+    browserInstanceId: args.browserInstanceId,
   });
   if (args.json) {
     process.stdout.write(`${JSON.stringify(result)}\n`);

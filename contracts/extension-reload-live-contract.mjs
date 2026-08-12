@@ -20,15 +20,30 @@ async function close(server) {
 
 async function run() {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-  let requestCount = 0;
+  let reloadRequestCount = 0;
   server.on("connection", (socket) => {
     socket.on("message", (raw) => {
       const request = JSON.parse(String(raw));
-      requestCount += 1;
-      assert.equal(request.tabId, 1);
+      if (request.code?.cmd === "tabs") {
+        assert.deepEqual(request.code, { cmd: "tabs", method: "list" });
+        socket.send(JSON.stringify({
+          id: request.id,
+          success: true,
+          browser_instance_id: "browser-instance-a",
+          result: [{
+            id: "42",
+            tab_id: "42",
+            browser_instance_id: "browser-instance-a",
+          }],
+        }));
+        return;
+      }
+      reloadRequestCount += 1;
+      assert.equal(request.browser_instance_id, "browser-instance-a");
+      assert.equal(request.tabId, 42);
       assert.deepEqual(request.code, { cmd: "management", method: "reload" });
       socket.send(JSON.stringify({ type: "ack", id: request.id }));
-      if (requestCount === 1) {
+      if (reloadRequestCount === 1) {
         socket.send(JSON.stringify({
           type: "result",
           id: request.id,
@@ -61,6 +76,7 @@ async function run() {
       ok: true,
       check: "extension-reload-live-contract",
       reload_request_shape: true,
+      live_target_discovery: true,
       ack_ignored: true,
       extension_error_propagated: true,
     })}\n`);
