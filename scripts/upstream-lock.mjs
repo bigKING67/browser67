@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +10,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const lockPath = resolve(repoRoot, "UPSTREAM.lock.json");
 const genericAgentRoot = resolve(repoRoot, "..", "GenericAgent");
-const extensionSource = resolve(genericAgentRoot, "assets/tmwd_cdp_bridge");
 const ignoredExtensionFiles = new Set(["config.js"]);
 
 function exec(command, args, cwd) {
@@ -22,6 +21,14 @@ function exec(command, args, cwd) {
     throw new Error(`${command} ${args.join(" ")} failed: ${String(result.stderr || result.stdout).trim()}`);
   }
   return String(result.stdout ?? "").trim();
+}
+
+function execBuffer(command, args, cwd) {
+  const result = spawnSync(command, args, { cwd, encoding: null });
+  if (result.status !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed: ${String(result.stderr || result.stdout).trim()}`);
+  }
+  return result.stdout;
 }
 
 function parseArgs(argv) {
@@ -55,45 +62,46 @@ function usage() {
   ].join("\n");
 }
 
-function listFiles(rootDir) {
-  const rows = [];
-  function walk(currentDir) {
-    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
-      const absolute = resolve(currentDir, entry.name);
-      const rel = relative(rootDir, absolute).replaceAll("\\", "/");
-      if (entry.isDirectory()) {
-        walk(absolute);
-        continue;
-      }
-      if (entry.isFile() && !ignoredExtensionFiles.has(rel)) {
-        rows.push(rel);
-      }
-    }
+export function collectGitSnapshot(root, options = {}) {
+  const commit = String(options.commit ?? "HEAD");
+  const source = String(options.extensionSource ?? "assets/tmwd_cdp_bridge").replace(/^\/+|\/+$/g, "");
+  const ignored = new Set(options.ignoredFiles ?? [...ignoredExtensionFiles]);
+  const resolvedCommit = exec("git", ["rev-parse", `${commit}^{commit}`], root);
+  const prefix = `${source}/`;
+  const files = exec("git", ["ls-tree", "-r", "--name-only", resolvedCommit, "--", source], root)
+    .split(/\r?\n/)
+    .filter((file) => file.startsWith(prefix))
+    .map((file) => file.slice(prefix.length))
+    .filter((file) => !ignored.has(file))
+    .sort()
+    .map((file) => ({
+      path: file,
+      sha256: createHash("sha256")
+        .update(execBuffer("git", ["show", `${resolvedCommit}:${source}/${file}`], root))
+        .digest("hex"),
+    }));
+  if (files.length === 0) {
+    throw new Error(`no extension files found at ${resolvedCommit}:${source}`);
   }
-  walk(rootDir);
-  return rows.sort();
-}
-
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
-}
-
-function collectCurrent() {
-  const files = listFiles(extensionSource).map((file) => ({
-    path: file,
-    sha256: sha256(resolve(extensionSource, file)),
-  }));
   return {
     schema_version: 1,
     upstream: {
       name: "lsdefine/GenericAgent",
-      remote: exec("git", ["remote", "get-url", "origin"], genericAgentRoot),
-      commit: exec("git", ["rev-parse", "HEAD"], genericAgentRoot),
-      extension_source: relative(genericAgentRoot, extensionSource).replaceAll("\\", "/"),
-      ignored_files: [...ignoredExtensionFiles].sort(),
+      remote: exec("git", ["remote", "get-url", "origin"], root),
+      commit: resolvedCommit,
+      extension_source: source,
+      ignored_files: [...ignored].sort(),
     },
     files,
   };
+}
+
+function collectCurrent() {
+  return collectGitSnapshot(genericAgentRoot, {
+    commit: "HEAD",
+    extensionSource: "assets/tmwd_cdp_bridge",
+    ignoredFiles: [...ignoredExtensionFiles],
+  });
 }
 
 function stableStringify(value) {
@@ -106,13 +114,18 @@ function run() {
     process.stdout.write(`${usage()}\n`);
     return args.help ? 0 : 1;
   }
-  const current = collectCurrent();
   if (args.write) {
+    const current = collectCurrent();
     writeFileSync(lockPath, stableStringify(current), "utf8");
     process.stdout.write(`${JSON.stringify({ ok: true, written: lockPath, upstream: current.upstream, file_count: current.files.length })}\n`);
     return 0;
   }
   const expected = JSON.parse(readFileSync(lockPath, "utf8"));
+  const current = collectGitSnapshot(genericAgentRoot, {
+    commit: expected?.upstream?.commit,
+    extensionSource: expected?.upstream?.extension_source,
+    ignoredFiles: expected?.upstream?.ignored_files,
+  });
   const ok = stableStringify(expected) === stableStringify(current);
   const payload = {
     ok,
@@ -121,14 +134,17 @@ function run() {
     current_upstream: current.upstream,
     expected_file_count: Array.isArray(expected.files) ? expected.files.length : 0,
     current_file_count: current.files.length,
+    check_basis: "locked_git_object",
   };
   process.stdout.write(`${JSON.stringify(payload)}\n`);
   return ok ? 0 : 1;
 }
 
-try {
-  process.exitCode = run();
-} catch (error) {
-  process.stderr.write(`upstream-lock failed: ${String(error?.message ?? error)}\n`);
-  process.exitCode = 1;
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  try {
+    process.exitCode = run();
+  } catch (error) {
+    process.stderr.write(`upstream-lock failed: ${String(error?.message ?? error)}\n`);
+    process.exitCode = 1;
+  }
 }

@@ -4,16 +4,16 @@
     "name": "lsdefine/GenericAgent",
     "remote": "https://github.com/lsdefine/GenericAgent.git",
     "reviewed_ref": "main",
-    "reviewed_commit": "41e1fcebe84215a94290fdd463107501cf898380",
-    "reviewed_at": "2026-08-02",
-    "release_context": "4086d5c..41e1fce manual review: 18 upstream commits changed agent, frontend, conductor, hub, WeChat, model and Responses API behavior but did not modify assets/tmwd_cdp_bridge; browser67 extension decisions remain unchanged"
+    "reviewed_commit": "f06d5503808ba9d164fb583e4c500d5ce01efd4c",
+    "reviewed_at": "2026-08-14",
+    "release_context": "41e1fce..f06d550 manual review: upstream extension changes add a WebSocket-only badge/status overlay in background.js and content.js; browser67 keeps its transport-aware managed overlay and local bridge safeguards, with no direct sync"
   },
   "decision": {
     "extension_merge_mode": "manual_merge_preserve_local_bridge_features",
     "direct_sync_allowed": false,
     "local_extension_action": "keep_local_bridge_and_selectively_cherry_pick_future_useful_hunks",
     "lock_action": "keep_UPSTREAM.lock.json_at_extension_sync_baseline_until_intentional_extension_sync",
-    "reason": "Latest upstream 41e1fcebe84215a94290fdd463107501cf898380 was checked with upstream:audit:latest. Extension drift changed_files=background.js,browser67/managed-content.js,browser67/runtime.js,content.js,disable_dialogs.js,manifest.json; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
+    "reason": "Latest upstream f06d5503808ba9d164fb583e4c500d5ce01efd4c was checked with upstream:audit:latest. Extension drift changed_files=background.js,browser67/managed-content.js,browser67/runtime.js,content.js,disable_dialogs.js,manifest.json; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
   },
   "extension_review": {
     "changed_files": [
@@ -71,11 +71,11 @@
     "reviewed_source_files": [
       {
         "path": "background.js",
-        "sha256": "4e109f37596f82fdd8d560b1cd9b5465e388d606398c6e725ca1741774125d4e"
+        "sha256": "f11efbe131d344da5399f9ebac71f93ca5f0c0d45d1dbda5b46ff9765fb62822"
       },
       {
         "path": "content.js",
-        "sha256": "7fa8acab9bf8f68ec6f266f8d7d8eac2dd14ec9fa250aaa49b2097825a901914"
+        "sha256": "49a7b567416b6d152c1cf961965b52fe4837fb6307265b7530c78a4a9f56c486"
       },
       {
         "path": "disable_dialogs.js",

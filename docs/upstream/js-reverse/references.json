@@ -18,7 +18,7 @@
     {
       "name": "zhaoxuya520/reverse-skill",
       "remote": "https://github.com/zhaoxuya520/reverse-skill.git",
-      "reviewed_commit": "b8ae07db073783597b11f60fa2e900e3f9b9163f",
+      "reviewed_commit": "289c24b1617411a16b1e8d3032cce0f2fe52911d",
       "role": "reference_only_skill_router_pack",
       "direct_import_allowed": false
     },

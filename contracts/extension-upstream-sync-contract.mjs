@@ -5,7 +5,23 @@ import assert from "node:assert/strict";
 import {
   assessExtensionDrift,
   assessSyncPermission,
+  compareFileInventories,
 } from "../scripts/sync-genericagent-extension.mjs";
+
+assert.deepEqual(compareFileInventories(
+  [
+    { path: "background.js", sha256: "upstream-background" },
+    { path: "content.js", sha256: "upstream-content" },
+  ],
+  [
+    { path: "background.js", sha256: "local-background" },
+    { path: "local-only.js", sha256: "local-only" },
+  ],
+), {
+  added: ["content.js"],
+  removed: ["local-only.js"],
+  changed: ["background.js"],
+});
 
 const review = {
   decision: {
@@ -125,6 +141,7 @@ process.stdout.write(`${JSON.stringify({
   ok: true,
   check: "extension-upstream-sync-contract",
   scenarios: [
+    "reviewed-source-inventory",
     "aligned",
     "reviewed-divergence",
     "strict-byte-alignment",

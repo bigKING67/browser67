@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Rebuild the GitHub README as a bounded public landing page, move runtime
+  operations and the complete verification inventory into focused docs, and add
+  an executable README structure/link/provenance contract to the check tier.
+- Restore JS reverse canonical-doc/Skill parity for explicit Browser Instance
+  routing and fail-closed ambiguous or unavailable instance behavior.
+- Review GenericAgent remote main through `f06d550`, decline its WebSocket-only
+  badge/status changes because browser67 owns a transport-aware managed overlay,
+  keep the extension byte lock unchanged, refresh the review ledger hashes, and
+  make the default extension check compare that reviewed snapshot instead of a
+  mutable sibling checkout. Lock verification now hashes its declared Git commit
+  instead of requiring the sibling checkout HEAD to equal the historical pin.
+- Add the upstream GenericAgent copyright and complete MIT license text to the
+  third-party notices, with a public acknowledgement and provenance links at the
+  end of the README.
+- Refresh transitive lockfile resolutions for `fast-uri`, `nanoid`, and
+  `postcss` to versions that clear the current npm security advisories.
+- Review the force-rewritten `zhaoxuya520/reverse-skill` reference through
+  `289c24b`, retain it as reference-only, and record that its new broad router,
+  evidence, and JS side-path material does not require browser67 promotion.
 - Retire the `tmwd-browser-mcp` Skill from canonical source, Pi package exports,
   active-skill synchronization, installed-Agent doctor checks, and release
   contracts. Keep only the old CLI/runtime-home/launchd identifiers required to

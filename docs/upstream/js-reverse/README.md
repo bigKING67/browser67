@@ -39,13 +39,21 @@ These repositories are reference only:
 
 | Reference | Reviewed commit | Role |
 | --- | --- | --- |
-| `zhaoxuya520/reverse-skill` | `b8ae07db073783597b11f60fa2e900e3f9b9163f` | reverse/security/CTF skill router pack |
+| `zhaoxuya520/reverse-skill` | `289c24b1617411a16b1e8d3032cce0f2fe52911d` | reverse/security/CTF skill router pack |
 | `NoOne-hub/JSReverser-MCP` | `65e2e3cb70c10a79dfd1ba4410a2c876113e676c` | external JS reverse MCP reference candidate |
 | `zhizhuodemao/js-reverse-mcp` | `f45172a7b2a8d98daf29434e99baf35bc08bb959` | external JS reverse MCP reference candidate |
 
 Machine-readable details live in `references.json`.
 Per-reference absorption decisions live in `absorption-matrix.md`; keep it in
 sync with `references.json` through `npm run check:js-reverse-absorption-matrix`.
+
+The `zhaoxuya520/reverse-skill` review on 2026-08-14 used a full-tree comparison
+because its previous reviewed commit was no longer an ancestor of remote
+`main`. The broad router/case/cookbook additions remain reference-only. Its
+JS-specific update adds labels for JSVMP, control-flow/string-array
+deobfuscation, and anti-debug side paths, all already covered by browser67's
+VMP instrumentation, AST deobfuscation, hook-first, and breakpoint-last
+guidance. No external files or runtime semantics were imported.
 
 Audit current remote freshness with:
 

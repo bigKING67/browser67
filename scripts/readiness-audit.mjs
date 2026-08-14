@@ -391,9 +391,10 @@ function buildJfbymProviderGap(config = {}) {
   );
 }
 
-function buildRequiredChecks({ packageJson, readme, skill, report }) {
+function buildRequiredChecks({ packageJson, readme, qualityDoc, skill, report }) {
   const scriptNames = [
     "check:syntax",
+    "check:readme",
     "check:project-structure",
     "check:performance-smoke",
     "check:regression-matrix",
@@ -422,6 +423,7 @@ function buildRequiredChecks({ packageJson, readme, skill, report }) {
     "upstream:audit:latest",
     "upstream:review-refresh-plan",
     "check:upstream-audit",
+    "check:upstream-lock",
     "check:upstream-review",
     "check:upstream-review-refresh-plan",
     "js-reverse:upstream-audit",
@@ -469,6 +471,7 @@ function buildRequiredChecks({ packageJson, readme, skill, report }) {
       "verify_includes_governance_gates",
       [
         "check:performance-smoke",
+        "check:readme",
         "check:extension-install-doctor",
         "check:project-structure",
         "check:regression-matrix",
@@ -489,6 +492,7 @@ function buildRequiredChecks({ packageJson, readme, skill, report }) {
         "upstream:audit:latest",
         "upstream:review-refresh-plan",
         "check:upstream-audit",
+        "check:upstream-lock",
         "check:upstream-review",
         "check:upstream-review-refresh-plan",
         "js-reverse:upstream-audit",
@@ -518,8 +522,21 @@ function buildRequiredChecks({ packageJson, readme, skill, report }) {
       `groups=${GROUPS.length} active_groups=${report.groups.length}`,
     ),
     createCheck(
-      "readme_documents_gates",
+      "readme_documents_public_gates",
       textIncludesAll(readme, [
+        "npm run check",
+        "npm run verify",
+        "npm run check:readme",
+        "npm run check:release-readiness",
+        "npm run release:ready",
+        "docs/maintenance-quality-model.md",
+        "docs/release-governance.md",
+      ]),
+      "README links the public deterministic, local, documentation, and release-readiness entrypoints",
+    ),
+    createCheck(
+      "quality_doc_documents_gates",
+      textIncludesAll(qualityDoc, [
         "npm run check:readiness",
         "npm run check:project-structure",
         "npm run check:change-set",
@@ -540,6 +557,7 @@ function buildRequiredChecks({ packageJson, readme, skill, report }) {
         "npm run upstream:audit:latest",
         "npm run upstream:review-refresh-plan",
         "npm run check:upstream-audit",
+        "npm run check:upstream-lock",
         "npm run check:upstream-review",
         "npm run check:upstream-review-refresh-plan",
         "npm run js-reverse:upstream-audit",
@@ -556,7 +574,7 @@ function buildRequiredChecks({ packageJson, readme, skill, report }) {
         "npm run proof:optional-live-record",
         "npm run proof:native-live",
       ]),
-      "README lists readiness, project-structure, change-set, scoped commit, captcha, native pointer, ljqctrl, upstream review schema, and optional proof planning/status/recording gates",
+      "maintenance quality model lists readiness, project-structure, change-set, scoped commit, captcha, native pointer, ljqctrl, upstream review schema, and optional proof planning/status/recording gates",
     ),
     createCheck(
       "skill_documents_captcha_boundaries",
@@ -686,10 +704,12 @@ async function buildAudit(args) {
   const [
     packageJson,
     readme,
+    qualityDoc,
     skill,
   ] = await Promise.all([
     readPackageJson(),
     readText("README.md"),
+    readText("docs/maintenance-quality-model.md"),
     readText("skills/browser67/SKILL.md"),
   ]);
   const report = buildChangeSetReport(undefined, {
@@ -699,6 +719,7 @@ async function buildAudit(args) {
   const required_checks = buildRequiredChecks({
     packageJson,
     readme,
+    qualityDoc,
     skill,
     report,
   });

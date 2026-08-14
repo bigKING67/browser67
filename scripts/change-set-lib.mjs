@@ -283,7 +283,7 @@ const GROUPS = [
     patterns: [
       /^README\.md$/,
       /^docs\/TMWebDriver-SOP\.md$/,
-      /^docs\/(?:active-skill-runtime-model|agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs|native-live-linux|native-live-windows)\.md$/,
+      /^docs\/(?:active-skill-runtime-model|agent-setup|architecture|codex-integration|global-prompt-snippet|optional-live-proofs|native-live-linux|native-live-windows|runtime-operations)\.md$/,
       /^docs\/js-reverse(?:-SOP\.md|\/)/,
       /^skills\/js-reverse\//,
       /^skills\/tmwd-browser-mcp\//,
@@ -330,8 +330,9 @@ const GROUPS = [
     ],
     patterns: [
       /^UPSTREAM\.(?:lock|review)\.json$/,
-      /^scripts\/(?:upstream-audit|upstream-review-refresh-plan)\.mjs$/,
-      /^contracts\/(?:upstream-audit-contract|upstream-review-refresh-plan-contract)\.mjs$/,
+      /^THIRD_PARTY_NOTICES\.md$/,
+      /^scripts\/(?:upstream-audit|upstream-lock|upstream-review-refresh-plan)\.mjs$/,
+      /^contracts\/(?:upstream-audit-contract|upstream-lock-contract|upstream-review-refresh-plan-contract)\.mjs$/,
       /^contracts\/upstream-review-schema-contract\.mjs$/,
       /^docs\/schemas\/upstream-review\.schema\.json$/,
       /^docs\/upstream\/genericagent(?:\/|$)/,
@@ -357,6 +358,7 @@ const GROUPS = [
       /^scripts\/verification\//,
       /^scripts\/(?:verify|run-verification|verification-manifest|dependency-boundary-audit|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|migrate-runtime-store|setup-captcha-provider-jfbym|native-live-proof-gate|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync|skills-roots-audit|agent-integration-doctor)\.mjs$/,
       /^contracts\/(?:agent-integration-doctor|change-set)-contract\.mjs$/,
+      /^contracts\/readme-contract\.mjs$/,
       /^contracts\/active-skill-sync-contract\.mjs$/,
       /^contracts\/skills-roots-audit-contract\.mjs$/,
       /^contracts\/runtime-artifact-cleanup-contract\.mjs$/,

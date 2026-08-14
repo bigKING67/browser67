@@ -1,0 +1,273 @@
+# browser67 runtime operations
+
+This guide covers local installation and operations for the browser67 hub and
+Chrome/Edge unpacked extension. It separates source state, installed files, and
+the live extension service worker so operators do not treat one layer as proof
+of another.
+
+## Runtime layers
+
+browser67 has four independently observable layers:
+
+1. **Repository source** under the browser67 checkout.
+2. **Installed extension files** under the active browser67 home.
+3. **Live extension service worker** loaded by a specific Chrome/Edge profile.
+4. **Hub and MCP processes** connected to that live extension instance.
+
+`npm run setup` updates layer 2. Reloading the unpacked extension updates layer
+3. Starting the hub updates layer 4. A successful file comparison does not prove
+that Chrome/Edge reloaded the service worker, and a reachable hub does not prove
+that the connected extension matches the current source.
+
+## Prerequisites
+
+- Node.js 20 or 22.
+- Chrome or Edge with Developer Mode enabled for unpacked extensions.
+- A local browser profile selected by the operator.
+
+Install project dependencies once per checkout:
+
+```bash
+npm ci
+```
+
+Use `npm ci` for a lockfile-exact install. Do not commit `node_modules/` or any
+generated extension configuration.
+
+## Install the extension
+
+Prepare the canonical active-home install:
+
+```bash
+npm run setup
+```
+
+The default extension target is:
+
+```text
+~/.browser67/browser/tmwd_cdp_bridge/
+```
+
+Setup generates install-local `config.js`, build identity files, and MCP
+registry entries under the active browser67 home. `extension/config.js` is not
+a source file and must not be committed.
+
+For the first installation:
+
+1. Open `chrome://extensions` or `edge://extensions`.
+2. Enable Developer Mode.
+3. Choose **Load unpacked**.
+4. Select `~/.browser67/browser/tmwd_cdp_bridge/` exactly, not its parent.
+5. Start the hub and run the live doctor.
+
+To prepare a project-local extension copy instead:
+
+```bash
+npm run setup:local-extension
+```
+
+Load this exact directory:
+
+```text
+/path/to/browser67/runtime/chrome-extension/tmwd_cdp_bridge/
+```
+
+The project-local runtime directory is ignored state. It is useful for local
+development but is not a source or release artifact.
+
+## Inspect installed and live identity
+
+Compare source with installed extension files without changing anything:
+
+```bash
+npm run extension:doctor
+npm run check:extension-install-doctor
+```
+
+`extension:doctor` ignores install-local `config.js` and reports conditions such
+as `needs_setup`, `needs_clean_setup`, and
+`needs_browser_extension_reload`. The generated build identity includes package
+and manifest versions, Git revision and dirty state, deterministic source digest,
+and extension handshake protocol revision.
+
+After changing extension or generated build inputs:
+
+```bash
+npm run setup
+npm run extension:reload-live
+npm run check:live:doctor
+```
+
+`extension:reload-live` is appropriate only when an existing browser67
+extension is loaded and connected. A first install, disabled extension, or
+disconnected bridge still requires a manual reload from the browser extension
+page. Refresh existing target tabs after reload so content scripts reinject.
+
+The decisive doctor fields are the live TMWD runtime checks. A current service
+worker reports `extension_identity_ok` and `identity_match:true` for the
+WebSocket or HTTP Link route. Installed file equality alone is not sufficient.
+
+## Hub control
+
+Start, inspect, and stop the local hub:
+
+```bash
+npm run hub:start
+npm run hub:status
+npm run hub:stop
+```
+
+Default endpoints:
+
+```text
+WebSocket  ws://127.0.0.1:18765
+HTTP Link http://127.0.0.1:18766/link
+```
+
+Run a compact live readiness check:
+
+```bash
+npm run check:live:doctor
+```
+
+Use machine-readable diagnosis when readiness fails:
+
+```bash
+npm run doctor:json
+```
+
+A refused remote-CDP endpoint at `127.0.0.1:9222` does not make the default TMWD
+route unhealthy. Remote CDP is a separate, explicit debug/CI mode.
+
+## User-level launchd service
+
+On macOS, install the hub as a user LaunchAgent:
+
+```bash
+npm run launchd:install
+```
+
+The canonical plist is:
+
+```text
+~/Library/LaunchAgents/com.browser67.tmwd-hub.plist
+```
+
+Remove only the canonical service:
+
+```bash
+npm run launchd:uninstall
+```
+
+Remove canonical and known legacy browser67/TMWD services:
+
+```bash
+npm run launchd:uninstall -- --all
+```
+
+Installation may stop known legacy labels before starting the canonical service
+so only one hub owns the default ports. Review the command and active service
+state before removing user-level launchd configuration.
+
+## Runtime home
+
+The canonical runtime home is:
+
+```text
+~/.browser67/
+```
+
+Important paths include:
+
+```text
+~/.browser67/browser/tmwd_cdp_bridge/
+~/.browser67/mcp/servers.toml
+~/.browser67/runtime/tmwd-hub-state.json
+~/.browser67/runtime/runs/
+~/.browser67/optional-live-proofs/
+```
+
+Override the home for an isolated environment with:
+
+```bash
+BROWSER67_HOME=/custom/path npm run doctor:json
+```
+
+Keep runtime state outside the repository. Do not point `BROWSER67_HOME` at the
+checkout or a broad directory such as the user's home.
+
+## Migrate a legacy home
+
+Inspect the copy plan first:
+
+```bash
+browser67 migrate-home --dry-run
+```
+
+Copy legacy state to the canonical home:
+
+```bash
+browser67 migrate-home --write
+```
+
+Migration is copy-only. It does not delete `~/.tmwd-browser-mcp/`, read browser
+password/cookie stores, or move unrelated files. After migration:
+
+1. Run `npm run setup`.
+2. Reload the unpacked extension from the canonical active-home path.
+3. Refresh target tabs.
+4. Run `npm run check:live:doctor`.
+
+See [browser67 migration](migration-browser67.md) for compatibility labels and
+the legacy cleanup boundary.
+
+## Runtime artifact retention
+
+Runs, screenshots, logs, and evidence are repo-external by default under:
+
+```text
+~/.browser67/runtime/runs/
+```
+
+Preview cleanup before allowing deletion:
+
+```bash
+npm run runtime:cleanup:dry-run
+```
+
+Apply the displayed plan only after review:
+
+```bash
+npm run runtime:cleanup -- --write
+```
+
+The default policy keeps the latest 50 runs, preserves recently updated running
+runs, and considers age, total size, and a 500-run ceiling. The cleanup helper
+refuses dangerous roots such as `/`, `$HOME`, repository paths, and paths that
+do not look like run roots. Tune policy through its `--max-age-days`,
+`--max-total-mb`, `--max-run-count`, and `--keep-latest` options or the matching
+`TMWD_RUNTIME_CLEANUP_*` environment variables.
+
+## Troubleshooting sequence
+
+When the real-browser route is unavailable, check the earliest uncertain layer:
+
+1. `npm run extension:doctor` - source versus installed files.
+2. Browser extension page - enabled state and exact unpacked path.
+3. `npm run hub:status` - hub process and endpoint ownership.
+4. `npm run doctor:json` - connected Browser Instances and transport health.
+5. `npm run check:live:doctor` - live identity and readiness contract.
+
+If extension source changed, do not loop on the doctor without performing the
+required setup/reload/target-tab refresh steps. If no extension source changed,
+do not reinstall blindly; inspect the structured failure and the connected
+Browser Instance identity first.
+
+## Security boundary
+
+- Do not commit `config.js`, tokens, cookies, browser profile files, screenshots,
+  network captures, optional-proof payloads, or runtime logs.
+- Do not inspect unrelated browser profiles or tabs while diagnosing a route.
+- Do not treat remote CDP as a fallback for a missing real-profile connection.
+- Do not delete legacy runtime homes or run artifacts without reviewing a
+  dry-run plan and obtaining the applicable operator confirmation.

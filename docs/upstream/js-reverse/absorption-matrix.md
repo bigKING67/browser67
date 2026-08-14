@@ -20,14 +20,14 @@ skills, tools, contracts, or runtime code.
 ### `zhaoxuya520/reverse-skill`
 
 - **Reference**: `zhaoxuya520/reverse-skill`
-- **Reviewed commit**: `b8ae07db073783597b11f60fa2e900e3f9b9163f`
+- **Reviewed commit**: `289c24b1617411a16b1e8d3032cce0f2fe52911d`
 - **Direct import allowed**: `false`
 - **Priority**: `P2`
 - **Absorbable pattern**: Focused PRIMARY routing plus explicit scope, evidence-to-finding-to-path linkage, append-only timeline/workitems, browser-extension review, and external-skill supply-chain review patterns.
-- **Current browser67 coverage**: `skills/js-reverse/SKILL.md` and `templates/tasks/js-reverse-task-template.json` already provide browser-scoped routing, observe-first phases, managed workspaces, `evidence.v1`, bounded artifacts, task finalization, and explicit external-reference policy; package locking, audits, and reviewed upstream ledgers cover the applicable supply-chain boundary.
-- **Gap**: The reviewed v1.0.0-plus delta adds a broad security skill router and PowerShell case tooling, not a browser67 runtime capability. Non-web reverse domains, automatic tool bootstrap, and bulk field-journal loading remain outside browser67 scope. A future report schema may optionally link evidence ids to validated findings and call paths, but the current runtime already records evidence ids, confidence, request/script links, artifacts, and task timelines.
+- **Current browser67 coverage**: `skills/js-reverse/SKILL.md` and `templates/tasks/js-reverse-task-template.json` already provide browser-scoped routing, observe-first phases, managed workspaces, `evidence.v1`, bounded artifacts, task finalization, VMP instrumentation, AST deobfuscation, hook-first anti-debug handling, and explicit external-reference policy; package locking, audits, and reviewed upstream ledgers cover the applicable supply-chain boundary.
+- **Gap**: The previous reviewed commit is no longer an ancestor of the 2026-08-14 remote `main`, so this review compared the full trees (148 changed paths) instead of treating the remote as a linear delta. The current tree adds a broad security router, case review, Bash/PowerShell evidence tooling, immutable evidence append rules, non-PE cookbooks, and field journals. The JS-specific change only links JSVMP, control-flow/string-array deobfuscation, and anti-debug side-path labels; browser67 already covers those mechanisms. Caller-project router artifact fixes and generic immutable case records do not change browser67's explicit repo-external run root, append-only events, or `evidence.v1` contract. No code or docs require promotion.
 - **Target layer**: `docs/js-reverse/`, `skills/js-reverse/`, and `templates/tasks/js-reverse-task-template.json`.
-- **Promotion requirement**: Reimplement only browser-specific reporting or extension-review vocabulary when a demonstrated browser67 workflow needs it; keep the focused JS reverse router, managed-tab lifecycle, and audited toolchain, and reject generic domain-pack expansion, automatic bootstrap, bulk precedent loading, or external execution semantics.
+- **Promotion requirement**: Reimplement only browser-specific reporting or extension-review vocabulary when a demonstrated browser67 workflow needs it; keep the focused JS reverse router, managed-tab lifecycle, and audited toolchain, and reject generic domain-pack expansion, automatic bootstrap, bulk precedent loading, external execution semantics, and wholesale field-journal ingestion.
 - **Verification**: `npm run check:js-reverse-mcp`; `npm run check:js-reverse-upstream`; `npm run check:js-reverse-absorption-matrix`.
 
 ### `NoOne-hub/JSReverser-MCP`

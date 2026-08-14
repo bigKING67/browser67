@@ -32,6 +32,7 @@ const ignoredFiles = new Set(["config.js"]);
 function parseArgs(argv) {
   const parsed = {
     sourceDir: defaultSourceDir,
+    sourceExplicit: false,
     reviewFile: defaultReviewFile,
     check: false,
     strict: false,
@@ -46,6 +47,7 @@ function parseArgs(argv) {
         throw new Error("missing --source value");
       }
       parsed.sourceDir = resolve(value);
+      parsed.sourceExplicit = true;
       index += 1;
       continue;
     }
@@ -95,7 +97,8 @@ function usage() {
     "",
     "Synchronizes GenericAgent assets/tmwd_cdp_bridge into extension/.",
     "config.js is intentionally ignored because setup-extension writes a runtime TID.",
-    "--check accepts drift covered by a direct_sync_allowed=false review ledger; --strict requires byte alignment.",
+    "--check compares extension/ with the reviewed-source hashes in UPSTREAM.review.json by default.",
+    "Pass --source with --check to inspect an explicit checkout; --strict requires byte alignment.",
     "Synchronization refuses reviewed or unreviewed drift unless the ledger allows direct sync or --force-reviewed-sync is explicit.",
   ].join("\n");
 }
@@ -132,6 +135,27 @@ function isManagedExtra(file) {
     || managedExtraPrefixes.some((prefix) => file.startsWith(prefix));
 }
 
+export function compareFileInventories(sourceFiles, targetFiles) {
+  const sourceHashes = new Map(sourceFiles.map((entry) => [entry.path, entry.sha256]));
+  const targetHashes = new Map(targetFiles.map((entry) => [entry.path, entry.sha256]));
+  const sourcePaths = [...sourceHashes.keys()].sort();
+  const targetPaths = [...targetHashes.keys()].sort();
+  return {
+    added: sourcePaths.filter((file) => !targetHashes.has(file)),
+    removed: targetPaths.filter((file) => !sourceHashes.has(file)),
+    changed: sourcePaths.filter((file) => (
+      targetHashes.has(file) && sourceHashes.get(file) !== targetHashes.get(file)
+    )),
+  };
+}
+
+function hashedFiles(rootDir, files) {
+  return files.map((file) => ({
+    path: file,
+    sha256: hashFile(resolve(rootDir, file)),
+  }));
+}
+
 function compare(sourceDir) {
   if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) {
     throw new Error(`missing GenericAgent extension source: ${sourceDir}`);
@@ -141,14 +165,9 @@ function compare(sourceDir) {
   }
   const sourceFiles = listFiles(sourceDir);
   const targetFiles = listFiles(targetDir).filter((file) => !isManagedExtra(file));
-  const sourceSet = new Set(sourceFiles);
-  const targetSet = new Set(targetFiles);
-  const added = sourceFiles.filter((file) => !targetSet.has(file));
-  const removed = targetFiles.filter((file) => !sourceSet.has(file));
-  const changed = sourceFiles.filter((file) => (
-    targetSet.has(file)
-    && hashFile(resolve(sourceDir, file)) !== hashFile(resolve(targetDir, file))
-  ));
+  const sourceInventory = hashedFiles(sourceDir, sourceFiles);
+  const targetInventory = hashedFiles(targetDir, targetFiles);
+  const { added, removed, changed } = compareFileInventories(sourceInventory, targetInventory);
   return {
     ok: added.length === 0 && removed.length === 0 && changed.length === 0,
     source_dir: sourceDir,
@@ -158,10 +177,38 @@ function compare(sourceDir) {
     changed,
     ignored: [...ignoredFiles].sort(),
     managed_extra: [...managedExtraFiles, ...managedExtraPrefixes.map((prefix) => `${prefix}*`)].sort(),
-    source_files: sourceFiles.map((file) => ({
-      path: file,
-      sha256: hashFile(resolve(sourceDir, file)),
-    })),
+    source_kind: "filesystem",
+    source_files: sourceInventory,
+  };
+}
+
+function compareReviewedSnapshot(reviewRecord, reviewFile) {
+  const sourceFiles = reviewRecord?.extension_review?.reviewed_source_files;
+  if (!Array.isArray(sourceFiles) || sourceFiles.length === 0) {
+    throw new Error(`review ledger has no reviewed source files: ${reviewFile}`);
+  }
+  if (sourceFiles.some((entry) => (
+    typeof entry?.path !== "string" || !/^[0-9a-f]{64}$/i.test(String(entry?.sha256 ?? ""))
+  ))) {
+    throw new Error(`review ledger has invalid reviewed source files: ${reviewFile}`);
+  }
+  const targetFiles = listFiles(targetDir).filter((file) => !isManagedExtra(file));
+  const targetInventory = hashedFiles(targetDir, targetFiles);
+  const sourceInventory = sourceFiles
+    .map((entry) => ({ path: entry.path, sha256: entry.sha256 }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const { added, removed, changed } = compareFileInventories(sourceInventory, targetInventory);
+  return {
+    ok: added.length === 0 && removed.length === 0 && changed.length === 0,
+    source_dir: `review-ledger:${reviewFile}`,
+    target_dir: targetDir,
+    added,
+    removed,
+    changed,
+    ignored: [...ignoredFiles].sort(),
+    managed_extra: [...managedExtraFiles, ...managedExtraPrefixes.map((prefix) => `${prefix}*`)].sort(),
+    source_kind: "reviewed_snapshot",
+    source_files: sourceInventory,
   };
 }
 
@@ -319,12 +366,16 @@ function run() {
     process.stdout.write(`${usage()}\n`);
     return 0;
   }
-  const before = compare(args.sourceDir);
   if (args.check) {
+    const review = readReviewRecord(args.reviewFile);
+    const before = args.sourceExplicit
+      ? compare(args.sourceDir)
+      : compareReviewedSnapshot(review.value, args.reviewFile);
     const payload = assessmentPayload(before, args);
     writeResult(payload, args.json);
     return payload.ok ? 0 : 1;
   }
+  const before = compare(args.sourceDir);
   if (!before.ok) {
     const beforeAssessment = assessmentPayload(before, args);
     const permission = assessSyncPermission(beforeAssessment, {
