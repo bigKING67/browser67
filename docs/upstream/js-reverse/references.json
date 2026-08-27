@@ -18,7 +18,7 @@
     {
       "name": "zhaoxuya520/reverse-skill",
       "remote": "https://github.com/zhaoxuya520/reverse-skill.git",
-      "reviewed_commit": "289c24b1617411a16b1e8d3032cce0f2fe52911d",
+      "reviewed_commit": "37162cf9547c571c680c07005e9863d4610282dd",
       "role": "reference_only_skill_router_pack",
       "direct_import_allowed": false
     },
@@ -32,7 +32,7 @@
     {
       "name": "zhizhuodemao/js-reverse-mcp",
       "remote": "https://github.com/zhizhuodemao/js-reverse-mcp.git",
-      "reviewed_commit": "f45172a7b2a8d98daf29434e99baf35bc08bb959",
+      "reviewed_commit": "1a95d9c6c7d4bf22bc3c2b244f90532381f5e045",
       "role": "external_mcp_reference_candidate",
       "direct_import_allowed": false
     }
