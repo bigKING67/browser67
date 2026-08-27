@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { statModePayload } from "../../src/auth/profile-store/validation.mjs";
 import {
   assertTextJsonContent,
   firstJsonContent,
@@ -12,6 +13,19 @@ async function assertAuthOpsContract({
   tmpLoginProfileDir,
   tmpTooManyLoginProfileDir,
 }) {
+  assert.deepEqual(statModePayload({ mode: 0o100600 }, { platform: "linux" }), {
+    mode: "600",
+    insecure: false,
+  });
+  assert.deepEqual(statModePayload({ mode: 0o100644 }, { platform: "linux" }), {
+    mode: "644",
+    insecure: true,
+  });
+  assert.deepEqual(statModePayload({ mode: 0o100666 }, { platform: "win32" }), {
+    mode: undefined,
+    insecure: false,
+  });
+
   const authListCall = await rpc.call(
     "tools/call",
     {

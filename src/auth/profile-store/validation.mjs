@@ -99,8 +99,9 @@ function normalizeProfile(rawProfile) {
   };
 }
 
-function statModePayload(stat) {
-  if (!stat) {
+function statModePayload(stat, options = {}) {
+  const platform = String(options.platform ?? process.platform);
+  if (!stat || platform === "win32") {
     return { mode: undefined, insecure: false };
   }
   const mode = stat.mode & 0o777;
