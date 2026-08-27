@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Make verification subprocess execution fail closed on Windows: resolve npm
+  through its lifecycle CLI or an explicit command shell, preserve positive
+  child exit codes, and map missing status, spawn errors, or signals to a
+  diagnostic non-zero result so GitHub Actions cannot report a false green.
 - Separate extension content identity from build revision, revision source, and
   dirty-checkout provenance so an otherwise identical canonical bundle does not
   trigger setup or reload, while actual source-digest, version, protocol, or

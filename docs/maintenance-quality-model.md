@@ -91,6 +91,7 @@ npm run check:release-readiness
 npm run check:performance-smoke
 npm run check:regression-matrix
 npm run check:verification-manifest
+npm run check:verification-runner
 npm run skills:check
 git diff --check
 ```

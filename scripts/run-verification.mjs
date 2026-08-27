@@ -79,6 +79,49 @@ function commandWithPlaceholders(entry, context) {
   return entry.command.map((part) => String(part).replaceAll("{managed_baseline}", context.managed_baseline));
 }
 
+function resolveSpawnInvocation(command, args = [], options = {}) {
+  const platform = String(options.platform ?? process.platform);
+  const env = options.env ?? process.env;
+  const execPath = String(options.exec_path ?? process.execPath);
+  if (platform !== "win32" || command !== "npm") {
+    return { command, args, strategy: "direct" };
+  }
+  const npmExecPath = String(env.npm_execpath ?? "").trim();
+  if (npmExecPath) {
+    return {
+      command: execPath,
+      args: [npmExecPath, ...args],
+      strategy: "npm_execpath",
+    };
+  }
+  const commandShell = String(env.ComSpec ?? env.COMSPEC ?? "").trim() || "cmd.exe";
+  return {
+    command: commandShell,
+    args: ["/d", "/s", "/c", "npm.cmd", ...args],
+    strategy: "windows_command_shell",
+  };
+}
+
+function spawnResultExitCode(result = {}) {
+  if (result.error || result.signal) return 1;
+  if (result.status === 0) return 0;
+  if (Number.isInteger(result.status) && result.status > 0) return result.status;
+  return 1;
+}
+
+function spawnFailureDetails(result = {}, invocation = {}) {
+  const details = [
+    `strategy=${String(invocation.strategy ?? "unknown")}`,
+    `status=${result.status === null || result.status === undefined ? "null" : String(result.status)}`,
+  ];
+  if (result.signal) details.push(`signal=${String(result.signal)}`);
+  if (result.error) {
+    const errorCode = String(result.error.code ?? result.error.name ?? "spawn_error");
+    details.push(`spawn_error=${errorCode}:${String(result.error.message ?? result.error)}`);
+  }
+  return details.join(" ");
+}
+
 function verificationPlan(options = {}) {
   let selected = resolveTier(options.tier ?? "fast");
   const paths = options.changed ? changedPaths() : [];
@@ -104,20 +147,24 @@ function runVerification(options = {}) {
     for (const entry of plan.entries) {
       const [command, ...args] = commandWithPlaceholders(entry, context);
       process.stdout.write(`\n>>> [${entry.id}] ${entry.label}\n`);
-      const result = spawnSync(command, args, {
+      const invocation = resolveSpawnInvocation(command, args);
+      const result = spawnSync(invocation.command, invocation.args, {
         cwd: process.cwd(),
         env: process.env,
         stdio: "inherit",
       });
-      if (result.status !== 0) {
-        process.stderr.write(`verification failed at: ${entry.id}\n`);
+      const exitCode = spawnResultExitCode(result);
+      if (exitCode !== 0) {
+        process.stderr.write(
+          `verification failed at: ${entry.id} (${spawnFailureDetails(result, invocation)})\n`,
+        );
         return {
           ok: false,
           executed: true,
           ...plan,
           completed,
           failed: entry.id,
-          exit_code: Number.isFinite(Number(result.status)) ? Number(result.status) : 1,
+          exit_code: exitCode,
         };
       }
       completed.push(entry.id);
@@ -167,6 +214,9 @@ export {
   changedPaths,
   entryMatchesPaths,
   parseArgs,
+  resolveSpawnInvocation,
   runVerification,
+  spawnFailureDetails,
+  spawnResultExitCode,
   verificationPlan,
 };

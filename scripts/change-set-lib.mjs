@@ -359,6 +359,7 @@ const GROUPS = [
       /^scripts\/verification\//,
       /^scripts\/(?:verify|run-verification|verification-manifest|dependency-boundary-audit|check-change-set|change-set-lib|plan-scoped-commits|readiness-audit|project-structure-audit|cleanup-runtime-artifacts|migrate-runtime-store|setup-captcha-provider-jfbym|native-live-proof-gate|optional-live-proof-audit|optional-live-proof-plan|optional-live-proof-status|optional-live-proof-template|optional-live-proof-record|performance-smoke|regression-matrix|task-template|active-skill-sync|skills-roots-audit|agent-integration-doctor)\.mjs$/,
       /^contracts\/(?:agent-integration-doctor|change-set)-contract\.mjs$/,
+      /^contracts\/verification-runner-contract\.mjs$/,
       /^contracts\/readme-contract\.mjs$/,
       /^contracts\/active-skill-sync-contract\.mjs$/,
       /^contracts\/skills-roots-audit-contract\.mjs$/,

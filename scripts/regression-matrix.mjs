@@ -132,6 +132,12 @@ const MATRIX = [
     covers: ["ci-tier", "live-tier", "platform-tier", "release-tier"],
   },
   {
+    id: "verification-runner",
+    command: "npm run check:verification-runner",
+    tier: "required",
+    covers: ["cross-platform-command-resolution", "spawn-failure-exit-code", "false-green-prevention"],
+  },
+  {
     id: "upstream-audit",
     command: "npm run check:upstream-audit",
     tier: "required",

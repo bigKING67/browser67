@@ -123,6 +123,7 @@
     "check:performance-smoke": "node scripts/performance-smoke.mjs",
     "check:regression-matrix": "node scripts/regression-matrix.mjs --json",
     "check:verification-manifest": "node scripts/verification-manifest.mjs --check",
+    "check:verification-runner": "node contracts/verification-runner-contract.mjs",
     "check:task-templates": "node scripts/task-template.mjs check --json",
     "check:managed-tabs-clean": "node scripts/check-managed-tab-cleanup.mjs",
     "check:runtime-cleanup": "node contracts/runtime-artifact-cleanup-contract.mjs",
