@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-08-27
+
 - Make verification subprocess execution fail closed on Windows: resolve npm
   through its lifecycle CLI or an explicit command shell, preserve positive
   child exit codes, and map missing status, spawn errors, or signals to a
