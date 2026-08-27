@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Review GenericAgent remote main through `17d9f4d`, confirm that the intervening
+  Linux portability fix does not touch `assets/tmwd_cdp_bridge`, and retain the
+  existing manual-merge extension decision and historical byte lock.
+
 ## 0.6.0 - 2026-08-27
 
 - Make Browser Instance selection and managed-tab finalization fail closed:

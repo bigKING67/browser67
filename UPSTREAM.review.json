@@ -4,16 +4,16 @@
     "name": "lsdefine/GenericAgent",
     "remote": "https://github.com/lsdefine/GenericAgent.git",
     "reviewed_ref": "main",
-    "reviewed_commit": "8ea95336511b4648c2ffb713d784541b3b999813",
+    "reviewed_commit": "17d9f4d873ce78c10b80a6c0b49e8067cc65de68",
     "reviewed_at": "2026-08-27",
-    "release_context": "f06d550..8ea9533 review refresh: the 24 upstream commits do not change assets/tmwd_cdp_bridge and the reviewed source hashes remain identical; browser67 keeps the existing manual-merge decision with no direct sync"
+    "release_context": "8ea9533..17d9f4d review refresh: the single upstream commit only changes frontends/wechatapp.py to keep Windows-only subprocess creation flags out of the Linux path; assets/tmwd_cdp_bridge is unchanged and the reviewed source hashes remain identical, so browser67 keeps the existing manual-merge decision with no direct sync"
   },
   "decision": {
     "extension_merge_mode": "manual_merge_preserve_local_bridge_features",
     "direct_sync_allowed": false,
     "local_extension_action": "keep_local_bridge_and_selectively_cherry_pick_future_useful_hunks",
     "lock_action": "keep_UPSTREAM.lock.json_at_extension_sync_baseline_until_intentional_extension_sync",
-    "reason": "Latest upstream 8ea95336511b4648c2ffb713d784541b3b999813 was checked with upstream:audit:latest. The f06d550..8ea9533 compare contains no assets/tmwd_cdp_bridge changes and the reviewed source hashes match the existing ledger. Extension drift remains changed_files=background.js,browser67/managed-content.js,browser67/runtime.js,content.js,disable_dialogs.js,manifest.json; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
+    "reason": "Latest upstream 17d9f4d873ce78c10b80a6c0b49e8067cc65de68 was checked with upstream:audit:latest. The 8ea9533..17d9f4d compare contains one frontends/wechatapp.py portability fix and no assets/tmwd_cdp_bridge changes; the reviewed source hashes match the existing ledger. Extension drift remains changed_files=background.js,browser67/managed-content.js,browser67/runtime.js,content.js,disable_dialogs.js,manifest.json; upstream background.js is still missing local enhanced bridge features (batch_uses_handle_tabs,cdp_tabid_validation,cookies_tabid_validation,handle_tabs_dispatch,include_unscriptable,numeric_tab_id_validation,tabs_close,tabs_get,unsupported_tabs_method,ws_exec_tabid_validation), so direct sync remains disabled and the local bridge stays authoritative."
   },
   "extension_review": {
     "changed_files": [
