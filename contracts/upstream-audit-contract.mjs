@@ -32,11 +32,15 @@ function run(command, args, cwd, options = {}) {
 }
 
 function initGitRepo(root) {
+  writeFileSync(
+    path.resolve(root, ".gitattributes"),
+    "assets/tmwd_cdp_bridge/** -text\n",
+  );
   run("git", ["init"], root);
   run("git", ["checkout", "-B", "main"], root);
   run("git", ["config", "user.email", "fixture@example.test"], root);
   run("git", ["config", "user.name", "Fixture"], root);
-  run("git", ["add", "assets"], root);
+  run("git", ["add", ".gitattributes", "assets"], root);
   run("git", ["commit", "-m", "fixture"], root);
 }
 

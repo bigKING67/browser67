@@ -15,6 +15,8 @@
 - Make the upstream-audit final-newline fixture deterministic across platforms
   by removing an entire CRLF terminator instead of leaving a bare carriage
   return on Windows.
+- Pin upstream-audit fixture extension files to byte-preserving Git attributes
+  so review-ledger hashes survive Windows checkout conversion unchanged.
 - Separate extension content identity from build revision, revision source, and
   dirty-checkout provenance so an otherwise identical canonical bundle does not
   trigger setup or reload, while actual source-digest, version, protocol, or
