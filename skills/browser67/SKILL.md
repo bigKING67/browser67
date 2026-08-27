@@ -48,6 +48,10 @@ two paired MCP surfaces:
 4. For real browser work, select/create browser67-owned managed tabs and finalize
    the current `workspace_key`/`task_id` before handoff; report the returned
    `delivery_summary` so tab cleanup state is visible.
+   - Keep entry, adoption, and `finalize_task` on the same
+     `browser_instance_id`. If a workspace/task spans multiple instances,
+     omission must fail with `AMBIGUOUS_TARGET`; deliberate cross-instance
+     cleanup requires `confirm_all_browser_instances:true`.
    - If the user already opened and logged into a tab, use
      `inspect_adoption -> adopt_existing` on that exact tab. Do not reopen the
      page or repeat login. Finalization releases adopted tabs without closing

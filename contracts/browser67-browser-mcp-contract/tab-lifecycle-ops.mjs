@@ -115,6 +115,90 @@ async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
     false,
   );
 
+  const finalizeInstanceACall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "finalize_task",
+        workspace_key: "multi-instance-workspace",
+        browser_instance_id: "browser-instance-a",
+        prune_stale: false,
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(finalizeInstanceACall?.result?.isError, undefined);
+  const finalizeInstanceAPayload = firstJsonContent(finalizeInstanceACall.result);
+  assert.equal(finalizeInstanceAPayload?.close_scope?.browser_instance_id, "browser-instance-a");
+  assert.equal(finalizeInstanceAPayload?.close_scope?.browser_instance_scope, "explicit");
+  assert.equal(finalizeInstanceAPayload?.remaining?.total_count, 1);
+  assert.equal(finalizeInstanceAPayload?.remaining?.kept_count, 1);
+  assert.equal(finalizeInstanceAPayload?.cleanup_summary?.browser_instance_id, "browser-instance-a");
+  assert.match(
+    finalizeInstanceAPayload?.delivery_summary ?? "",
+    /browser_instance_id=browser-instance-a/,
+  );
+
+  const ambiguousFinalizeCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "finalize_task",
+        workspace_key: "multi-instance-workspace",
+        prune_stale: false,
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(ambiguousFinalizeCall?.result?.isError, true);
+  assert.equal(firstJsonContent(ambiguousFinalizeCall.result)?.error_code, "AMBIGUOUS_TARGET");
+
+  const confirmedAllInstancesCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "finalize_task",
+        workspace_key: "multi-instance-workspace",
+        confirm_all_browser_instances: true,
+        prune_stale: false,
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(confirmedAllInstancesCall?.result?.isError, undefined);
+  const confirmedAllInstancesPayload = firstJsonContent(confirmedAllInstancesCall.result);
+  assert.equal(confirmedAllInstancesPayload?.close_scope?.browser_instance_scope, "confirmed_all");
+  assert.equal(confirmedAllInstancesPayload?.close_scope?.all_browser_instances, true);
+  assert.equal(confirmedAllInstancesPayload?.remaining?.total_count, 2);
+  assert.equal(confirmedAllInstancesPayload?.cleanup_summary?.all_browser_instances, true);
+  assert.match(
+    confirmedAllInstancesPayload?.delivery_summary ?? "",
+    /browser_instances=all_confirmed/,
+  );
+
+  const conflictingInstanceScopeCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "finalize_task",
+        workspace_key: "multi-instance-workspace",
+        browser_instance_id: "browser-instance-a",
+        confirm_all_browser_instances: true,
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(conflictingInstanceScopeCall?.result?.isError, true);
+  assert.equal(firstJsonContent(conflictingInstanceScopeCall.result)?.error_code, "INVALID_ARGUMENT");
+
   await writeFile(registryPath, `${JSON.stringify({
     version: 3,
     updated_at: new Date().toISOString(),

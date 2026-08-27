@@ -470,14 +470,27 @@ async function runMultiBrowserInstanceRelayCase(extensionWs, controllerWs, linkU
     });
     assert.equal(multiIdentityVerified.ok, true);
     assert.equal(multiIdentityVerified.identity_match, true);
+    assert.equal(multiIdentityVerified.detail, "extension_identity_ok");
     assert.deepEqual(
       multiIdentityVerified.observed_browser_instances.map((instance) => ({
         browser_instance_id: instance.browser_instance_id,
         identity_match: instance.identity_match,
+        extension_version: instance.extension_version,
+        build_revision: instance.build_revision,
       })),
       [
-        { browser_instance_id: browserInstanceId, identity_match: true },
-        { browser_instance_id: secondBrowserInstanceId, identity_match: true },
+        {
+          browser_instance_id: browserInstanceId,
+          identity_match: true,
+          extension_version: extensionIdentity.extension_version,
+          build_revision: extensionIdentity.build_revision,
+        },
+        {
+          browser_instance_id: secondBrowserInstanceId,
+          identity_match: true,
+          extension_version: extensionIdentity.extension_version,
+          build_revision: extensionIdentity.build_revision,
+        },
       ],
     );
     const staleRuntimeInfo = structuredClone(multiRuntimeInfo.result);

@@ -190,6 +190,11 @@ browser_tab_lifecycle action=finalize_task for the current workspace_key or
 task_id unless the user asked to keep the page open; it closes only keep=false
 agent-created managed tabs, preserves keep=true, prunes stale registry records,
 and ignores unmanaged user tabs.
+Each Chrome/Edge Profile is a separate Browser Instance. With multiple active
+instances, call browser_instance_ops list and pass browser_instance_id;
+AMBIGUOUS_TARGET and BROWSER_INSTANCE_UNAVAILABLE fail closed. Scope
+finalize_task to that same instance. Cross-instance cleanup requires explicit
+confirm_all_browser_instances=true.
 For visual QA, call browser_screenshot_ops after browser_wait settles the page.
 Use target=viewport for the baseline, target=selector or target=clip for
 focused component evidence, and target=full_page only on bounded pages with an

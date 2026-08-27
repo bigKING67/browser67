@@ -26,6 +26,7 @@ import {
 } from "./tab-lifecycle-limits.mjs";
 import {
   resolveCloseScope,
+  resolveBrowserInstanceScope,
   scopedManagedRecords,
   summarizeFinalizeRemainder,
 } from "./tab-lifecycle-scope.mjs";
@@ -171,17 +172,15 @@ async function closeOneManagedTab(args, record, preferred = null, options = {}) 
   };
 }
 
-async function closeUnkeptManagedTabs(args, options = {}) {
-  const closeScope = resolveCloseScope(args ?? {});
+async function closeUnkeptManagedTabs(args, options = {}, resolvedCloseScope = null) {
+  const closeScope = resolvedCloseScope
+    ?? await resolveBrowserInstanceScope(resolveCloseScope(args ?? {}));
   const unmanagedTabId = String(args?.tab_id ?? args?.session_id ?? "").trim();
   const unmanagedRecord = unmanagedTabId
     ? await getManagedTab(unmanagedTabId, args?.browser_instance_id)
     : null;
   const unmanagedIgnored = unmanagedTabId && !unmanagedRecord ? [unmanagedTabId] : [];
-  const candidates = (await listManagedTabRecords({
-    ...(closeScope.all ? {} : { task_id: closeScope.taskId, workspace_key: closeScope.workspaceKey }),
-    ...(args?.browser_instance_id ? { browser_instance_id: args.browser_instance_id } : {}),
-  }))
+  const candidates = (await scopedManagedRecords(closeScope))
     .filter((record) => record.keep !== true && record.close_on_finalize === true);
   const closed = [];
   const errors = [];
@@ -222,14 +221,14 @@ async function closeUnkeptManagedTabs(args, options = {}) {
     closed,
     errors,
     unmanaged_tabs_ignored: unmanagedIgnored,
-    kept_tabs: (await listManagedTabRecords())
+    kept_tabs: (await scopedManagedRecords(closeScope))
       .filter((record) => record.keep === true)
       .map((record) => managedTabPayload(record)),
   };
 }
 
 async function finalizeManagedTask(args = {}, options = {}) {
-  const closeScope = resolveCloseScope(args);
+  const closeScope = await resolveBrowserInstanceScope(resolveCloseScope(args));
   const dryRun = args?.dry_run === true;
   const shouldPruneStale = args?.prune_stale !== false;
   let pruneStale;
@@ -237,9 +236,12 @@ async function finalizeManagedTask(args = {}, options = {}) {
     try {
       pruneStale = await pruneStaleManagedTabs({
         ...args,
+        ...(closeScope.browser_instance_id
+          ? { browser_instance_id: closeScope.browser_instance_id }
+          : {}),
         dry_run: dryRun,
         summary_only: args?.summary_only ?? true,
-      }, options);
+      }, { ...options, closeScope });
     } catch (error) {
       pruneStale = {
         status: "error",
@@ -250,7 +252,7 @@ async function finalizeManagedTask(args = {}, options = {}) {
   }
   let closeUnkept;
   try {
-    closeUnkept = await closeUnkeptManagedTabs(args, options);
+    closeUnkept = await closeUnkeptManagedTabs(args, options, closeScope);
   } catch (error) {
     closeUnkept = {
       status: "error",
@@ -301,6 +303,7 @@ async function finalizeManagedTask(args = {}, options = {}) {
     dry_run: dryRun,
     finalizer_policy: {
       scope: closeScope.scope,
+      browser_instance_scope: closeScope.browser_instance_scope,
       closes_only_managed_tabs: true,
       closes_keep_false: true,
       preserves_keep_true: true,
@@ -328,7 +331,19 @@ async function pruneStaleManagedTabs(args = {}, options = {}) {
   const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
   const summaryOnly = args?.summary_only === true;
   const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
-  const records = await listManagedTabRecords();
+  const records = options.closeScope
+    ? await scopedManagedRecords(options.closeScope)
+    : await listManagedTabRecords({
+        ...(args?.workspace_key || args?.workspaceKey
+          ? { workspace_key: String(args.workspace_key ?? args.workspaceKey).trim() }
+          : {}),
+        ...(args?.task_id || args?.taskId
+          ? { task_id: String(args.task_id ?? args.taskId).trim() }
+          : {}),
+        ...(args?.browser_instance_id || args?.browserInstanceId
+          ? { browser_instance_id: String(args.browser_instance_id ?? args.browserInstanceId).trim() }
+          : {}),
+      });
   if (records.length === 0) {
     return {
       status: "success",

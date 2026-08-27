@@ -146,6 +146,12 @@ a Profile path/name, account, cookie, machine name, or extension ID.
   keys, and page outcomes retain both identity components. Legacy registry rows
   without an instance are `legacy_unresolved` and are not automatically reused,
   pruned, or closed through a current/default Profile.
+- Managed cleanup is Browser Instance scoped. Pass `browser_instance_id` to
+  `finalize_task`; when exactly one instance exists in the selected
+  workspace/task scope, omission resolves that singleton. Multiple matching
+  instances without a selector fail with `AMBIGUOUS_TARGET`. Deliberate
+  cross-instance cleanup additionally requires
+  `confirm_all_browser_instances:true`.
 
 Browser Profile is separate from a Pi Agent Profile, a Pi-67 native child JSONL
 Session, a worktree, and the credential records called login profiles. Do not
@@ -645,8 +651,8 @@ sites to use the generic profile directory above.
 - Use `fresh:true` or `reuse:false` only when a new browser67-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
 - Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
 - Use `prune_stale` or `list_managed` with `prune_stale:true` to remove registry records for managed tabs that no longer exist. This never closes unmanaged user tabs.
-- End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` unless the user asked to keep the page open. The finalizer verifies closed managed tabs disappear from the live browser before reporting success. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
-- `finalize_task` returns `cleanup_summary` and a one-line `delivery_summary`; include that line in final responses or handoffs so missed close errors, kept tabs, stale prunes, and remaining unkept tabs are visible.
+- End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` and the same `browser_instance_id` unless the user asked to keep the page open. The finalizer verifies closed managed tabs disappear from that live Browser Instance before reporting success. If the selected workspace/task spans multiple instances, omission fails with `AMBIGUOUS_TARGET`; deliberate cross-instance cleanup requires `confirm_all_browser_instances:true`. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
+- `finalize_task` returns `cleanup_summary` and a one-line `delivery_summary` containing its Browser Instance scope; include that line in final responses or handoffs so missed close errors, kept tabs, stale prunes, and remaining unkept tabs are visible.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`. Treat `finalize_hint.required:true` as a visible reminder to run the suggested `finalize_task` call before final response or handoff.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
 - Use `npm run check:managed-tabs-clean` as a registry-only hygiene gate. It fails when unkept managed tab records remain, groups them by cleanup scope, reports duplicate URL groups, marks old unkept records, and prints scoped finalize suggestions. The full `npm run verify` gate records a managed-tab baseline first and then fails only on newly leaked unkept records, so unrelated pre-existing browser67 workspaces do not make repository verification flaky.

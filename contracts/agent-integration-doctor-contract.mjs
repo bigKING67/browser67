@@ -13,7 +13,10 @@ import {
 import os from "node:os";
 import path from "node:path";
 
-import { runNodeScript } from "../scripts/agent-integration-doctor.mjs";
+import {
+  runNodeScript,
+  runtimeIdentityStatus,
+} from "../scripts/agent-integration-doctor.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const doctorScript = path.resolve(repoRoot, "scripts/agent-integration-doctor.mjs");
@@ -24,6 +27,7 @@ function writeAgents(filePath) {
     "For an exact user tab, run inspect_adoption -> adopt_existing only after an explicit request.",
     "End the current workspace_key with scoped finalize_task.",
     "Login-state work must fail closed and must not silently use remote CDP.",
+    "For multiple Browser Instances, use browser_instance_ops list and pass browser_instance_id; AMBIGUOUS_TARGET and BROWSER_INSTANCE_UNAVAILABLE fail closed.",
     "",
   ].join("\n"), "utf8");
 }
@@ -167,6 +171,10 @@ function main() {
     assert.equal(ready.static_agent_usage_ready, true);
     assert.equal(ready.runtime_verified, false);
     assert.equal(ready.runtime_ready, null);
+    assert.equal(ready.runtime_extension_identity_ready, null);
+    assert.equal(ready.observed_extension_version, null);
+    assert.equal(ready.observed_build_revision, null);
+    assert.equal(ready.observed_browser_instance_count, null);
     assert.equal(ready.extension_installed_current, true);
     assert.equal(ready.active_skill_current, true);
     assert.equal(ready.instruction_route_current, true);
@@ -182,6 +190,20 @@ function main() {
     assert.match(skillDrift.next_steps.join("\n"), /skills:active:sync/);
 
     cpSync(path.resolve(repoRoot, "skills", "browser67", "SKILL.md"), activeSkillPath, { force: true });
+    writeFileSync(projectAgents, [
+      "Use browser67 through tmwd_browser.",
+      "For an exact user tab, run inspect_adoption -> adopt_existing only after an explicit request.",
+      "End the current workspace_key with scoped finalize_task.",
+      "Login-state work must fail closed and must not silently use remote CDP.",
+      "",
+    ].join("\n"), "utf8");
+    const legacyRouteDrift = run(baseArgs, 1);
+    assert.equal(legacyRouteDrift.instruction_route_current, false);
+    assert.equal(
+      legacyRouteDrift.checks.project_agents.anchors.browser_instance_fail_closed,
+      false,
+    );
+
     writeFileSync(projectAgents, "Use browser67 through tmwd_browser but leave user tabs unmanaged.\n", "utf8");
     const routeDrift = run(baseArgs, 1);
     assert.equal(routeDrift.instruction_route_current, false);
@@ -248,6 +270,41 @@ function main() {
     assert.equal(timeoutProbe.ok, false);
     assert.equal(timeoutProbe.error_code, "ETIMEDOUT");
 
+    const identityStatus = runtimeIdentityStatus({
+      doctor: {
+        readiness: { path: "tmwd_ws" },
+        checks: {
+          tmwd_ws_runtime: {
+            ok: true,
+            detail: "extension_identity_ok",
+            identity_match: true,
+            observed_identity: null,
+            observed_browser_instances: [
+              {
+                browser_instance_id: "browser-instance-a",
+                identity_match: true,
+                extension_version: "0.5.0",
+                build_revision: "0123456789abcdef0123456789abcdef01234567",
+              },
+              {
+                browser_instance_id: "browser-instance-b",
+                identity_match: true,
+                extension_version: "0.5.0",
+                build_revision: "0123456789abcdef0123456789abcdef01234567",
+              },
+            ],
+          },
+        },
+      },
+    });
+    assert.equal(identityStatus.extension_identity_ready, true);
+    assert.equal(identityStatus.observed_extension_version, "0.5.0");
+    assert.equal(
+      identityStatus.observed_build_revision,
+      "0123456789abcdef0123456789abcdef01234567",
+    );
+    assert.equal(identityStatus.observed_browser_instance_count, 2);
+
     process.stdout.write(`${JSON.stringify({
       ok: true,
       check: "agent-integration-doctor-contract",
@@ -255,6 +312,7 @@ function main() {
         "static-ready-not-effective",
         "active-skill-drift",
         "instruction-route-drift",
+        "browser-instance-route-drift",
         "extension-drift",
         "mcp-misbinding",
         "mcp-comment-only",
@@ -262,6 +320,7 @@ function main() {
         "nonzero-success-payload",
         "wrong-schema",
         "timeout",
+        "runtime-extension-identity",
       ],
     })}\n`);
   } finally {

@@ -62,6 +62,11 @@ const TAB_LIFECYCLE_TOOL_SCHEMAS = {
           default: false,
           description: "Explicit confirmation alias for action=close_unkept across all managed workspaces.",
         },
+        confirm_all_browser_instances: {
+          type: "boolean",
+          default: false,
+          description: "Explicitly allow cleanup across multiple Browser Instances in the selected workspace/task scope. Without this or browser_instance_id, multi-instance cleanup fails closed.",
+        },
         navigate_reused: { type: "boolean", default: true },
         wait_until: { type: "string", enum: ["none", "listed"], default: "listed" },
         wait_timeout_ms: { type: "number", minimum: 0, maximum: 10_000 },

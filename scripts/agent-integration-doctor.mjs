@@ -164,6 +164,11 @@ function instructionAnchors(text) {
     explicit_adoption: /inspect_adoption[\s\S]{0,160}adopt_existing/.test(text),
     scoped_finalize: /finalize_task/.test(text) && /(scoped|workspace_key|task_id|当前)/i.test(text),
     login_fail_closed: /(fail closed|禁止静默 fallback|不静默切换)/i.test(text),
+    browser_instance_fail_closed: /browser_instance_id/.test(text)
+      && /browser_instance_ops[\s\S]{0,80}list/i.test(text)
+      && /AMBIGUOUS_TARGET/.test(text)
+      && /BROWSER_INSTANCE_UNAVAILABLE/.test(text)
+      && /(fail[ -]?closed|不得猜测|禁止猜测)/i.test(text),
   };
 }
 
@@ -228,6 +233,57 @@ function mcpConfigStatus(configPath) {
   return { ok: allTrue(checks), path: configPath, checks };
 }
 
+function runtimeIdentityStatus(payload) {
+  const doctor = isRecord(payload?.doctor) ? payload.doctor : {};
+  const readiness = isRecord(doctor.readiness) ? doctor.readiness : {};
+  const checks = isRecord(doctor.checks) ? doctor.checks : {};
+  const runtimeKey = readiness.path === "tmwd_link"
+    ? "tmwd_link_runtime"
+    : (readiness.path === "tmwd_ws" ? "tmwd_ws_runtime" : null);
+  const runtimeCheck = runtimeKey && isRecord(checks[runtimeKey]) ? checks[runtimeKey] : null;
+  const identity = isRecord(runtimeCheck?.observed_identity)
+    ? runtimeCheck.observed_identity
+    : null;
+  const observedInstances = Array.isArray(runtimeCheck?.observed_browser_instances)
+    ? runtimeCheck.observed_browser_instances
+    : [];
+  const matchedInstanceIdentities = observedInstances
+    .filter((instance) => instance?.identity_match === true)
+    .map((instance) => ({
+      extension_version: instance?.extension_version ?? null,
+      build_revision: instance?.build_revision ?? null,
+    }));
+  const commonInstanceVersion = new Set(
+    matchedInstanceIdentities.map((entry) => entry.extension_version).filter(Boolean),
+  );
+  const commonInstanceRevision = new Set(
+    matchedInstanceIdentities.map((entry) => entry.build_revision).filter(Boolean),
+  );
+  const multiInstanceIdentity = observedInstances.length > 0
+    && matchedInstanceIdentities.length === observedInstances.length
+    && commonInstanceVersion.size === 1
+    && commonInstanceRevision.size === 1
+    ? {
+        extension_version: [...commonInstanceVersion][0],
+        build_revision: [...commonInstanceRevision][0],
+      }
+    : null;
+  const reportedIdentity = identity ?? multiInstanceIdentity;
+  const extensionIdentityReady = Boolean(
+    runtimeCheck?.ok === true
+    && runtimeCheck?.detail === "extension_identity_ok"
+    && runtimeCheck?.identity_match === true
+    && reportedIdentity,
+  );
+  return {
+    runtime_check: runtimeKey,
+    extension_identity_ready: extensionIdentityReady,
+    observed_extension_version: reportedIdentity?.extension_version ?? null,
+    observed_build_revision: reportedIdentity?.build_revision ?? null,
+    observed_browser_instance_count: observedInstances.length,
+  };
+}
+
 function buildReport(options) {
   const canonicalFiles = [
     "src/mcp/browser/server.mjs",
@@ -280,6 +336,11 @@ function buildReport(options) {
     ready: null,
     reason: "skip_live_requested",
     path: null,
+    runtime_check: null,
+    extension_identity_ready: null,
+    observed_extension_version: null,
+    observed_build_revision: null,
+    observed_browser_instance_count: null,
   };
   if (!options.skipLive) {
     const live = runNodeScript("contracts/browser67-live-gate.mjs", [
@@ -291,12 +352,16 @@ function buildReport(options) {
     ], { timeout: 45_000, expected: { stage: "doctor_only" } });
     const payloadReady = live.payload?.ok === true
       && live.payload?.doctor?.readiness?.ready === true;
+    const identityStatus = runtimeIdentityStatus(live.payload);
     runtime = {
       skipped: false,
       verified: live.identity_ok && live.signal === null && isRecord(live.payload),
-      ready: live.ok && payloadReady,
-      reason: live.payload?.doctor?.readiness?.reason ?? (live.stderr || "runtime_probe_failed"),
+      ready: live.ok && payloadReady && identityStatus.extension_identity_ready,
+      reason: payloadReady && !identityStatus.extension_identity_ready
+        ? "tmwd_extension_identity_unverified"
+        : (live.payload?.doctor?.readiness?.reason ?? (live.stderr || "runtime_probe_failed")),
       path: live.payload?.doctor?.readiness?.path ?? null,
+      ...identityStatus,
       probe: probeReport(live).probe,
     };
   }
@@ -313,8 +378,8 @@ function buildReport(options) {
   if (!releaseArtifactReady) nextSteps.push("Repair canonical browser67 Agent docs/skills/entrypoints before syncing installed copies.");
   if (!activeSkillCurrent) nextSteps.push(`Run npm run skills:active:sync -- --target ${options.activeSkillsDir}, then start a new Agent session.`);
   if (!extensionInstalledCurrent) nextSteps.push("Run npm run setup, then npm run extension:reload-live when the existing bridge is connected, and refresh target tabs.");
-  if (!globalAgentsCurrent) nextSteps.push(`Update ${options.globalAgents} with browser67 route, explicit adoption, scoped finalization, and login fail-closed rules.`);
-  if (!projectAgentsCurrent) nextSteps.push(`Update ${options.projectAgents} with browser67 route, explicit adoption, scoped finalization, and login fail-closed rules.`);
+  if (!globalAgentsCurrent) nextSteps.push(`Update ${options.globalAgents} with browser67 route, explicit adoption, scoped finalization, Browser Instance fail-closed routing, and login fail-closed rules.`);
+  if (!projectAgentsCurrent) nextSteps.push(`Update ${options.projectAgents} with browser67 route, explicit adoption, scoped finalization, Browser Instance fail-closed routing, and login fail-closed rules.`);
   if (!mcpConfig.ok) nextSteps.push(`Register tmwd_browser and js-reverse canonical MCP entrypoints in ${options.codexConfig}.`);
   if (!runtime.skipped && !runtime.ready) nextSteps.push("Start/repair the browser67 hub and extension, then rerun npm run doctor:agent -- --check --json.");
   if (runtime.skipped && staticReady) nextSteps.push("Static Agent integration checks passed; rerun without --skip-live before claiming effective runtime readiness.");
@@ -329,6 +394,10 @@ function buildReport(options) {
     static_agent_usage_ready: staticReady,
     runtime_verified: runtime.verified,
     runtime_ready: runtime.ready,
+    runtime_extension_identity_ready: runtime.extension_identity_ready,
+    observed_extension_version: runtime.observed_extension_version,
+    observed_build_revision: runtime.observed_build_revision,
+    observed_browser_instance_count: runtime.observed_browser_instance_count,
     extension_installed_current: extensionInstalledCurrent,
     active_skill_current: activeSkillCurrent,
     instruction_route_current: instructionRouteCurrent,
@@ -369,6 +438,10 @@ function formatText(report) {
     `static_agent_usage_ready=${report.static_agent_usage_ready}`,
     `runtime_verified=${report.runtime_verified}`,
     `runtime_ready=${report.runtime_ready === null ? "skipped" : report.runtime_ready}`,
+    `runtime_extension_identity_ready=${report.runtime_extension_identity_ready === null ? "skipped" : report.runtime_extension_identity_ready}`,
+    `observed_extension_version=${report.observed_extension_version ?? "unverified"}`,
+    `observed_build_revision=${report.observed_build_revision ?? "unverified"}`,
+    `observed_browser_instance_count=${report.observed_browser_instance_count ?? "unverified"}`,
     `extension_installed_current=${report.extension_installed_current}`,
     `active_skill_current=${report.active_skill_current}`,
     `instruction_route_current=${report.instruction_route_current}`,
@@ -406,5 +479,6 @@ export {
   parseArgs,
   payloadIdentity,
   runNodeScript,
+  runtimeIdentityStatus,
   tomlSections,
 };

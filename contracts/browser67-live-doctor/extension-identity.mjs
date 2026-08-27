@@ -150,7 +150,9 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
   let detail = "extension_identity_ok";
   if (runtimeProbe?.ok !== true) detail = String(runtimeProbe?.detail ?? "runtime_info_unavailable");
   else if (!connected) detail = "extension_not_connected";
-  else if (identityStatus !== "valid" || !observed) detail = `live_extension_identity_${identityStatus}`;
+  else if (identityStatus !== "valid" || !observedForComparison.every(Boolean)) {
+    detail = `live_extension_identity_${identityStatus}`;
+  }
   else if (expected?.available !== true) detail = String(expected?.error || "installed_extension_identity_unavailable");
   else if (!identityMatch) detail = `extension_identity_mismatch:${mismatches.join(",")}`;
   return {
@@ -180,6 +182,8 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
       identity_status: entry.identity_status,
       identity_match: compareExtensionIdentityContent(entry.identity, expectedIdentity).content_match,
       provenance_variant: compareExtensionIdentityContent(entry.identity, expectedIdentity).provenance_variant,
+      extension_version: entry.identity?.extension_version ?? null,
+      build_revision: entry.identity?.build_revision ?? null,
     })),
     expected_identity: expectedIdentity,
     installed_identity_candidates: installedCandidates,

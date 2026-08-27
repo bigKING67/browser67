@@ -15,6 +15,11 @@ function normalizeFinalizeScope(scope = {}) {
     scope: String(scope.scope ?? "").trim() || fallbackScope,
     workspace_key: String(scope.workspace_key ?? scope.workspaceKey ?? "").trim() || undefined,
     task_id: String(scope.task_id ?? scope.taskId ?? "").trim() || undefined,
+    browser_instance_id: String(
+      scope.browser_instance_id ?? scope.browserInstanceId ?? "",
+    ).trim() || undefined,
+    browser_instance_scope: String(scope.browser_instance_scope ?? "").trim() || undefined,
+    all_browser_instances: scope.all_browser_instances === true,
     all: scope.all === true,
   };
 }
@@ -43,6 +48,9 @@ function buildFinalizeCleanupSummary({
     scope: normalizedScope.scope,
     workspace_key: normalizedScope.workspace_key,
     task_id: normalizedScope.task_id,
+    browser_instance_id: normalizedScope.browser_instance_id,
+    browser_instance_scope: normalizedScope.browser_instance_scope,
+    all_browser_instances: normalizedScope.all_browser_instances,
     all: normalizedScope.all,
     dry_run: dryRun === true,
     closed_count: countRows(closedRows, (row) => row?.closed === true),
@@ -60,6 +68,11 @@ function buildFinalizeCleanupSummary({
 function formatFinalizeDeliverySummary(summary, options = {}) {
   const prefix = String(options.prefix ?? "browser67 cleanup").trim() || "browser67 cleanup";
   const scopeParts = [];
+  if (summary.browser_instance_id) {
+    scopeParts.push(`browser_instance_id=${summary.browser_instance_id}`);
+  } else if (summary.all_browser_instances) {
+    scopeParts.push("browser_instances=all_confirmed");
+  }
   if (summary.workspace_key) {
     scopeParts.push(`workspace_key=${summary.workspace_key}`);
   }
