@@ -2,12 +2,25 @@
 
 ## Unreleased
 
-- Make the background-job contract wait for both execution terminal status and
-  job-owned Run terminalization, closing a coverage-visible persistence race;
-  preserve full error stacks from the browser MCP contract runner.
+## 0.6.0 - 2026-08-27
+
+- Make Browser Instance selection and managed-tab finalization fail closed:
+  require an explicit instance when multiple Profiles are active, keep cleanup
+  on the resolved instance, require `confirm_all_browser_instances:true` for
+  deliberate cross-instance finalization, and reject contradictory selectors.
+- Expose the resolved Browser Instance scope in finalizer and delivery summaries;
+  strengthen Agent integration readiness with instance-routing anchors and live
+  extension version, build, and active-instance evidence; retain valid
+  per-instance extension identity when multiple matching bridges are connected.
+- Add executable multi-instance lifecycle, relay, live-doctor, and Agent-doctor
+  regressions, and synchronize the project guidance and active browser67 Skill
+  with the fail-closed routing contract.
 
 ## 0.5.0 - 2026-08-27
 
+- Make the background-job contract wait for both execution terminal status and
+  job-owned Run terminalization, closing a coverage-visible persistence race;
+  preserve full error stacks from the browser MCP contract runner.
 - Make verification subprocess execution fail closed on Windows: resolve npm
   through its lifecycle CLI or an explicit command shell, preserve positive
   child exit codes, and map missing status, spawn errors, or signals to a
