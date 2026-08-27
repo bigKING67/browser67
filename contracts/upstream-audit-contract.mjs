@@ -82,7 +82,10 @@ function createGenericAgentFixture(kind) {
   }
   if (kind === "disable-dialogs-final-newline-only") {
     const file = path.resolve(sourceDir, "disable_dialogs.js");
-    writeFileSync(file, readFileSync(file, "utf8").replace(/\n$/, ""));
+    const crlfSource = readFileSync(file, "utf8")
+      .replace(/\r\n?/g, "\n")
+      .replaceAll("\n", "\r\n");
+    writeFileSync(file, crlfSource.replace(/\r\n$/, ""));
   }
   if (kind === "background-missing-local-features") {
     writeFileSync(

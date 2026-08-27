@@ -12,6 +12,9 @@
 - Normalize extension background source line endings before applying overlay
   transforms so Windows CRLF checkouts produce the same generated bridge as LF
   checkouts.
+- Make the upstream-audit final-newline fixture deterministic across platforms
+  by removing an entire CRLF terminator instead of leaving a bare carriage
+  return on Windows.
 - Separate extension content identity from build revision, revision source, and
   dirty-checkout provenance so an otherwise identical canonical bundle does not
   trigger setup or reload, while actual source-digest, version, protocol, or
