@@ -191,15 +191,16 @@ function patchSharedExecutionRuntime(source) {
 }
 
 function buildBackground(source) {
-  const installStart = source.indexOf("chrome.runtime.onInstalled.addListener(() => {");
-  const handlerStart = source.indexOf("async function handleExtMessage(msg, sender) {");
+  const normalizedSource = String(source).replace(/\r\n?/g, "\n");
+  const installStart = normalizedSource.indexOf("chrome.runtime.onInstalled.addListener(() => {");
+  const handlerStart = normalizedSource.indexOf("async function handleExtMessage(msg, sender) {");
   if (installStart < 0 || handlerStart < 0 || handlerStart <= installStart) {
     throw new Error("upstream background anchors changed; review the browser67 overlay transform");
   }
   const withoutGlobalCsp = [
-    source.slice(0, installStart),
+    normalizedSource.slice(0, installStart),
     "importScripts('browser67/build-identity.js', 'browser67/runtime.js');\n\n",
-    source.slice(handlerStart),
+    normalizedSource.slice(handlerStart),
   ].join("");
   const handlerAnchor = "async function handleExtMessage(msg, sender) {\n";
   const handlerReplacement = [

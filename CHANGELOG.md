@@ -9,6 +9,9 @@
 - Treat POSIX mode bits as unavailable on Windows when validating login profile
   files, avoiding false insecure-permission warnings from synthetic `stat.mode`
   values while retaining strict `0600` checks on POSIX hosts.
+- Normalize extension background source line endings before applying overlay
+  transforms so Windows CRLF checkouts produce the same generated bridge as LF
+  checkouts.
 - Separate extension content identity from build revision, revision source, and
   dirty-checkout provenance so an otherwise identical canonical bundle does not
   trigger setup or reload, while actual source-digest, version, protocol, or

@@ -8,7 +8,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-import { buildExtension } from "../scripts/build-extension.mjs";
+import { buildBackground, buildExtension } from "../scripts/build-extension.mjs";
 import {
   extensionBatchReferenceSource,
   resolveBatchReferences,
@@ -37,6 +37,12 @@ async function run() {
   };
   try {
     const result = buildExtension({ source_dir: sourceDir, target_dir: targetDir });
+    const sourceBackground = readFileSync(sourceBackgroundPath, "utf8").replace(/\r\n?/g, "\n");
+    assert.equal(
+      buildBackground(sourceBackground.replaceAll("\n", "\r\n")),
+      buildBackground(sourceBackground),
+      "extension background transform should produce identical output for CRLF and LF sources",
+    );
     const manifest = JSON.parse(readFileSync(resolve(targetDir, "manifest.json"), "utf8"));
     const background = readFileSync(resolve(targetDir, "background.js"), "utf8");
     const runtime = readFileSync(resolve(targetDir, "browser67/runtime.js"), "utf8");
@@ -151,6 +157,7 @@ async function run() {
       extension_identity_generated: true,
       extension_identity_handshake_injected: true,
       browser_instance_identity_injected: true,
+      source_eol_normalized: true,
     })}\n`);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
