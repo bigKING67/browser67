@@ -11,12 +11,14 @@ import {
   runNoExtensionCase,
   runMultiBrowserInstanceRelayCase,
   runRuntimeIdentityCase,
+  runResponseListenerOrderingCase,
   runTabsCreateRelayCase,
   runTabsListCase,
 } from "./relay-cases.mjs";
 import { closeWs, openWs } from "./ws-client.mjs";
 
 async function runHubRelayContract() {
+  await runResponseListenerOrderingCase();
   const { wsPort, linkPort } = await pickFreePortPair();
   const wsUrl = `ws://127.0.0.1:${String(wsPort)}`;
   const linkUrl = `http://127.0.0.1:${String(linkPort)}/link`;
@@ -29,12 +31,12 @@ async function runHubRelayContract() {
     extensionWs = await openWs(wsUrl);
     controllerWs = await openWs(wsUrl);
 
-    await runTabsListCase(extensionWs, controllerWs);
+    await runTabsListCase(extensionWs, controllerWs, linkUrl);
     await runRuntimeIdentityCase(controllerWs, linkUrl);
     await runTabsCreateRelayCase(extensionWs, controllerWs);
     await runNewTabMonitoringRelayCase(extensionWs, controllerWs, linkUrl);
     await runMultiBrowserInstanceRelayCase(extensionWs, controllerWs, linkUrl, wsUrl);
-    await runNoExtensionCase(extensionWs, controllerWs);
+    await runNoExtensionCase(extensionWs, controllerWs, linkUrl);
 
     await sleep(100);
     assert.equal(hub.child.exitCode, null);
@@ -45,6 +47,7 @@ async function runHubRelayContract() {
       ok: true,
       ws_endpoint: wsUrl,
       tabs_list_intercept_ok: true,
+      response_listener_before_send_ok: true,
       extension_identity_handshake_ok: true,
       extension_identity_ws_link_query_ok: true,
       tabs_create_relay_ok: true,

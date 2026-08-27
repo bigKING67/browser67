@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 
 import { compareExtensionRuntimeIdentity } from "../browser67-live-doctor/extension-identity.mjs";
 import { sleep } from "./ports.mjs";
@@ -38,6 +39,51 @@ async function readBrowserInstanceInventory(linkUrl, payload = { action: "list" 
   const body = await sendLinkCommand(linkUrl, { cmd: "browser_instance_ops", ...payload });
   assert.equal(body?.r?.ok, true);
   return body.r;
+}
+
+function matchesBrowserInstanceStates(inventory, expectedStates) {
+  return expectedStates.every((expected) => {
+    const actual = inventory?.browser_instances?.find((entry) => (
+      entry.browser_instance_id === expected.browser_instance_id
+    ));
+    return actual
+      && actual.active === expected.active
+      && actual.tab_count === expected.tab_count;
+  });
+}
+
+async function waitForBrowserInstanceStates(linkUrl, expectedStates, label, timeoutMs = 3_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastInventory = null;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      lastInventory = await readBrowserInstanceInventory(linkUrl);
+      lastError = null;
+      if (matchesBrowserInstanceStates(lastInventory, expectedStates)) return lastInventory;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+    await sleep(20);
+  }
+  const observed = lastError
+    ? `error=${lastError.stack ?? lastError.message}`
+    : `inventory=${JSON.stringify(lastInventory?.browser_instances ?? null)}`;
+  throw new Error(`timed out waiting for browser instance state: ${label}; ${observed}`);
+}
+
+async function runResponseListenerOrderingCase() {
+  class ImmediateResponseSocket extends EventEmitter {
+    send(raw) {
+      const payload = JSON.parse(String(raw));
+      this.emit("message", JSON.stringify({ id: payload.id, success: true }));
+    }
+  }
+  const response = await sendControllerRequest(new ImmediateResponseSocket(), {
+    id: "immediate_response",
+    code: { cmd: "fixture" },
+  });
+  assert.equal(response?.success, true);
 }
 
 async function runExplicitInstanceRelay({
@@ -84,7 +130,7 @@ async function runExplicitInstanceRelay({
   return relayed;
 }
 
-async function runTabsListCase(extensionWs, controllerWs) {
+async function runTabsListCase(extensionWs, controllerWs, linkUrl) {
   extensionWs.send(JSON.stringify({
     type: "ext_ready",
     browser_instance_id: browserInstanceId,
@@ -93,6 +139,11 @@ async function runTabsListCase(extensionWs, controllerWs) {
       { id: 123, url: "http://127.0.0.1/fake", title: "Fake Tab" },
     ],
   }));
+  await waitForBrowserInstanceStates(linkUrl, [{
+    browser_instance_id: browserInstanceId,
+    active: true,
+    tab_count: 1,
+  }], "initial extension handshake");
 
   const listResponse = await sendControllerRequest(controllerWs, {
     id: "list_tabs",
@@ -341,6 +392,10 @@ async function runMultiBrowserInstanceRelayCase(extensionWs, controllerWs, linkU
         { id: 123, url: "http://127.0.0.1/profile-b", title: "Profile B Tab" },
       ],
     }));
+    await waitForBrowserInstanceStates(linkUrl, [
+      { browser_instance_id: browserInstanceId, active: true, tab_count: 1 },
+      { browser_instance_id: secondBrowserInstanceId, active: true, tab_count: 1 },
+    ], "second extension handshake");
 
     const ambiguousTabs = await sendControllerRequest(controllerWs, {
       id: "multi_instance_tabs_ambiguous",
@@ -585,7 +640,10 @@ async function runMultiBrowserInstanceRelayCase(extensionWs, controllerWs, linkU
     await defaultResponsePromise;
 
     extensionWs.close();
-    await sleep(100);
+    await waitForBrowserInstanceStates(linkUrl, [
+      { browser_instance_id: browserInstanceId, active: false, tab_count: 0 },
+      { browser_instance_id: secondBrowserInstanceId, active: true, tab_count: 1 },
+    ], "default extension disconnect");
     const defaultUnavailable = await sendControllerRequest(controllerWs, {
       id: "default_instance_unavailable",
       tabId: 123,
@@ -642,9 +700,12 @@ async function runMultiBrowserInstanceRelayCase(extensionWs, controllerWs, linkU
   }
 }
 
-async function runNoExtensionCase(extensionWs, controllerWs) {
+async function runNoExtensionCase(extensionWs, controllerWs, linkUrl) {
   extensionWs.close();
-  await sleep(100);
+  await waitForBrowserInstanceStates(linkUrl, [
+    { browser_instance_id: browserInstanceId, active: false, tab_count: 0 },
+    { browser_instance_id: secondBrowserInstanceId, active: false, tab_count: 0 },
+  ], "all extensions disconnected");
   const noExtensionResponse = await sendControllerRequest(controllerWs, {
     id: "no_extension",
     browser_instance_id: browserInstanceId,
@@ -660,6 +721,7 @@ export {
   runNewTabMonitoringRelayCase,
   runNoExtensionCase,
   runMultiBrowserInstanceRelayCase,
+  runResponseListenerOrderingCase,
   runRuntimeIdentityCase,
   runTabsCreateRelayCase,
   runTabsListCase,

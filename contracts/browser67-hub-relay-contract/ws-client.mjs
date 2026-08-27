@@ -12,11 +12,18 @@ function parseWsMessage(raw) {
   return JSON.parse(String(raw));
 }
 
-function waitForWsMessage(ws, predicate, label, timeoutMs = 3_000) {
+function createWsMessagePromise(ws, predicate, label, timeoutMs, afterSubscribe = null) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const timer = setTimeout(() => {
+    let settled = false;
+    let timer;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      rejectPromise(new Error(`timed out waiting for websocket message: ${label}`));
+      callback(value);
+    };
+    timer = setTimeout(() => {
+      finish(rejectPromise, new Error(`timed out waiting for websocket message: ${label}`));
     }, timeoutMs);
     const onMessage = (raw) => {
       let parsed;
@@ -28,19 +35,16 @@ function waitForWsMessage(ws, predicate, label, timeoutMs = 3_000) {
       if (!predicate(parsed)) {
         return;
       }
-      cleanup();
-      resolvePromise(parsed);
+      finish(resolvePromise, parsed);
     };
     const onClose = () => {
-      cleanup();
-      rejectPromise(new Error(`websocket closed while waiting for: ${label}`));
+      finish(rejectPromise, new Error(`websocket closed while waiting for: ${label}`));
     };
     const onError = (error) => {
-      cleanup();
-      rejectPromise(error instanceof Error ? error : new Error(String(error)));
+      finish(rejectPromise, error instanceof Error ? error : new Error(String(error)));
     };
     function cleanup() {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       ws.off("message", onMessage);
       ws.off("close", onClose);
       ws.off("error", onError);
@@ -48,15 +52,25 @@ function waitForWsMessage(ws, predicate, label, timeoutMs = 3_000) {
     ws.on("message", onMessage);
     ws.once("close", onClose);
     ws.once("error", onError);
+    try {
+      afterSubscribe?.();
+    } catch (error) {
+      finish(rejectPromise, error instanceof Error ? error : new Error(String(error)));
+    }
   });
 }
 
+function waitForWsMessage(ws, predicate, label, timeoutMs = 3_000) {
+  return createWsMessagePromise(ws, predicate, label, timeoutMs);
+}
+
 async function sendControllerRequest(ws, payload) {
-  ws.send(JSON.stringify(payload));
-  return waitForWsMessage(
+  return createWsMessagePromise(
     ws,
     (message) => String(message.id ?? "") === String(payload.id),
     `controller response ${String(payload.id)}`,
+    3_000,
+    () => ws.send(JSON.stringify(payload)),
   );
 }
 
