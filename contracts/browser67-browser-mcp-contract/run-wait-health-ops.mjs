@@ -222,7 +222,10 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
         timeoutMs,
       );
       jobStatusPayload = firstJsonContent(jobStatusCall.result);
-      if (["completed", "failed"].includes(jobStatusPayload?.job?.status)) {
+      if (
+        ["completed", "failed"].includes(jobStatusPayload?.job?.status)
+        && jobStatusPayload?.job?.run_terminalized === true
+      ) {
         break;
       }
     }
@@ -231,6 +234,11 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
       jobStatusPayload?.job?.status,
       "failed",
       `background job did not reach failed before deadline: ${JSON.stringify(jobStatusPayload?.job ?? null)}`,
+    );
+    assert.equal(
+      jobStatusPayload?.job?.run_terminalized,
+      true,
+      `job-owned run did not terminalize before deadline: ${JSON.stringify(jobStatusPayload?.job ?? null)}`,
     );
 
     const jobResultCall = await rpc.call(

@@ -309,7 +309,7 @@ async function run() {
 try {
   await run();
 } catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`browser67-browser-mcp-contract failed: ${message}\n`);
+  const details = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  process.stderr.write(`browser67-browser-mcp-contract failed: ${details}\n`);
   process.exitCode = 1;
 }

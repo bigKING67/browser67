@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Make the background-job contract wait for both execution terminal status and
+  job-owned Run terminalization, closing a coverage-visible persistence race;
+  preserve full error stacks from the browser MCP contract runner.
+
 ## 0.5.0 - 2026-08-27
 
 - Make verification subprocess execution fail closed on Windows: resolve npm
