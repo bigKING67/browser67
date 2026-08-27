@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Separate extension content identity from build revision, revision source, and
+  dirty-checkout provenance so an otherwise identical canonical bundle does not
+  trigger setup or reload, while actual source-digest, version, protocol, or
+  non-canonical identity drift remains fail-closed. Keep browser transport
+  health target metadata private by default, and add an explicit
+  privacy-preserving summary mode for JS-reverse page health.
+- Add privacy-preserving global Run and Job inspection with status, schema-age,
+  ownership, and optional storage aggregates. Auto-terminalize implicitly owned
+  screenshot and background-Job Runs, preserve caller-owned Run lifecycle, and
+  expose whether a caller must finish the Run explicitly. Route extension
+  network observation commands through the native per-instance tab id while
+  retaining composite Browser Instance session identity, and return new popup
+  targets with both native tab ids and collision-free composite session keys.
 - Rebuild the GitHub README as a bounded public landing page, move runtime
   operations and the complete verification inventory into focused docs, and add
   an executable README structure/link/provenance contract to the check tier.

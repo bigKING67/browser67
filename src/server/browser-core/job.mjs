@@ -10,9 +10,11 @@ import {
 import { defaultJobRuntimeState } from "../../runtime/jobs/state.mjs";
 import { atomicWriteJson } from "../../runtime/storage/atomic-file.mjs";
 import { handleBrowserExecuteJs } from "./execute-js.mjs";
+import { summarizeJobs } from "./job-summary.mjs";
 
 const JOB_SCHEMA_VERSION = "browser67.browser-job.v3";
 const MAX_RETAINED_JOBS = 200;
+const RUN_OWNERSHIPS = new Set(["caller", "job", "legacy_unknown", "none"]);
 
 function jobRuntimeState(options = {}) {
   return options.runtime?.jobState ?? defaultJobRuntimeState;
@@ -85,6 +87,11 @@ function serializableJob(job, { include_result = false } = {}) {
     workspace_key: job.workspace_key,
     task_id: job.task_id,
     run_id: job.run_id,
+    run_ownership: job.run_ownership,
+    run_auto_finish: job.run_ownership === "job",
+    run_requires_finish: job.run_ownership === "caller",
+    run_terminalized: job.run_terminalized === true,
+    run_finish_error: job.run_finish_error,
     title: job.title,
     created_at: job.created_at,
     started_at: job.started_at,
@@ -142,6 +149,10 @@ function restoredJob(payload, statePath) {
     schema_version: JOB_SCHEMA_VERSION,
     durable: true,
     durability_reason: "run_backed_checkpoint",
+    run_ownership: RUN_OWNERSHIPS.has(payload.run_ownership)
+      ? payload.run_ownership
+      : (payload.run_id ? "legacy_unknown" : "none"),
+    run_terminalized: payload.run_terminalized === true,
     run_dir: runDir,
     promise: undefined,
   };
@@ -184,6 +195,13 @@ async function recoverJobsFromDisk(state = defaultJobRuntimeState, options = {})
       job.cancel_outcome = job.cancel_requested === true
         ? "interrupted_after_cancel_request"
         : "not_requested";
+      await persistJobSafe(job, state, options);
+      await recordRunEvent(job, "job_interrupted", {
+        recovery_status: job.recovery_status,
+      }, "interrupted", options);
+      await finishOwnedRun(job, "interrupted", {
+        recovery_status: job.recovery_status,
+      }, options);
       await persistJobSafe(job, state, options);
     }
     jobs.set(job.job_id, job);
@@ -229,11 +247,41 @@ async function recordRunEvent(job, event, data = {}, status = "", options = {}) 
       task_id: job.task_id,
       run_id: job.run_id,
       event,
-      status,
+      status: job.run_ownership === "job" ? status : "",
       data: { job_id: job.job_id, ...data },
     }, options);
   } catch (error) {
     job.run_event_error = String(error?.message ?? error);
+  }
+}
+
+async function finishOwnedRun(job, status, data = {}, options = {}) {
+  if (job.run_ownership !== "job" || !job.run_id) {
+    return { attempted: false, reason: "run_not_job_owned" };
+  }
+  try {
+    const finished = await handleBrowserRunOps({
+      action: "finish",
+      workspace_key: job.workspace_key,
+      task_id: job.task_id,
+      run_id: job.run_id,
+      status,
+      data: {
+        job_id: job.job_id,
+        job_status: job.status,
+        ...data,
+      },
+    }, options);
+    if (finished?.ok !== true) {
+      job.run_finish_error = String(finished?.error ?? "job-owned run finish failed");
+      return { attempted: true, ok: false, error: job.run_finish_error };
+    }
+    job.run_terminalized = true;
+    job.run_finish_error = undefined;
+    return { attempted: true, ok: true, run: finished.run };
+  } catch (error) {
+    job.run_finish_error = String(error?.message ?? error);
+    return { attempted: true, ok: false, error: job.run_finish_error };
   }
 }
 
@@ -253,7 +301,11 @@ async function maybePrepareRun(args, job, options = {}) {
         run_id: job.run_id,
         summary_only: true,
       }, options);
-      if (status?.ok !== true) job.run_dir = "";
+      if (status?.ok === true) job.run_ownership = "caller";
+      else {
+        job.run_dir = "";
+        job.run_ownership = "none";
+      }
     } catch {
       job.run_dir = "";
     }
@@ -270,6 +322,7 @@ async function maybePrepareRun(args, job, options = {}) {
   if (prepared?.ok === true && prepared.run?.run_id) {
     job.run_id = prepared.run.run_id;
     job.run_dir = prepared.run.run_dir;
+    job.run_ownership = "job";
   }
 }
 
@@ -300,6 +353,8 @@ function startBackgroundJob(job, executeArgs, state = defaultJobRuntimeState, op
       job.cancel_outcome = "prevented_before_execution";
       await persistJobSafe(job, state, options);
       await recordRunEvent(job, "job_cancelled", { executed: false }, "cancelled", options);
+      await finishOwnedRun(job, "cancelled", { executed: false }, options);
+      await persistJobSafe(job, state, options);
       return;
     }
     try {
@@ -312,11 +367,19 @@ function startBackgroundJob(job, executeArgs, state = defaultJobRuntimeState, op
         cancel_requested: job.cancel_requested === true,
         cancel_outcome: job.cancel_outcome,
       }, job.status, options);
+      await finishOwnedRun(job, ok ? "success" : "failed", {
+        result_status: result?.status,
+        cancel_requested: job.cancel_requested === true,
+        cancel_outcome: job.cancel_outcome,
+      }, options);
+      await persistJobSafe(job, state, options);
     } catch (error) {
       const message = String(error?.message ?? error);
       finishJob(job, "failed", { status: "failed", error: message }, message);
       await persistJobSafe(job, state, options);
       await recordRunEvent(job, "job_failed", { error: job.error }, "failed", options);
+      await finishOwnedRun(job, "failed", { error: job.error }, options);
+      await persistJobSafe(job, state, options);
     }
   })();
 }
@@ -341,6 +404,8 @@ async function startJob(args = {}, options = {}) {
     task_id: String(args.task_id ?? ""),
     run_id: "",
     run_dir: "",
+    run_ownership: "none",
+    run_terminalized: false,
     title: String(args.title ?? ""),
     created_at: createdAt,
     started_at: null,
@@ -437,19 +502,23 @@ async function listJobs(args = {}, options = {}) {
   const jobs = state.jobs;
   await ensureRecovered(state, options);
   const maxItems = Math.max(1, Math.min(500, Number(args.max_items ?? 50)));
-  const rows = Array.from(jobs.values())
-    .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)))
-    .slice(0, maxItems)
-    .map((job) => serializableJob(job));
+  const summaryOnly = args.summary_only === true;
+  const allJobs = Array.from(jobs.values())
+    .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)));
+  const summary = summarizeJobs(allJobs);
+  const rows = summaryOnly
+    ? []
+    : allJobs.slice(0, maxItems).map((job) => serializableJob(job));
   return {
     ok: true,
     action: "list",
-    durable: rows.every((job) => job.durable === true),
+    summary_only: summaryOnly,
     durable_jobs_supported: true,
     abort_supported: false,
     recovery_supported: true,
     jobs: rows,
-    total: jobs.size,
+    ...summary,
+    returned_count: rows.length,
   };
 }
 

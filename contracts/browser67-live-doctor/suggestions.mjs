@@ -5,6 +5,12 @@ import {
 } from "../browser67-live-gate/modes.mjs";
 
 function buildSuggestions(cli, readiness) {
+  if (
+    readiness?.ready === true
+    && (isTmwdReadyPath(readiness) || isCdpReadyPath(readiness))
+  ) {
+    return [];
+  }
   const suggestions = [
     "For TMWD path, run: npm run hub:start",
     "Install or enable the TMWD browser extension, then keep a Chrome/Edge tab open.",

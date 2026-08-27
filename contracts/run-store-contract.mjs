@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { writeScreenshotArtifact } from "../src/browser-screenshot/artifact.mjs";
 import {
   RUN_INDEX_SCHEMA_VERSION,
   RUN_SCHEMA_VERSION,
@@ -69,6 +70,13 @@ async function main() {
     assert.equal(listed.total, 1);
     assert.equal(listed.runs.length, 1);
     assert.equal(listed.runs[0].status, "success");
+    const listedSummary = await store.list({
+      workspace_key: "run-store-contract",
+      summary_only: true,
+    });
+    assert.equal(listedSummary.total, 1);
+    assert.equal(listedSummary.returned_count, 0);
+    assert.deepEqual(listedSummary.runs, []);
     const indexRows = (await readFile(path.join(root, "run-store-contract", "index.ndjson"), "utf8"))
       .trim()
       .split("\n")
@@ -88,11 +96,96 @@ async function main() {
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:01.000Z",
     })}\n`, "utf8");
+    const untrackedRunDir = path.join(root, "untracked", "artifact-only-run", "artifacts");
+    await mkdir(untrackedRunDir, { recursive: true });
+    await writeFile(path.join(untrackedRunDir, "evidence.bin"), Buffer.alloc(32, "u"));
     const inspection = await store.inspect();
     assert.equal(inspection.legacy_run_count, 1);
+    assert.equal(inspection.run_count, 2);
+    assert.equal(inspection.status_counts.success, 2);
+    assert.equal(inspection.terminal_run_count, 2);
+    assert.equal(inspection.running_run_count, 0);
+    assert.equal(inspection.group_count, 3);
+    assert.equal(inspection.runtime_directory_count, 3);
+    assert.equal(inspection.untracked_run_directory_count, 1);
+    const inspectionSummary = await store.inspect({
+      summary_only: true,
+      include_storage: true,
+    });
+    assert.deepEqual(inspectionSummary.groups, []);
+    assert.equal(inspectionSummary.summary_only, true);
+    assert.equal(inspectionSummary.storage.included, true);
+    assert.equal(inspectionSummary.storage.bytes > 0, true);
+    assert.equal(inspectionSummary.storage.untracked_run_bytes > 0, true);
     await store.migrate();
     const migrated = JSON.parse(await readFile(path.join(legacyDir, "run.json"), "utf8"));
     assert.equal(migrated.schema_version, RUN_SCHEMA_VERSION);
+
+    const screenshotStore = createRunStore({
+      root: path.join(root, "screenshot-runs"),
+      checkpoint_interval_ms: 0,
+    });
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const implicitScreenshot = await writeScreenshotArtifact({
+      args: { workspace_key: "implicit-screenshot" },
+      bytes: png,
+      run_options: { runStore: screenshotStore },
+    });
+    assert.equal(implicitScreenshot.run_prepared, true);
+    assert.equal(implicitScreenshot.run_mode, "implicit");
+    assert.equal(implicitScreenshot.run_terminalized, true);
+    assert.equal(implicitScreenshot.run_requires_finish, false);
+    assert.equal(implicitScreenshot.run.status, "success");
+    assert.equal(typeof implicitScreenshot.run.finished_at, "string");
+    assert.equal(implicitScreenshot.run.summary.artifact_count, 1);
+
+    await screenshotStore.prepare({
+      workspace_key: "explicit-screenshot",
+      run_id: "caller-owned-run",
+    });
+    const explicitScreenshot = await writeScreenshotArtifact({
+      args: {
+        workspace_key: "explicit-screenshot",
+        run_id: "caller-owned-run",
+      },
+      bytes: png,
+      run_options: { runStore: screenshotStore },
+    });
+    assert.equal(explicitScreenshot.run_prepared, false);
+    assert.equal(explicitScreenshot.run_mode, "explicit");
+    assert.equal(explicitScreenshot.run_terminalized, false);
+    assert.equal(explicitScreenshot.run_requires_finish, true);
+    assert.equal(explicitScreenshot.run.status, "running");
+    await screenshotStore.finish({
+      workspace_key: "explicit-screenshot",
+      run_id: "caller-owned-run",
+      status: "success",
+    });
+
+    let auditClock = new Date("2026-08-27T00:00:00.000Z");
+    const staleAuditStore = createRunStore({
+      root: path.join(root, "stale-audit-runs"),
+      clock: () => auditClock,
+    });
+    await staleAuditStore.prepare({
+      workspace_key: "stale-audit",
+      run_id: "stale-running-run",
+    });
+    auditClock = new Date("2026-08-27T03:00:00.000Z");
+    const staleAudit = await staleAuditStore.inspect({
+      summary_only: true,
+      stale_running_after_minutes: 120,
+    });
+    assert.equal(staleAudit.running_run_count, 1);
+    assert.equal(staleAudit.stale_running_count, 1);
+    assert.equal(staleAudit.current_running_run_count, 1);
+    assert.equal(staleAudit.legacy_running_run_count, 0);
+    assert.equal(staleAudit.current_stale_running_count, 1);
+    assert.equal(staleAudit.legacy_stale_running_count, 0);
+    assert.equal(staleAudit.status_counts.running, 1);
 
     const tempFiles = (await readdir(runDir)).filter((name) => name.endsWith(".tmp"));
     assert.deepEqual(tempFiles, []);
@@ -122,6 +215,9 @@ async function main() {
       index_entries: indexRows.length,
       bounded_cache: true,
       migration: true,
+      implicit_screenshot_terminal: true,
+      explicit_screenshot_caller_owned: true,
+      aggregate_run_inspection: true,
     })}\n`);
   } finally {
     await rm(root, { recursive: true, force: true });

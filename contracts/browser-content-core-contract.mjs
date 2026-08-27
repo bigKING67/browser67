@@ -13,6 +13,11 @@ import {
   authorizeManagedExecutionNavigation,
   executionMayNavigate,
 } from "../src/browser/execution/managed-context.mjs";
+import {
+  mergeNewTabs,
+  newTabSessionTargets,
+} from "../src/browser/execution/new-tabs.mjs";
+import { networkObservationTargetId } from "../src/browser/network/observation.mjs";
 import { buildCdpScript } from "../src/browser/execution/page-script.mjs";
 import { redactBrowserValue } from "../src/runtime/redaction.mjs";
 import {
@@ -154,6 +159,61 @@ async function run() {
   assert.equal(compacted.session_summary.count, 2);
   assert.equal(compacted.session_summary.selected[0].id, "managed-tab");
   assert.equal(compacted.transport_attempts[0].health.endpoint, undefined);
+  const normalizedNewTabs = mergeNewTabs(
+    {
+      id: 1903738228,
+      browser_instance_id: "browser-instance-contract",
+      url: "https://example.test/popup",
+    },
+    {
+      id: "browser-instance-contract:1903738228",
+      tab_id: "1903738228",
+      browser_instance_id: "browser-instance-contract",
+      session_key: "browser-instance-contract:1903738228",
+      title: "Popup",
+    },
+    {
+      id: 1903738228,
+      browser_instance_id: "browser-instance-other",
+      url: "https://example.test/other-popup",
+    },
+  );
+  assert.equal(normalizedNewTabs.length, 2);
+  assert.equal(normalizedNewTabs[0].id, "1903738228");
+  assert.equal(normalizedNewTabs[0].tab_id, "1903738228");
+  assert.equal(normalizedNewTabs[0].session_key, "browser-instance-contract:1903738228");
+  assert.equal(normalizedNewTabs[0].title, "Popup");
+  assert.deepEqual(newTabSessionTargets(normalizedNewTabs).map((tab) => tab.id), [
+    "browser-instance-contract:1903738228",
+    "browser-instance-other:1903738228",
+  ]);
+  assert.equal(networkObservationTargetId({
+    transport: "tmwd_ws",
+    context: {
+      target: {
+        id: "browser-instance-contract:1903738228",
+        tab_id: "1903738228",
+      },
+    },
+  }), "1903738228");
+  assert.equal(networkObservationTargetId({
+    transport: "tmwd_link",
+    context: {
+      target: {
+        id: "browser-instance-contract:1903738228",
+        tab_id: 1903738228,
+      },
+    },
+  }), 1903738228);
+  assert.equal(networkObservationTargetId({
+    transport: "cdp",
+    context: {
+      target: {
+        id: "A1B2C3D4",
+        tab_id: "1903738228",
+      },
+    },
+  }), "A1B2C3D4");
 
   const priorResults = [{ data: { tabId: 42, nodes: [{ id: 7 }] } }];
   const batchCommand = {
@@ -378,6 +438,8 @@ async function run() {
     snapshot_ttl: true,
     strict_bridge_json: true,
     managed_raw_execution: true,
+    browser_instance_network_routing: true,
+    browser_instance_new_tab_identity: true,
     explicit_remote_cdp_boundary: true,
     adopted_navigation_guard: true,
   })}\n`);

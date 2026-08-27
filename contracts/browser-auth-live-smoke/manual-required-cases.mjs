@@ -170,6 +170,8 @@ async function runDelayedPopupCase(context, creatorTabId) {
   assert.equal(detected.js_return?.monitoring, true);
   const popup = detected.newTabs?.find((tab) => String(tab?.url ?? "").includes("/delayed-popup-child"));
   assert.ok(popup?.id, `delayed popup was not detected: ${JSON.stringify(detected.newTabs)}`);
+  assert.equal(popup.tab_id, popup.id, "newTabs should expose the native extension tab id");
+  assert.ok(popup.session_key, "newTabs should retain the composite Browser Instance session key");
   assert.equal(detected.new_tab_wait_ms, 1_500);
   assert.ok(Number(detected.new_tab_waited_ms) > 0, "delayed popup detection should poll for the new target");
 
@@ -180,7 +182,7 @@ async function runDelayedPopupCase(context, creatorTabId) {
     script: JSON.stringify({
       cmd: "tabs",
       method: "close",
-      tabId: String(popup.id),
+      tabId: String(popup.tab_id),
     }),
   });
   assert.equal(closed.status, "success");

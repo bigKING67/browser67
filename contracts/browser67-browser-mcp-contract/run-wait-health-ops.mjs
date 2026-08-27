@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { handleBrowserTransportHealth } from "../../src/server/browser-core/transport-health.mjs";
 import { firstJsonContent } from "./rpc-content.mjs";
 
 function sleep(ms) {
@@ -11,6 +12,27 @@ function sleep(ms) {
 }
 
 async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
+    const privateTarget = {
+      endpoint: "ws://127.0.0.1:18765",
+      targets: [{ id: "private-target", url: "https://private.example/account" }],
+      target: { id: "private-target", url: "https://private.example/account" },
+    };
+    const transportResolver = async () => privateTarget;
+    const privateByDefault = await handleBrowserTransportHealth(
+      { tmwd_transport: "ws" },
+      { resolveTmwdContextWithTransport: transportResolver },
+    );
+    assert.equal(privateByDefault.status, "healthy");
+    assert.equal(privateByDefault.transports[0].pages_count, 1);
+    assert.equal(Object.hasOwn(privateByDefault.transports[0], "selected_tab_id"), false);
+    assert.equal(JSON.stringify(privateByDefault).includes("private.example"), false);
+    const metadataOptIn = await handleBrowserTransportHealth(
+      { tmwd_transport: "ws", include_target_metadata: true },
+      { resolveTmwdContextWithTransport: transportResolver },
+    );
+    assert.equal(metadataOptIn.transports[0].selected_tab_id, "private-target");
+    assert.equal(metadataOptIn.transports[0].selected_url, "https://private.example/account");
+
     const prepareCall = await rpc.call(
       "tools/call",
       {
@@ -92,6 +114,20 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
     assert.equal(finishPayload?.run?.status, "success");
     assert.equal(finishPayload?.run?.summary?.rows, 1);
 
+    const inspectCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_run_ops",
+        arguments: { action: "inspect" },
+      },
+      timeoutMs,
+    );
+    const inspectPayload = firstJsonContent(inspectCall.result);
+    assert.equal(inspectPayload?.ok, true);
+    assert.equal(inspectPayload?.action, "inspect");
+    assert.equal(inspectPayload?.run_count >= 1, true);
+    assert.equal(Array.isArray(inspectPayload?.groups), true);
+
     const healthCall = await rpc.call(
       "tools/call",
       {
@@ -161,6 +197,9 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
     assert.equal(jobStartPayload?.job?.schema_version, "browser67.browser-job.v3");
     assert.equal(jobStartPayload?.job?.durable, true);
     assert.equal(jobStartPayload?.job?.durability_reason, "run_backed_checkpoint");
+    assert.equal(jobStartPayload?.job?.run_ownership, "job");
+    assert.equal(jobStartPayload?.job?.run_auto_finish, true);
+    assert.equal(jobStartPayload?.job?.run_requires_finish, false);
     assert.equal(jobStartPayload?.job?.abort_supported, false);
     assert.equal(typeof jobStartPayload?.job?.checkpoint_at, "string");
     assert.equal(typeof jobStartPayload?.job?.execution_deadline_at, "string");
@@ -211,6 +250,7 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
     assert.equal(jobResultPayload?.job?.status, "failed");
     assert.equal(jobResultPayload?.job?.result?.status, "failed");
     assert.equal(typeof jobResultPayload?.job?.error, "string");
+    assert.equal(jobResultPayload?.job?.run_terminalized, true);
     const jobStatePath = join(
       runRoot,
       "contract-workspace",
@@ -222,6 +262,118 @@ async function assertRunWaitHealthOpsContract({ rpc, timeoutMs, runRoot }) {
     assert.equal(persistedJob.schema_version, "browser67.browser-job.v3");
     assert.equal(persistedJob.status, "failed");
     assert.equal(persistedJob.durable, true);
+    const autoOwnedRun = JSON.parse(await readFile(join(
+      runRoot,
+      "contract-workspace",
+      jobStartPayload.job.run_id,
+      "run.json",
+    ), "utf8"));
+    assert.equal(autoOwnedRun.status, "failed");
+    assert.equal(typeof autoOwnedRun.finished_at, "string");
+    assert.equal(autoOwnedRun.summary.job_id, jobId);
+
+    const jobSummaryCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_job_ops",
+        arguments: {
+          action: "list",
+          summary_only: true,
+        },
+      },
+      timeoutMs,
+    );
+    const jobSummaryPayload = firstJsonContent(jobSummaryCall.result);
+    assert.equal(jobSummaryPayload?.ok, true);
+    assert.equal(jobSummaryPayload?.summary_only, true);
+    assert.equal(jobSummaryPayload?.total >= 1, true);
+    assert.equal(jobSummaryPayload?.returned_count, 0);
+    assert.deepEqual(jobSummaryPayload?.jobs, []);
+    assert.equal(jobSummaryPayload?.status_counts?.failed >= 1, true);
+    assert.equal(jobSummaryPayload?.durable_count >= 1, true);
+    assert.equal(jobSummaryPayload?.auto_finish_run_count >= 1, true);
+    assert.equal(jobSummaryPayload?.run_terminalized_count >= 1, true);
+    assert.equal(JSON.stringify(jobSummaryPayload).includes("contract failing job"), false);
+
+    const callerRunPrepareCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_run_ops",
+        arguments: {
+          action: "prepare",
+          workspace_key: "contract-workspace",
+          run_id: "caller-owned-job-run",
+          title: "caller-owned job run",
+        },
+      },
+      timeoutMs,
+    );
+    const callerRunPreparePayload = firstJsonContent(callerRunPrepareCall.result);
+    assert.equal(callerRunPreparePayload?.ok, true);
+    const callerJobStartCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_job_ops",
+        arguments: {
+          action: "start",
+          workspace_key: "contract-workspace",
+          run_id: "caller-owned-job-run",
+          title: "caller-owned failing job",
+          tmwd_mode: "tmwd",
+          tmwd_transport: "ws",
+          tmwd_ws_endpoint: "ws://127.0.0.1:9",
+          timeout_ms: 200,
+          script: "return 1;",
+        },
+      },
+      timeoutMs,
+    );
+    const callerJobStartPayload = firstJsonContent(callerJobStartCall.result);
+    assert.equal(callerJobStartPayload?.ok, true);
+    assert.equal(callerJobStartPayload?.job?.run_ownership, "caller");
+    assert.equal(callerJobStartPayload?.job?.run_auto_finish, false);
+    assert.equal(callerJobStartPayload?.job?.run_requires_finish, true);
+    const callerJobId = callerJobStartPayload.job.job_id;
+    let callerJobStatusPayload = null;
+    const callerJobDeadlineAt = Date.now() + Math.min(10_000, Math.max(1_000, timeoutMs));
+    while (Date.now() < callerJobDeadlineAt) {
+      await sleep(50);
+      const callerJobStatusCall = await rpc.call(
+        "tools/call",
+        {
+          name: "browser_job_ops",
+          arguments: { action: "status", job_id: callerJobId },
+        },
+        timeoutMs,
+      );
+      callerJobStatusPayload = firstJsonContent(callerJobStatusCall.result);
+      if (["completed", "failed"].includes(callerJobStatusPayload?.job?.status)) break;
+    }
+    assert.equal(callerJobStatusPayload?.job?.status, "failed");
+    assert.equal(callerJobStatusPayload?.job?.run_terminalized, false);
+    const callerOwnedRunPath = join(
+      runRoot,
+      "contract-workspace",
+      "caller-owned-job-run",
+      "run.json",
+    );
+    const callerOwnedRun = JSON.parse(await readFile(callerOwnedRunPath, "utf8"));
+    assert.equal(callerOwnedRun.status, "running");
+    assert.equal(callerOwnedRun.finished_at, null);
+    const callerRunFinishCall = await rpc.call(
+      "tools/call",
+      {
+        name: "browser_run_ops",
+        arguments: {
+          action: "finish",
+          workspace_key: "contract-workspace",
+          run_id: "caller-owned-job-run",
+          status: "success",
+        },
+      },
+      timeoutMs,
+    );
+    assert.equal(firstJsonContent(callerRunFinishCall.result)?.ok, true);
 
   return {
     run_id: runId,

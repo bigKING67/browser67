@@ -1,4 +1,7 @@
-import { beginNetworkObservation } from "./observation.mjs";
+import {
+  beginNetworkObservation,
+  networkObservationTargetId,
+} from "./observation.mjs";
 
 async function beginExecutionNetworkObservation(args = {}, preferred, runtimeOptions = {}) {
   const options = args?.network_observation?.enabled === true
@@ -7,7 +10,7 @@ async function beginExecutionNetworkObservation(args = {}, preferred, runtimeOpt
   if (!options) {
     return null;
   }
-  const tabId = preferred.context.target.id;
+  const tabId = networkObservationTargetId(preferred);
   const observer = await beginNetworkObservation({
     ...args,
     ...options,

@@ -61,15 +61,20 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   const runOpsTool = tools.find((entry) => entry?.name === "browser_run_ops");
   assert.equal(runOpsTool?.inputSchema?.properties?.action?.enum?.includes("prepare"), true);
   assert.equal(runOpsTool?.inputSchema?.properties?.action?.enum?.includes("record_event"), true);
+  assert.equal(runOpsTool?.inputSchema?.properties?.action?.enum?.includes("inspect"), true);
   assert.equal(runOpsTool?.inputSchema?.properties?.evidence?.type, "object");
+  assert.equal(runOpsTool?.inputSchema?.properties?.include_storage?.default, false);
+  assert.equal(runOpsTool?.inputSchema?.properties?.stale_running_after_minutes?.default, 120);
 
   const transportHealthTool = tools.find((entry) => entry?.name === "browser_transport_health");
   assert.equal(transportHealthTool?.inputSchema?.properties?.tmwd_transport?.enum?.includes("ws"), true);
+  assert.equal(transportHealthTool?.inputSchema?.properties?.include_target_metadata?.default, false);
 
   const jobOpsTool = tools.find((entry) => entry?.name === "browser_job_ops");
   assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("start"), true);
   assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("result"), true);
   assert.equal(jobOpsTool?.inputSchema?.properties?.action?.enum?.includes("cancel"), true);
+  assert.equal(jobOpsTool?.inputSchema?.properties?.summary_only?.default, false);
   assert.equal(jobOpsTool?.inputSchema?.properties?.output_mode?.default, "compact");
   assert.equal(jobOpsTool?.inputSchema?.properties?.new_tab_wait_ms?.maximum, 5_000);
   assert.equal(Object.hasOwn(jobOpsTool?.inputSchema?.properties ?? {}, "code"), false);

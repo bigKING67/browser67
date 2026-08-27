@@ -39,10 +39,20 @@ function assertFixtureValidation(schema) {
     reason: "cdp_unavailable",
   });
   validateSchemaValue(schema, schema, remoteModePayload);
+  assert.deepEqual(okPayload.doctor.suggestions, []);
   assert.equal(okPayload.doctor.suggestions.includes(remoteDebuggingSuggestion), false);
   assert.equal(blockedPayload.doctor.suggestions.includes(remoteDebuggingSuggestion), true);
   assert.equal(tmwdBlockedPayload.doctor.suggestions.includes(remoteDebuggingSuggestion), false);
   assert.equal(remoteModePayload.doctor.suggestions.includes(remoteDebuggingSuggestion), true);
+
+  const remoteHealthyPayload = buildDoctorPayload({
+    ok: true,
+    mode: "remote_cdp",
+    path: "cdp",
+    reason: "cdp_transport_ready",
+  });
+  validateSchemaValue(schema, schema, remoteHealthyPayload);
+  assert.deepEqual(remoteHealthyPayload.doctor.suggestions, []);
 
   const missingStableField = structuredClone(okPayload);
   delete missingStableField.doctor.readiness.path;
@@ -59,7 +69,7 @@ async function runDoctorSchemaContract() {
   process.stdout.write(`${JSON.stringify({
     ok: true,
     schema_path: schemaPath,
-    validated_examples: 4,
+    validated_examples: 5,
     required_top_level: schema.required,
     doctor_path_enum: schema.properties.doctor.properties.readiness.properties.path.enum,
   })}\n`);

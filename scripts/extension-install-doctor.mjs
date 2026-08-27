@@ -12,6 +12,11 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  extensionBuildIdentityJavaScript,
+  extensionBuildIdentityJson,
+} from "../src/extension/build-identity.mjs";
+import { compareExtensionIdentityContent } from "../src/identity/extension-content.mjs";
 import { resolveBrowser67Home } from "../src/runtime/paths/home.mjs";
 import { buildExtension } from "./build-extension.mjs";
 
@@ -20,6 +25,10 @@ const defaultSourceDir = path.resolve(repoRoot, "extension");
 const homeResolution = resolveBrowser67Home();
 const defaultTargetDir = path.resolve(homeResolution.path, "browser/tmwd_cdp_bridge");
 const ignoredTargetFiles = new Set(["config.js"]);
+const identityFiles = new Set([
+  "browser67/build-identity.js",
+  "browser67/build-identity.json",
+]);
 
 function parseArgs(argv) {
   const parsed = {
@@ -134,6 +143,59 @@ function digestForFiles(root, files) {
   return hash.digest("hex");
 }
 
+function readIdentityBundle(root) {
+  const jsonPath = path.resolve(root, "browser67/build-identity.json");
+  const javascriptPath = path.resolve(root, "browser67/build-identity.js");
+  if (!existsSync(jsonPath) || !existsSync(javascriptPath)) {
+    return { available: false, canonical: false, identity: null, error: "identity_bundle_missing" };
+  }
+  try {
+    const identity = JSON.parse(readFileSync(jsonPath, "utf8"));
+    const canonical = readFileSync(jsonPath, "utf8") === extensionBuildIdentityJson(identity)
+      && readFileSync(javascriptPath, "utf8") === extensionBuildIdentityJavaScript(identity);
+    return {
+      available: true,
+      canonical,
+      identity,
+      error: canonical ? "" : "identity_bundle_not_canonical",
+    };
+  } catch (error) {
+    return {
+      available: false,
+      canonical: false,
+      identity: null,
+      error: `identity_bundle_invalid: ${String(error?.message ?? error)}`,
+    };
+  }
+}
+
+function compareIdentityBundles(sourceDir, targetDir) {
+  const source = readIdentityBundle(sourceDir);
+  const target = readIdentityBundle(targetDir);
+  const comparison = compareExtensionIdentityContent(target.identity, source.identity);
+  const semanticMatch = Boolean(
+    source.available
+    && target.available
+    && source.canonical
+    && target.canonical
+    && comparison.content_match,
+  );
+  return {
+    available: source.available && target.available,
+    source_canonical: source.canonical,
+    target_canonical: target.canonical,
+    content_match: semanticMatch,
+    mismatches: comparison.mismatches,
+    provenance_mismatches: comparison.provenance_mismatches,
+    provenance_match: Boolean(semanticMatch && comparison.provenance_match),
+    provenance_variant: Boolean(semanticMatch && comparison.provenance_variant),
+    source_provenance: comparison.expected_provenance,
+    target_provenance: comparison.observed_provenance,
+    source_error: source.error,
+    target_error: target.error,
+  };
+}
+
 function buildReport(options) {
   const source = listFiles(options.sourceDir);
   if (source.status !== "directory") {
@@ -144,7 +206,7 @@ function buildReport(options) {
   const targetSet = new Set(target.files);
   const missing = source.files.filter((file) => !targetSet.has(file));
   const extra = target.files.filter((file) => !sourceSet.has(file));
-  const changed = source.files
+  const byteChanged = source.files
     .filter((file) => targetSet.has(file))
     .map((file) => {
       const sourceSha = sha256(path.resolve(options.sourceDir, file));
@@ -156,6 +218,14 @@ function buildReport(options) {
       };
     })
     .filter(Boolean);
+  const identityComparison = compareIdentityBundles(options.sourceDir, options.targetDir);
+  const changed = identityComparison.content_match
+    ? byteChanged.filter((entry) => !identityFiles.has(entry.file))
+    : byteChanged;
+  const installedByteCurrent = target.status === "directory"
+    && missing.length === 0
+    && byteChanged.length === 0
+    && extra.length === 0;
   const installedCurrent = target.status === "directory"
     && missing.length === 0
     && changed.length === 0
@@ -174,6 +244,10 @@ function buildReport(options) {
     active_home_source: homeResolution.source,
     target_status: target.status,
     installed_current: installedCurrent,
+    installed_byte_current: installedByteCurrent,
+    installed_identity_current: identityComparison.content_match,
+    identity_provenance_variant: identityComparison.provenance_variant,
+    identity_comparison: identityComparison,
     needs_setup: needsSetup,
     needs_clean_setup: needsCleanSetup,
     needs_browser_extension_reload: needsBrowserExtensionReload,
@@ -181,6 +255,7 @@ function buildReport(options) {
     target_digest: digestForFiles(options.targetDir, source.files),
     missing,
     changed,
+    byte_changed: byteChanged,
     extra,
     ignored_target_files: target.ignored,
     summary: {
@@ -189,10 +264,13 @@ function buildReport(options) {
       ignored_target_file_count: target.ignored.length,
       missing_count: missing.length,
       changed_count: changed.length,
+      byte_changed_count: byteChanged.length,
       extra_count: extra.length,
     },
     next_steps: installedCurrent ? [
-      "No installed extension file drift was detected.",
+      identityComparison.provenance_variant
+        ? "Installed extension content identity is current; build revision metadata differs only by provenance."
+        : "No actionable installed extension drift was detected.",
       "If Chrome/Edge still behaves like old bridge code, run npm run extension:reload-live and refresh target tabs.",
     ] : [
       "Run: npm run setup",
@@ -210,11 +288,13 @@ function formatText(report) {
     `extension_install=${report.installed_current ? "current" : "drift"} target=${report.target_dir}`,
     `source=${report.source_dir}`,
     `target_status=${report.target_status} source_files=${report.summary.source_file_count} target_files=${report.summary.target_file_count}`,
-    `missing=${report.summary.missing_count} changed=${report.summary.changed_count} extra=${report.summary.extra_count} ignored=${report.summary.ignored_target_file_count}`,
+    `missing=${report.summary.missing_count} changed=${report.summary.changed_count} byte_changed=${report.summary.byte_changed_count} extra=${report.summary.extra_count} ignored=${report.summary.ignored_target_file_count}`,
+    `byte_current=${report.installed_byte_current} identity_current=${report.installed_identity_current} identity_provenance_variant=${report.identity_provenance_variant}`,
     `needs_setup=${report.needs_setup} needs_clean_setup=${report.needs_clean_setup} needs_browser_extension_reload=${report.needs_browser_extension_reload}`,
   ];
   if (report.missing.length > 0) lines.push(`missing_files=${report.missing.join(", ")}`);
   if (report.changed.length > 0) lines.push(`changed_files=${report.changed.map((item) => item.file).join(", ")}`);
+  if (report.byte_changed.length > 0) lines.push(`byte_changed_files=${report.byte_changed.map((item) => item.file).join(", ")}`);
   if (report.extra.length > 0) lines.push(`extra_files=${report.extra.join(", ")}`);
   if (report.ignored_target_files.length > 0) lines.push(`ignored_target_files=${report.ignored_target_files.join(", ")}`);
   lines.push("next_steps:");

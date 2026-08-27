@@ -1,6 +1,10 @@
 import { clipContent } from "../../browser/content/output-limits.mjs";
 import { parseBridgeCommand } from "../../browser/execution/bridge-command.mjs";
 import {
+  mergeNewTabs,
+  newTabSessionTargets,
+} from "../../browser/execution/new-tabs.mjs";
+import {
   assertManagedExecutionContext,
   authorizeManagedExecutionNavigation,
   executionMayNavigate,
@@ -45,31 +49,6 @@ const NEW_TAB_POLL_MS = 125;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeNewTab(item) {
-  const id = normalizeIdToken(item?.id ?? item?.tabId ?? item?.tab_id);
-  if (!id) return null;
-  return {
-    id,
-    url: String(item?.url ?? ""),
-    title: String(item?.title ?? ""),
-  };
-}
-
-function mergeNewTabs(...groups) {
-  const merged = new Map();
-  for (const item of groups.flat()) {
-    const normalized = normalizeNewTab(item);
-    if (!normalized) continue;
-    const prior = merged.get(normalized.id);
-    merged.set(normalized.id, {
-      id: normalized.id,
-      url: normalized.url || prior?.url || "",
-      title: normalized.title || prior?.title || "",
-    });
-  }
-  return [...merged.values()];
 }
 
 function targetDiff(beforeTargets, afterTargets) {
@@ -286,7 +265,7 @@ async function handleBrowserExecuteJs(args, options = {}) {
           }
         }
         if (newTabs.length > 0) {
-          sessionStore.sync(newTabs.map((item) => ({ ...item, active: false })));
+          sessionStore.sync(newTabSessionTargets(newTabs));
         }
         try {
           const refreshed = await resolveTmwdContext(

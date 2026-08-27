@@ -186,18 +186,23 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
         tmwd_link_endpoint: { type: "string" },
         session_id: { type: "string" },
         session_url_pattern: { type: "string" },
+        include_target_metadata: {
+          type: "boolean",
+          default: false,
+          description: "Opt in to selected tab id and URL in successful health results.",
+        },
         timeout_ms: { type: "number", minimum: 100, maximum: 10_000 },
       },
     },
   },
   browser_run_ops: {
-    description: "Create and manage externalized browser task run records under the active browser67 runtime/runs directory.",
+    description: "Create and manage externalized browser task run records; inspect provides read-only aggregate runtime inventory.",
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["prepare", "status", "record_event", "finish", "list"],
+          enum: ["prepare", "status", "record_event", "finish", "list", "inspect"],
           default: "status",
         },
         run_id: { type: "string" },
@@ -210,6 +215,17 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
         data: { type: "object" },
         evidence: { type: "object" },
         summary_only: { type: "boolean", default: false },
+        include_storage: {
+          type: "boolean",
+          default: false,
+          description: "For inspect only, recursively aggregate recognized run storage bytes.",
+        },
+        stale_running_after_minutes: {
+          type: "number",
+          minimum: 1,
+          maximum: 10_080,
+          default: 120,
+        },
         max_items: { type: "number", minimum: 1, maximum: 500 },
       },
     },
@@ -230,6 +246,7 @@ const BROWSER_CORE_TOOL_SCHEMAS = {
         task_id: { type: "string" },
         run_id: { type: "string" },
         prepare_run: { type: "boolean", default: true },
+        summary_only: { type: "boolean", default: false },
         max_items: { type: "number", minimum: 1, maximum: 500 },
         script: { type: "string" },
         tab_id: { type: "string" },

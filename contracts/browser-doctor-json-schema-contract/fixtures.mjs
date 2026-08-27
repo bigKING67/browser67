@@ -57,6 +57,7 @@ function extensionRuntimeCheck(endpoint, ready) {
 function doctorSuggestions({ ok, mode, path }) {
   const tmwdReady = ok === true && (path === "tmwd_ws" || path === "tmwd_link");
   const cdpReady = ok === true && path === "cdp";
+  if (tmwdReady || cdpReady) return [];
   if (mode === "remote_cdp" || mode === "cdp") {
     return [remoteDebuggingSuggestion];
   }

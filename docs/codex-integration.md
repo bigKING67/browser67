@@ -187,7 +187,9 @@ transport drift.
   click/popup interactions get a bounded 1.5s new-target poll; callers can set
   `new_tab_wait_ms` explicitly (`0..5000`), while `no_monitor:true` disables
   polling. This allows delayed OAuth popup targets to appear in `newTabs`
-  without adding latency to ordinary read-only JavaScript.
+  without adding latency to ordinary read-only JavaScript. Each TMWD new-target
+  row keeps native `id`/`tab_id` for extension commands plus the composite
+  `session_key` and opaque `browser_instance_id` for collision-free routing.
   v0.3 accepts only `script` for raw JavaScript; the `code` alias is removed.
   Bridge commands must be strict JSON. Raw TMWD execution requires an
   agent-created or explicitly adopted managed tab, while explicit
@@ -214,7 +216,9 @@ transport drift.
   over ad-hoc sleeps when a page needs readiness gating.
 - `browser_transport_health`: probes browser67 `ws` and/or `link` transports and
   returns `healthy`, `degraded`, or `broken` diagnostics with a preferred
-  transport and actionable suggestion.
+  transport and actionable suggestion. Successful probes omit the selected tab
+  id and URL by default; pass `include_target_metadata:true` only when that exact
+  target evidence is necessary.
 - `browser_run_ops`: creates externalized run folders under the active
   browser67 home, canonically `~/.browser67/runtime/runs`. Each run owns `run.json`,
   `events.ndjson`, `artifacts/`, and `logs/`; evidence records are normalized
@@ -223,7 +227,12 @@ transport drift.
   `npm run runtime:cleanup -- --write` to apply the safe retention policy.
   v0.3 uses atomic throttled `run.json` checkpoints, append-only group indexes,
   and bounded tail reads. Audit legacy state with
-  `npm run runtime:migrate -- --check --json` before `--write`.
+  `npm run runtime:migrate -- --check --json` before `--write`. Use
+  `action:"inspect",summary_only:true` for a read-only global audit without
+  group names. It aggregates indexed/untracked run-directory counts, statuses,
+  current-versus-legacy stale running runs, and timestamps; add
+  `include_storage:true` only for an explicit recursive byte scan. Use
+  `action:"list",summary_only:true` for a group count without run rows/titles.
 - `browser_job_ops`: starts background browser execution jobs backed by
   `browser_execute_js`, then exposes `status`, `result`, `cancel`, and `list`.
   Jobs with a valid run are `durable:true`: metadata/results are checkpointed
@@ -231,7 +240,12 @@ transport drift.
   unfinished jobs recover as `interrupted_after_restart`. Cancellation remains
   non-preemptive for an already-running `Runtime.evaluate` call, so callers must
   inspect `abort_supported:false` and `cancel_outcome` instead of assuming the
-  page code stopped.
+  page code stopped. Use `action:"list",summary_only:true` for aggregate status,
+  active/terminal, durability, and result-availability counts without returning
+  job ids, titles, errors, or rows. An auto-prepared job run is job-owned and
+  receives a terminal status plus `finished_at`; an explicit `run_id` remains
+  caller-owned, is not terminalized by one job, and reports
+  `run_requires_finish:true`.
 - `browser_screenshot_ops`: first-class PNG screenshot capture for real browser
   visual QA. Use after `browser_tab_lifecycle.select_or_create` and
   `browser_wait`; supported targets are `viewport`, `selector`, `clip`, and
@@ -254,7 +268,10 @@ transport drift.
   metric has a valid rectangle, the tool captures the measured clip instead of
   failing and returns `selector_fallback:{used:true,source:"layout_metrics"}`.
   Screenshot PNGs follow the runtime run retention policy instead of
-  accumulating in the project.
+  accumulating in the project. When no `run_id` is supplied, the capture owns
+  its implicit run and marks it terminal after the artifact write. When a
+  caller supplies `run_id`, lifecycle remains caller-owned; use the returned
+  `run_requires_finish` signal and finish a still-running explicit run.
 - `browser_evidence_bundle_ops`: converts completed `browser_screenshot_ops`
   before/after payloads into `design-craft.l4-screenshots.v1` manifests for
   design-craft L4 evals. Supply `phase:"before"|"after"` and a shared
@@ -732,6 +749,13 @@ active-home/project-local installed candidates. Treat
 `checks.tmwd_link_runtime.ok:true` together with
 `detail:"extension_identity_ok"` as the installed-and-running version proof;
 source presence, setup output, or a disk digest alone is not equivalent.
+`extension:doctor` separately reports semantic identity and byte equality: a
+revision, dirty-checkout, or `git` versus `package_git_head` provenance-only
+difference can yield
+`installed_current:true`, `installed_byte_current:false`, and
+`identity_provenance_variant:true`; content-identity field mismatches still
+require setup/reload. A healthy live doctor returns an empty `suggestions`
+array, so remediation text is reserved for blocked or degraded routes.
 
 Before committing maintenance changes:
 

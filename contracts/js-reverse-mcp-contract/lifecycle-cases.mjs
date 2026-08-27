@@ -3,9 +3,30 @@ import assert from "node:assert/strict";
 import {
   assertTextJsonContent,
 } from "../browser67-browser-mcp-contract/rpc-content.mjs";
+import { browserHealthPayload } from "../../src/js-reverse-server/lifecycle.mjs";
 import { jsReverseData } from "./outcome.mjs";
 
 async function runLifecycleCases(rpc, cli) {
+  const fixtureTabs = {
+    transport: "ws",
+    transport_attempts: [{ transport: "ws", status: "ok" }],
+    value: [{
+      id: "private-tab-id",
+      url: "https://private.example/account",
+      title: "Private account",
+      browser_instance_id: "private-browser-instance",
+    }],
+  };
+  const healthSummary = browserHealthPayload(fixtureTabs, { summary_only: true });
+  assert.equal(healthSummary.ok, true);
+  assert.equal(healthSummary.pages_count, 1);
+  assert.equal(healthSummary.browser_instances_count, 1);
+  assert.equal(healthSummary.summary_only, true);
+  assert.equal(Object.hasOwn(healthSummary, "pages"), false);
+  assert.equal(JSON.stringify(healthSummary).includes("private.example"), false);
+  const healthFull = browserHealthPayload(fixtureTabs, {});
+  assert.equal(healthFull.pages?.[0]?.id, "private-tab-id");
+
   const newPageDryRunCall = await rpc.call(
     "tools/call",
     {

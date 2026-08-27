@@ -264,6 +264,7 @@ const GROUPS = [
       /^scripts\/(?:install-launchd|setup-extension|extension-install-doctor|uninstall-launchd|migrate-home|release-readiness)\.mjs$/,
       /^skills\/browser67\//,
       /^src\/mcp\//,
+      /^src\/identity\//,
       /^src\/runtime\//,
       /^src\/session-registry\.mjs$/,
     ],

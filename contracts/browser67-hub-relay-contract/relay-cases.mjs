@@ -139,18 +139,29 @@ async function runRuntimeIdentityCase(controllerWs, linkUrl) {
   }, {
     available: true,
     path: "/fixture/package-build-identity.json",
-    identity: { ...extensionIdentity, build_revision_source: "package_git_head" },
+    identity: {
+      ...extensionIdentity,
+      build_revision: "packaged-fixture-revision",
+      build_revision_source: "package_git_head",
+      build_inputs_dirty: true,
+    },
     installed_candidates: [{
       available: true,
       basis: "packaged",
       path: "/fixture/installed-build-identity.json",
-      identity: { ...extensionIdentity, build_revision_source: "package_git_head" },
+      identity: {
+        ...extensionIdentity,
+        build_revision: "packaged-fixture-revision",
+        build_revision_source: "package_git_head",
+        build_inputs_dirty: true,
+      },
       error: "",
     }],
     error: "",
   });
   assert.equal(packagedVerified.ok, true);
   assert.equal(packagedVerified.identity_match, true);
+  assert.equal(packagedVerified.provenance_variant, true);
   assert.deepEqual(packagedVerified.mismatches, []);
   assert.equal(packagedVerified.observed_browser_instances[0]?.identity_match, true);
   assert.deepEqual(packagedVerified.matching_installed_paths, ["/fixture/installed-build-identity.json"]);

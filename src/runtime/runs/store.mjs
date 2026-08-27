@@ -278,9 +278,9 @@ class RunStore {
     return this.index.compactAll();
   }
 
-  async inspect() {
+  async inspect(args = {}) {
     this.assertActive();
-    return this.index.inspect();
+    return this.index.inspect(args);
   }
 
   async migrate() {

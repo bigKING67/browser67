@@ -10,6 +10,7 @@ import {
 } from "../src/runtime/runs/lifecycle.mjs";
 import { createRunStore } from "../src/runtime/runs/store.mjs";
 import { createJobStore } from "../src/runtime/jobs/store.mjs";
+import { directorySizeAndNewestMtime } from "../src/runtime/storage/directory-usage.mjs";
 
 const DEFAULT_MAX_AGE_DAYS = 30;
 const DEFAULT_MAX_TOTAL_MB = 1024;
@@ -233,50 +234,6 @@ async function readJsonIfExists(filePath) {
       error: String(error?.message ?? error),
     };
   }
-}
-
-async function directorySizeAndNewestMtime(dir) {
-  const state = {
-    bytes: 0,
-    entries: 0,
-    files: 0,
-    directories: 0,
-    newest_mtime_ms: 0,
-  };
-
-  async function visit(current) {
-    const entries = await fs.readdir(current, { withFileTypes: true }).catch((error) => {
-      if (error?.code === "ENOENT" || error?.code === "EACCES") {
-        return [];
-      }
-      throw error;
-    });
-    for (const entry of entries) {
-      const entryPath = path.join(current, entry.name);
-      const info = await fs.lstat(entryPath).catch((error) => {
-        if (error?.code === "ENOENT" || error?.code === "EACCES") {
-          return null;
-        }
-        throw error;
-      });
-      if (!info) {
-        continue;
-      }
-      state.entries += 1;
-      state.newest_mtime_ms = Math.max(state.newest_mtime_ms, Number(info.mtimeMs ?? 0));
-      if (info.isDirectory()) {
-        state.directories += 1;
-        await visit(entryPath);
-      } else {
-        // Directory st_size is platform-specific; retention budgets track logical payload bytes.
-        state.bytes += Number(info.size ?? 0);
-        state.files += 1;
-      }
-    }
-  }
-
-  await visit(dir);
-  return state;
 }
 
 async function isRunDirectory(runDir) {

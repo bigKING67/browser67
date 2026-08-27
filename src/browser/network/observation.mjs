@@ -28,9 +28,17 @@ function getNetworkObservation(observationId, runtimeOptions = {}) {
   return observationStore(runtimeOptions).get(observationId);
 }
 
+function networkObservationTargetId(preferred = {}) {
+  const target = preferred.context?.target ?? {};
+  if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
+    return target.tab_id ?? target.id;
+  }
+  return target.id;
+}
+
 async function beginTmwdNetworkObservation(args, preferred, options, runtimeOptions = {}) {
   const store = observationStore(runtimeOptions);
-  const tabId = String(preferred.context?.target?.id ?? "");
+  const tabId = String(networkObservationTargetId(preferred) ?? "");
   const observationId = randomId("network_observation");
   const observed = await executeTmwdCommandWithPreferred(args, preferred, {
     cmd: "network",
@@ -148,6 +156,7 @@ async function waitForNetworkIdle(args = {}, runtimeOptions = {}) {
 export {
   beginNetworkObservation,
   getNetworkObservation,
+  networkObservationTargetId,
   normalizeOptions as normalizeNetworkObservationOptions,
   waitForNetworkIdle,
 };

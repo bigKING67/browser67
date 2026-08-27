@@ -25,22 +25,31 @@ import {
 import { handleFinalizeTask } from "./finalizer.mjs";
 import { browserTabKey } from "../tab-workspace/identity.mjs";
 
+function browserHealthPayload(tabs, args = {}) {
+  const rows = Array.isArray(tabs?.value) ? tabs.value : [];
+  const browserInstances = new Set(rows
+    .map((row) => String(row?.browser_instance_id ?? "").trim())
+    .filter(Boolean));
+  return {
+    ok: true,
+    mode: "tmwd",
+    transport: tabs?.transport,
+    readiness: {
+      ready: rows.length > 0,
+      reason: rows.length > 0 ? "tmwd_transport_ready" : "tmwd_no_pages",
+    },
+    pages_count: rows.length,
+    browser_instances_count: browserInstances.size,
+    summary_only: args?.summary_only === true,
+    ...(args?.summary_only === true ? {} : { pages: rows.slice(0, 40) }),
+    transport_attempts: tabs?.transport_attempts,
+  };
+}
+
 async function handleCheckBrowserHealth(args) {
   try {
     const tabs = await bridgeCommand(args, { cmd: "tabs" });
-    const rows = Array.isArray(tabs.value) ? tabs.value : [];
-    return {
-      ok: true,
-      mode: "tmwd",
-      transport: tabs.transport,
-      readiness: {
-        ready: rows.length > 0,
-        reason: rows.length > 0 ? "tmwd_transport_ready" : "tmwd_no_pages",
-      },
-      pages_count: rows.length,
-      pages: rows.slice(0, 40),
-      transport_attempts: tabs.transport_attempts,
-    };
+    return browserHealthPayload(tabs, args);
   } catch (error) {
     return {
       ok: false,
@@ -269,6 +278,7 @@ async function handleNavigatePage(args) {
 }
 
 export {
+  browserHealthPayload,
   handleCheckBrowserHealth,
   handleFinalizeTask,
   handleListPages,

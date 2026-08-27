@@ -13,6 +13,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 
+import {
+  extensionBuildIdentityJavaScript,
+  extensionBuildIdentityJson,
+} from "../src/extension/build-identity.mjs";
+
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const doctorScript = path.resolve(repoRoot, "scripts/extension-install-doctor.mjs");
 
@@ -26,6 +31,20 @@ function writeFixtureSource(sourceDir) {
   writeFileSync(path.resolve(sourceDir, "background.js"), "globalThis.fixtureBridge = true;\n", "utf8");
   writeFileSync(path.resolve(sourceDir, "content", "bridge.js"), "globalThis.fixtureContent = true;\n", "utf8");
   writeFileSync(path.resolve(sourceDir, "config.example.js"), "const TID = '__browser67_fixture';\n", "utf8");
+}
+
+function writeIdentityBundle(root, identity) {
+  mkdirSync(path.resolve(root, "browser67"), { recursive: true });
+  writeFileSync(
+    path.resolve(root, "browser67/build-identity.json"),
+    extensionBuildIdentityJson(identity),
+    "utf8",
+  );
+  writeFileSync(
+    path.resolve(root, "browser67/build-identity.js"),
+    extensionBuildIdentityJavaScript(identity),
+    "utf8",
+  );
 }
 
 function run(args, expectedStatus = 0) {
@@ -79,6 +98,58 @@ function main() {
     assert.equal(current.needs_setup, false);
     assert.deepEqual(current.ignored_target_files.sort(), [".DS_Store", "config.js"].sort());
 
+    const sourceIdentity = {
+      schema: "browser67.extension-identity.v1",
+      product: "browser67",
+      extension_version: "0.4.0",
+      manifest_version: "0.4.0",
+      build_revision: "fixture-revision",
+      build_revision_source: "git",
+      build_inputs_dirty: false,
+      source_digest: "fixture-source-digest",
+      protocol_revision: 2,
+    };
+    writeIdentityBundle(sourceDir, sourceIdentity);
+    writeIdentityBundle(targetDir, {
+      ...sourceIdentity,
+      build_revision: "packaged-fixture-revision",
+      build_revision_source: "package_git_head",
+      build_inputs_dirty: true,
+    });
+    const provenanceVariant = run(["--source", sourceDir, "--target", targetDir, "--json", "--check"]);
+    assert.equal(provenanceVariant.ok, true);
+    assert.equal(provenanceVariant.installed_current, true);
+    assert.equal(provenanceVariant.installed_byte_current, false);
+    assert.equal(provenanceVariant.installed_identity_current, true);
+    assert.equal(provenanceVariant.identity_provenance_variant, true);
+    assert.deepEqual(provenanceVariant.identity_comparison.mismatches, []);
+    assert.deepEqual(
+      provenanceVariant.identity_comparison.provenance_mismatches,
+      ["build_revision", "build_revision_source", "build_inputs_dirty"],
+    );
+    assert.deepEqual(provenanceVariant.changed, []);
+    assert.deepEqual(
+      provenanceVariant.byte_changed.map((item) => item.file),
+      ["browser67/build-identity.js", "browser67/build-identity.json"],
+    );
+
+    writeIdentityBundle(targetDir, {
+      ...sourceIdentity,
+      build_revision: "packaged-fixture-revision",
+      build_revision_source: "package_git_head",
+      build_inputs_dirty: true,
+      source_digest: "different-source-digest",
+    });
+    const identityDrift = run(["--source", sourceDir, "--target", targetDir, "--json"]);
+    assert.equal(identityDrift.ok, false);
+    assert.equal(identityDrift.installed_identity_current, false);
+    assert.deepEqual(identityDrift.identity_comparison.mismatches, ["source_digest"]);
+    assert.deepEqual(
+      identityDrift.changed.map((item) => item.file),
+      ["browser67/build-identity.js", "browser67/build-identity.json"],
+    );
+    writeIdentityBundle(targetDir, sourceIdentity);
+
     writeFileSync(path.resolve(targetDir, "background.js"), "globalThis.fixtureBridge = 'changed';\n", "utf8");
     rmSync(path.resolve(targetDir, "content", "bridge.js"));
     writeFileSync(path.resolve(targetDir, "stale.js"), "globalThis.stale = true;\n", "utf8");
@@ -95,7 +166,13 @@ function main() {
     process.stdout.write(`${JSON.stringify({
       ok: true,
       check: "extension-install-doctor-contract",
-      scenarios: ["missing-target", "current-ignores-generated-config", "drift-detects-missing-changed-extra"],
+      scenarios: [
+        "missing-target",
+        "current-ignores-generated-config",
+        "identity-provenance-is-semantic-equivalent",
+        "identity-content-drift-is-actionable",
+        "drift-detects-missing-changed-extra",
+      ],
     })}\n`);
   } finally {
     if (existsSync(tempRoot)) rmSync(tempRoot, { recursive: true, force: true });

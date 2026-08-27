@@ -10,7 +10,9 @@ import { resolveTmwdContextWithTransport } from "../../tmwd-runtime/index.mjs";
 async function probeTransport(args, transport, options = {}) {
   const started = performance.now();
   try {
-    const context = await resolveTmwdContextWithTransport(
+    const resolveContext = options.resolveTmwdContextWithTransport
+      ?? resolveTmwdContextWithTransport;
+    const context = await resolveContext(
       {
         ...args,
         tmwd_mode: "tmwd",
@@ -27,8 +29,10 @@ async function probeTransport(args, transport, options = {}) {
       latency_ms: Math.round(performance.now() - started),
       endpoint: context.endpoint,
       pages_count: Array.isArray(context.targets) ? context.targets.length : 0,
-      selected_tab_id: context.target?.id,
-      selected_url: context.target?.url,
+      ...(args.include_target_metadata === true ? {
+        selected_tab_id: context.target?.id,
+        selected_url: context.target?.url,
+      } : {}),
     };
   } catch (error) {
     const message = String(error?.message ?? error);

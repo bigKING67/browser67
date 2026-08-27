@@ -7,21 +7,12 @@ import {
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
+import {
+  compareExtensionIdentityContent,
+} from "../../src/identity/extension-content.mjs";
 import { resolveBrowser67Home } from "../../src/runtime/paths/home.mjs";
 import { normalizeExtensionIdentity } from "../../src/tmwd-hub/extension-identity.mjs";
 import { buildExtension } from "../../scripts/build-extension.mjs";
-
-// The same immutable package uses package_git_head after leaving its Git checkout.
-const MATCHING_IDENTITY_FIELDS = [
-  "schema",
-  "product",
-  "extension_version",
-  "manifest_version",
-  "build_revision",
-  "build_inputs_dirty",
-  "source_digest",
-  "protocol_revision",
-];
 
 const repoRoot = resolve(import.meta.dirname, "..", "..");
 const extensionSourceDir = resolve(repoRoot, "extension");
@@ -113,10 +104,13 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
   const observedForComparison = activeInstanceIdentities.length > 0
     ? activeInstanceIdentities.map((entry) => entry.identity)
     : [observed];
+  const observedComparisons = observedForComparison.map((identity) => (
+    compareExtensionIdentityContent(identity, expectedIdentity)
+  ));
   if (expectedIdentity) {
-    for (const field of MATCHING_IDENTITY_FIELDS) {
-      if (observedForComparison.some((identity) => !identity || identity[field] !== expectedIdentity[field])) {
-        mismatches.push(field);
+    for (const comparison of observedComparisons) {
+      for (const field of comparison.mismatches) {
+        if (!mismatches.includes(field)) mismatches.push(field);
       }
     }
   }
@@ -128,22 +122,21 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
     expectedIdentity
     && observedForComparison.length > 0
     && observedForComparison.every(Boolean)
-    && mismatches.length === 0,
+    && observedComparisons.every((comparison) => comparison.content_match),
   );
   const installedCandidates = (Array.isArray(expected?.installed_candidates)
     ? expected.installed_candidates
     : []).map((candidate) => {
     const candidateIdentity = candidate?.identity ?? null;
-    const candidateMatchesObserved = Boolean(
-      observed
-      && candidateIdentity
-      && MATCHING_IDENTITY_FIELDS.every((field) => observed[field] === candidateIdentity[field]),
-    );
+    const candidateComparison = compareExtensionIdentityContent(observed, candidateIdentity);
+    const candidateMatchesObserved = candidateComparison.content_match;
     return {
       basis: String(candidate?.basis ?? "unknown"),
       path: String(candidate?.path ?? ""),
       available: candidate?.available === true,
       identity_match: candidateMatchesObserved,
+      provenance_match: candidateComparison.provenance_match,
+      provenance_variant: candidateComparison.provenance_variant,
       extension_version: candidateIdentity?.extension_version ?? null,
       source_digest: candidateIdentity?.source_digest ?? null,
       error: String(candidate?.error ?? ""),
@@ -172,16 +165,21 @@ function compareExtensionRuntimeIdentity(runtimeProbe, expected) {
     expected_identity_basis: String(expected?.basis ?? "unknown"),
     expected_identity_available: expected?.available === true,
     identity_match: identityMatch,
+    provenance_match: Boolean(
+      identityMatch
+      && observedComparisons.every((comparison) => comparison.provenance_match),
+    ),
+    provenance_variant: Boolean(
+      identityMatch
+      && observedComparisons.some((comparison) => comparison.provenance_variant),
+    ),
     mismatches,
     observed_identity: observed,
     observed_browser_instances: activeInstanceIdentities.map((entry) => ({
       browser_instance_id: entry.browser_instance_id,
       identity_status: entry.identity_status,
-      identity_match: Boolean(
-        entry.identity
-        && expectedIdentity
-        && MATCHING_IDENTITY_FIELDS.every((field) => entry.identity[field] === expectedIdentity[field]),
-      ),
+      identity_match: compareExtensionIdentityContent(entry.identity, expectedIdentity).content_match,
+      provenance_variant: compareExtensionIdentityContent(entry.identity, expectedIdentity).provenance_variant,
     })),
     expected_identity: expectedIdentity,
     installed_identity_candidates: installedCandidates,

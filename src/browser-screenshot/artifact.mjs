@@ -5,6 +5,7 @@ import path from "node:path";
 import { nowIso } from "../runtime/identity.mjs";
 import { readPngDimensions } from "../image/png-lite.mjs";
 import {
+  finishRun,
   prepareRun,
   runDirFor,
   runRoot,
@@ -36,10 +37,10 @@ async function readRunJson(runDir) {
   }
 }
 
-async function resolveScreenshotRun(args = {}, target = "viewport") {
+async function resolveScreenshotRun(args = {}, target = "viewport", options = {}) {
   const rawRunId = String(args.run_id ?? "").trim();
   if (rawRunId) {
-    const runDir = runDirFor(args);
+    const runDir = runDirFor(args, options);
     const existing = await readRunJson(runDir);
     if (existing && typeof existing === "object") {
       const artifactsDir = String(existing.artifacts_dir ?? path.join(runDir, "artifacts"));
@@ -51,16 +52,20 @@ async function resolveScreenshotRun(args = {}, target = "viewport") {
           artifacts_dir: artifactsDir,
         },
         prepared: false,
+        mode: "explicit",
+        auto_finish: false,
       };
     }
     if (args.prepare_run !== false) {
       const prepared = await prepareRun({
         ...args,
         title: args.title ?? `browser screenshot ${target}`,
-      });
+      }, options);
       return {
         run: prepared.run,
         prepared: true,
+        mode: "explicit",
+        auto_finish: false,
       };
     }
     const artifactsDir = path.join(runDir, "artifacts");
@@ -76,13 +81,15 @@ async function resolveScreenshotRun(args = {}, target = "viewport") {
         artifacts_dir: artifactsDir,
       },
       prepared: false,
+      mode: "explicit_untracked",
+      auto_finish: false,
     };
   }
 
   if (args.prepare_run === false) {
     const stamp = new Date().toISOString().replace(/[-:.]/g, "").replace("T", "T").replace("Z", "Z");
     const runId = `adhoc-${stamp}-${randomBytes(4).toString("hex")}`;
-    const runDir = path.join(runRoot(), runGroup(args), runId);
+    const runDir = path.join(runRoot(options), runGroup(args), runId);
     const artifactsDir = path.join(runDir, "artifacts");
     await mkdir(artifactsDir, { recursive: true });
     return {
@@ -96,16 +103,20 @@ async function resolveScreenshotRun(args = {}, target = "viewport") {
         artifacts_dir: artifactsDir,
       },
       prepared: false,
+      mode: "adhoc",
+      auto_finish: false,
     };
   }
 
   const prepared = await prepareRun({
     ...args,
     title: args.title ?? `browser screenshot ${target}`,
-  });
+  }, options);
   return {
     run: prepared.run,
     prepared: true,
+    mode: "implicit",
+    auto_finish: true,
   };
 }
 
@@ -124,19 +135,62 @@ async function writeScreenshotArtifact({
   title = "",
   clip = null,
   cdpClip = null,
+  run_options = {},
 }) {
   if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
     throw new Error("screenshot artifact requires non-empty PNG bytes");
   }
   const dimensions = readPngDimensions(bytes);
-  const { run, prepared } = await resolveScreenshotRun(args, target);
-  await mkdir(run.artifacts_dir, { recursive: true });
+  const resolution = await resolveScreenshotRun(args, target, run_options);
+  const { run, prepared, mode, auto_finish: autoFinish } = resolution;
   const artifactPath = path.join(run.artifacts_dir, screenshotFileName(target, title));
-  await writeFile(artifactPath, bytes);
+  try {
+    await mkdir(run.artifacts_dir, { recursive: true });
+    await writeFile(artifactPath, bytes);
+  } catch (error) {
+    if (autoFinish) {
+      await finishRun({
+        workspace_key: run.workspace_key,
+        task_id: run.task_id,
+        group: run.group,
+        run_id: run.run_id,
+        status: "failed",
+        data: {
+          artifact_count: 0,
+          artifact_kind: "screenshot",
+          error: String(error?.message ?? error),
+        },
+      }, run_options).catch(() => {});
+    }
+    throw error;
+  }
   const createdAt = nowIso();
+  let finalRun = run;
+  let terminalized = false;
+  if (autoFinish) {
+    const finished = await finishRun({
+      workspace_key: run.workspace_key,
+      task_id: run.task_id,
+      group: run.group,
+      run_id: run.run_id,
+      status: "success",
+      data: {
+        artifact_count: 1,
+        artifact_kind: "screenshot",
+      },
+    }, run_options);
+    if (finished?.ok !== true || !finished.run) {
+      throw new Error(`implicit screenshot run could not be finished: ${String(finished?.error ?? "unknown error")}`);
+    }
+    finalRun = finished.run;
+    terminalized = true;
+  }
   return {
-    run,
+    run: finalRun,
     run_prepared: prepared,
+    run_mode: mode,
+    run_terminalized: terminalized,
+    run_requires_finish: Boolean(mode === "explicit" && finalRun.status === "running"),
     artifact: {
       path: artifactPath,
       sha256: createHash("sha256").update(bytes).digest("hex"),

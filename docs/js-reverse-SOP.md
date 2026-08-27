@@ -74,6 +74,10 @@ Goal: prove what is executing now.
 - `get_dom_structure`
 - `get_storage` only when scoped and necessary
 
+Use `check_browser_health summary_only:true` for readiness/count checks. Summary
+mode suppresses page rows, URLs, titles, tab ids, and Browser Instance ids; omit
+it only when the page list is part of the authorized reverse-engineering scope.
+
 ### Phase 2: Trace
 
 Goal: connect the interesting request or parameter to code.

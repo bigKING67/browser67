@@ -90,6 +90,14 @@ as `needs_setup`, `needs_clean_setup`, and
 and manifest versions, Git revision and dirty state, deterministic source digest,
 and extension handshake protocol revision.
 
+`installed_current` is content-semantic: an otherwise identical canonical
+bundle remains current when its revision, dirty-checkout state, or
+`build_revision_source` provenance changes. `installed_byte_current` and
+`byte_changed` preserve strict file-level evidence, while
+`identity_provenance_variant:true` and `provenance_mismatches` explain why no
+setup/reload is required. Source digest, product/manifest version, protocol, or
+non-canonical identity mismatches remain actionable drift.
+
 After changing extension or generated build inputs:
 
 ```bash
@@ -229,6 +237,23 @@ Runs, screenshots, logs, and evidence are repo-external by default under:
 ~/.browser67/runtime/runs/
 ```
 
+Use `browser_run_ops action:"inspect", summary_only:true` for a global read-only
+audit without group names. It reports indexed and untracked run-directory
+counts, status totals, legacy-schema totals, current-versus-legacy running/stale
+splits, oldest/newest timestamps, and running runs older than
+`stale_running_after_minutes` (120 by default). Add
+`include_storage:true` only when a recursive scan is useful; it separates
+indexed-run bytes from run-like directories that have no `run.json`. Use
+`action:"list", summary_only:true` for one group's count without returning run
+titles or rows. Similarly, `browser_job_ops action:"list", summary_only:true`
+returns status/durability/result counts without job titles, errors, ids, or
+rows. A browser job without `run_id` owns its auto-prepared run and terminalizes
+it with `finished_at`; a caller-supplied job run remains caller-owned and reports
+`run_requires_finish:true`. A screenshot without an explicit `run_id` creates and terminalizes its
+own run after the PNG is written. A caller-supplied `run_id` keeps caller-owned
+lifecycle semantics; inspect `run_requires_finish` and finish that run
+explicitly when it remains `running`.
+
 Preview cleanup before allowing deletion:
 
 ```bash
@@ -247,6 +272,11 @@ refuses dangerous roots such as `/`, `$HOME`, repository paths, and paths that
 do not look like run roots. Tune policy through its `--max-age-days`,
 `--max-total-mb`, `--max-run-count`, and `--keep-latest` options or the matching
 `TMWD_RUNTIME_CLEANUP_*` environment variables.
+
+`browser_run_ops.inspect` is an operational inventory, not a deletion plan.
+`runtime:cleanup:dry-run` remains authoritative for retention candidates and
+may also recognize run-like directories without `run.json`; applying that plan
+still requires the explicit `--write` action after review.
 
 ## Troubleshooting sequence
 

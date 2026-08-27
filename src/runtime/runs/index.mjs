@@ -2,6 +2,7 @@ import { appendFile, mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { atomicWriteFile, atomicWriteJson } from "../storage/atomic-file.mjs";
+import { directorySizeAndNewestMtime } from "../storage/directory-usage.mjs";
 import { scanNdjsonBackwards } from "../storage/ndjson.mjs";
 import {
   RUN_INDEX_META_SCHEMA_VERSION,
@@ -16,6 +17,62 @@ import {
 
 const INDEX_COMPACT_MIN_ENTRIES = 128;
 const INDEX_COMPACT_RATIO = 4;
+const TERMINAL_RUN_STATUSES = new Set([
+  "cancelled",
+  "completed",
+  "failed",
+  "interrupted",
+  "pass",
+  "passed",
+  "success",
+]);
+
+function normalizeRunStatus(status) {
+  return String(status ?? "unknown").trim().toLowerCase().slice(0, 64) || "unknown";
+}
+
+function parsedRunUpdatedAt(run) {
+  for (const value of [run?.updated_at, run?.checkpoint_at, run?.created_at]) {
+    const timestamp = Date.parse(String(value ?? ""));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return null;
+}
+
+function incrementStatus(statusCounts, status) {
+  statusCounts.set(status, Number(statusCounts.get(status) ?? 0) + 1);
+}
+
+function sortedStatusCounts(statusCounts) {
+  return Object.fromEntries([...statusCounts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function isTerminalRunStatus(status) {
+  return TERMINAL_RUN_STATUSES.has(status) || status.startsWith("completed_");
+}
+
+async function isRunLikeDirectory(runDir) {
+  const entries = await readdir(runDir, { withFileTypes: true }).catch((error) => {
+    if (error?.code === "ENOENT" || error?.code === "EACCES") return [];
+    throw error;
+  });
+  const names = new Set(entries.map((entry) => entry.name));
+  return names.has("artifacts")
+    || names.has("events.ndjson")
+    || names.has("jobs")
+    || names.has("logs");
+}
+
+function addStorageUsage(storage, usage, kind) {
+  storage.bytes += usage.bytes;
+  storage.entries += usage.entries;
+  storage.files += usage.files;
+  storage.directories += usage.directories;
+  storage.unreadable_count += usage.unreadable_count;
+  if (kind === "untracked") storage.untracked_run_bytes += usage.bytes;
+  else storage.indexed_run_bytes += usage.bytes;
+}
 
 class RunIndex {
   constructor(options = {}) {
@@ -103,13 +160,16 @@ class RunIndex {
     const root = this.groupDir(group);
     const maxItems = Math.max(1, Math.min(500, Number(args.max_items ?? 50)));
     const meta = await this.ensure(group);
-    const records = await this.latestRecords(group, maxItems);
+    const summaryOnly = args.summary_only === true;
+    const records = summaryOnly ? [] : await this.latestRecords(group, maxItems);
     return {
       ok: true,
       action: "list",
       root,
+      summary_only: summaryOnly,
       runs: records.map(compactIndexRecord),
       total: Number(meta.unique_count ?? records.length),
+      returned_count: records.length,
       index: {
         schema_version: RUN_INDEX_SCHEMA_VERSION,
         entry_count: Number(meta.entry_count ?? 0),
@@ -174,38 +234,158 @@ class RunIndex {
     return { root: this.root, groups, compacted_count: groups.length };
   }
 
-  async inspect() {
+  async inspect(args = {}) {
+    const summaryOnly = args.summary_only === true;
+    const includeStorage = args.include_storage === true;
+    const staleRunningAfterMinutes = Math.max(
+      1,
+      Math.min(10_080, Number(args.stale_running_after_minutes ?? 120)),
+    );
+    const staleRunningBeforeMs = this.clock().getTime() - staleRunningAfterMinutes * 60_000;
     const entries = await readdir(this.root, { withFileTypes: true }).catch((error) => {
       if (error?.code === "ENOENT") return [];
       throw error;
     });
     const groups = [];
     let runCount = 0;
+    let runtimeDirectoryCount = 0;
+    let untrackedRunDirectoryCount = 0;
+    let ignoredDirectoryCount = 0;
     let legacyRunCount = 0;
+    let terminalRunCount = 0;
+    let runningRunCount = 0;
+    let staleRunningCount = 0;
+    let currentRunningRunCount = 0;
+    let legacyRunningRunCount = 0;
+    let currentStaleRunningCount = 0;
+    let legacyStaleRunningCount = 0;
+    let unknownUpdatedAtCount = 0;
+    let oldestUpdatedAtMs = null;
+    let newestUpdatedAtMs = null;
+    const statusCounts = new Map();
+    const storage = {
+      included: includeStorage,
+      bytes: 0,
+      mb: 0,
+      entries: 0,
+      files: 0,
+      directories: 0,
+      unreadable_count: 0,
+      indexed_run_bytes: 0,
+      untracked_run_bytes: 0,
+    };
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const groupDir = this.groupDir(entry.name);
       const runEntries = await readdir(groupDir, { withFileTypes: true }).catch(() => []);
       let groupRuns = 0;
       let groupLegacy = 0;
+      let groupUntrackedRuns = 0;
+      let groupRunning = 0;
+      let groupStaleRunning = 0;
+      let groupStorageBytes = 0;
+      const groupStatusCounts = new Map();
       for (const runEntry of runEntries) {
         if (!runEntry.isDirectory()) continue;
-        const payload = await readJsonIfExists(this.runJsonPath(path.join(groupDir, runEntry.name)));
-        if (!payload) continue;
+        const runDir = path.join(groupDir, runEntry.name);
+        const payload = await readJsonIfExists(this.runJsonPath(runDir));
+        if (!payload) {
+          if (!(await isRunLikeDirectory(runDir))) {
+            ignoredDirectoryCount += 1;
+            continue;
+          }
+          runtimeDirectoryCount += 1;
+          untrackedRunDirectoryCount += 1;
+          groupUntrackedRuns += 1;
+          if (includeStorage) {
+            const usage = await directorySizeAndNewestMtime(runDir);
+            addStorageUsage(storage, usage, "untracked");
+            groupStorageBytes += usage.bytes;
+          }
+          continue;
+        }
+        runtimeDirectoryCount += 1;
         groupRuns += 1;
-        if (payload.schema_version !== RUN_SCHEMA_VERSION) groupLegacy += 1;
+        const legacySchema = payload.schema_version !== RUN_SCHEMA_VERSION;
+        if (legacySchema) groupLegacy += 1;
+        const status = normalizeRunStatus(payload.status);
+        incrementStatus(statusCounts, status);
+        incrementStatus(groupStatusCounts, status);
+        if (isTerminalRunStatus(status)) terminalRunCount += 1;
+        if (status === "running") {
+          runningRunCount += 1;
+          groupRunning += 1;
+          if (legacySchema) legacyRunningRunCount += 1;
+          else currentRunningRunCount += 1;
+        }
+        const updatedAtMs = parsedRunUpdatedAt(payload);
+        if (updatedAtMs === null) {
+          unknownUpdatedAtCount += 1;
+        } else {
+          oldestUpdatedAtMs = oldestUpdatedAtMs === null
+            ? updatedAtMs
+            : Math.min(oldestUpdatedAtMs, updatedAtMs);
+          newestUpdatedAtMs = newestUpdatedAtMs === null
+            ? updatedAtMs
+            : Math.max(newestUpdatedAtMs, updatedAtMs);
+          if (status === "running" && updatedAtMs < staleRunningBeforeMs) {
+            staleRunningCount += 1;
+            groupStaleRunning += 1;
+            if (legacySchema) legacyStaleRunningCount += 1;
+            else currentStaleRunningCount += 1;
+          }
+        }
+        if (includeStorage) {
+          const usage = await directorySizeAndNewestMtime(runDir);
+          addStorageUsage(storage, usage, "indexed");
+          groupStorageBytes += usage.bytes;
+        }
       }
       const meta = await readJsonIfExists(this.indexMetaPath(entry.name));
       groups.push({
         group: entry.name,
         run_count: groupRuns,
         legacy_run_count: groupLegacy,
+        untracked_run_directory_count: groupUntrackedRuns,
+        running_count: groupRunning,
+        stale_running_count: groupStaleRunning,
+        status_counts: sortedStatusCounts(groupStatusCounts),
+        ...(includeStorage ? {
+          storage_bytes: groupStorageBytes,
+          storage_mb: Number((groupStorageBytes / (1024 * 1024)).toFixed(2)),
+        } : {}),
         index_ready: meta?.schema_version === RUN_INDEX_META_SCHEMA_VERSION,
       });
       runCount += groupRuns;
       legacyRunCount += groupLegacy;
     }
-    return { root: this.root, groups, run_count: runCount, legacy_run_count: legacyRunCount };
+    storage.mb = Number((storage.bytes / (1024 * 1024)).toFixed(2));
+    return {
+      root: this.root,
+      summary_only: summaryOnly,
+      include_storage: includeStorage,
+      groups: summaryOnly ? [] : groups,
+      group_count: groups.length,
+      run_count: runCount,
+      runtime_directory_count: runtimeDirectoryCount,
+      untracked_run_directory_count: untrackedRunDirectoryCount,
+      ignored_directory_count: ignoredDirectoryCount,
+      legacy_run_count: legacyRunCount,
+      terminal_run_count: terminalRunCount,
+      nonterminal_run_count: runCount - terminalRunCount,
+      running_run_count: runningRunCount,
+      stale_running_count: staleRunningCount,
+      current_running_run_count: currentRunningRunCount,
+      legacy_running_run_count: legacyRunningRunCount,
+      current_stale_running_count: currentStaleRunningCount,
+      legacy_stale_running_count: legacyStaleRunningCount,
+      stale_running_after_minutes: staleRunningAfterMinutes,
+      unknown_updated_at_count: unknownUpdatedAtCount,
+      oldest_updated_at: oldestUpdatedAtMs === null ? null : new Date(oldestUpdatedAtMs).toISOString(),
+      newest_updated_at: newestUpdatedAtMs === null ? null : new Date(newestUpdatedAtMs).toISOString(),
+      status_counts: sortedStatusCounts(statusCounts),
+      storage,
+    };
   }
 
   async migrate() {
