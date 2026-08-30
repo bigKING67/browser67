@@ -8,6 +8,11 @@ import {
   browserInstanceIdFrom,
   browserTabKey,
 } from "./identity.mjs";
+import {
+  normalizeFocusPolicy,
+  normalizeWindowId,
+  normalizeWindowPolicy,
+} from "./presentation.mjs";
 
 function buildManagedRecord(input = {}) {
   const url = String(input.url ?? "").trim() || "about:blank";
@@ -35,6 +40,19 @@ function buildManagedRecord(input = {}) {
       : undefined,
     management_policy_applied: input.management_policy_applied === true,
     management_policy_status: String(input.management_policy_status ?? ""),
+    focus_policy: normalizeFocusPolicy(input.focus_policy),
+    window_policy: input.window_policy === "isolated_target"
+      ? "isolated_target"
+      : normalizeWindowPolicy(input.window_policy),
+    window_id: normalizeWindowId(input.window_id ?? input.windowId),
+    window_ownership: String(input.window_ownership ?? (
+      input.ownership_origin === "user_adopted"
+        ? "user_adopted_window"
+        : "legacy_unknown"
+    )),
+    agent_window_anchor_tab_id: normalizeWindowId(
+      input.agent_window_anchor_tab_id ?? input.agentWindowAnchorTabId,
+    ),
     suspended: input.suspended === true,
     suspension_reason: String(input.suspension_reason ?? ""),
     adopted_document_identity: String(input.adopted_document_identity ?? ""),
@@ -92,6 +110,11 @@ function managedTabPayload(record) {
     management_policy: record.management_policy,
     management_policy_applied: record.management_policy_applied === true,
     management_policy_status: record.management_policy_status || undefined,
+    focus_policy: record.focus_policy,
+    window_policy: record.window_policy,
+    window_id: record.window_id,
+    window_ownership: record.window_ownership,
+    agent_window_anchor_tab_id: record.agent_window_anchor_tab_id,
     suspended: record.suspended === true,
     suspension_reason: record.suspension_reason || undefined,
     adopted_document_identity: record.adopted_document_identity || undefined,

@@ -44,3 +44,15 @@ export {
   navigationStatusFromPolicy,
   reconcileAdoptedNavigation,
 } from "./navigation-guard.mjs";
+export {
+  FOCUS_POLICIES,
+  WINDOW_POLICIES,
+  agentWindowMetadata,
+  bridgeCommandData,
+  createdTabMetadata,
+  managedWindowRecordFields,
+  normalizeFocusPolicy,
+  normalizeWindowId,
+  normalizeWindowPolicy,
+  resolveManagedPresentation,
+} from "./presentation.mjs";

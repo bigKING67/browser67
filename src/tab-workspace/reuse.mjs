@@ -67,6 +67,29 @@ function candidateMatches(record, target, policy) {
   return false;
 }
 
+function effectiveIsolatedTarget(args = {}, options = {}) {
+  const effectiveWindowPolicy = String(options.window_policy ?? "").trim().toLowerCase();
+  if (effectiveWindowPolicy === "isolated_target") return true;
+  return ["remote_cdp", "cdp"].includes(String(args.tmwd_mode ?? ""));
+}
+
+function candidateMatchesPresentation(record, args = {}, options = {}) {
+  const requestedWindowPolicy = String(args.window_policy ?? "dedicated").trim().toLowerCase();
+  const explicitRemoteCdp = ["remote_cdp", "cdp"].includes(String(args.tmwd_mode ?? ""));
+  if (explicitRemoteCdp) return true;
+  if (effectiveIsolatedTarget(args, options)) {
+    return record.window_policy === "isolated_target"
+      && record.window_ownership === "remote_cdp";
+  }
+  if (record.ownership_origin === "user_adopted") return false;
+  if (requestedWindowPolicy === "dedicated") {
+    if (record.window_ownership !== "browser67_agent") return false;
+    const requestedWindowId = Number(args.window_id);
+    return !Number.isInteger(requestedWindowId) || record.window_id === requestedWindowId;
+  }
+  return record.window_ownership !== "browser67_agent";
+}
+
 function scoreCandidate(record, target, policy) {
   let score = 0;
   if (policy.workspace_key && record.workspace_key === policy.workspace_key) {
@@ -90,10 +113,10 @@ function scoreCandidate(record, target, policy) {
   return score;
 }
 
-async function findReusableManagedTab(args = {}, url = "", liveTabs = []) {
+async function findReusableManagedTab(args = {}, url = "", liveTabs = [], options = {}) {
   const policy = buildReusePolicy(args, url);
   const browserInstanceId = normalizeBrowserInstanceId(args.browser_instance_id ?? args.browserInstanceId);
-  const explicitRemoteCdp = ["remote_cdp", "cdp"].includes(String(args.tmwd_mode ?? ""));
+  const isolatedTarget = effectiveIsolatedTarget(args, options);
   if (policy.force_fresh) {
     return {
       record: null,
@@ -106,11 +129,12 @@ async function findReusableManagedTab(args = {}, url = "", liveTabs = []) {
   const candidates = (await listManagedTabRecords())
     .filter((record) => record.dry_run !== true)
     .filter((record) => (
-      explicitRemoteCdp
+      isolatedTarget
         ? record.browser_instance_identity !== "resolved"
         : Boolean(browserInstanceId && record.browser_instance_id === browserInstanceId)
     ))
     .filter((record) => recordIsLive(record, liveById))
+    .filter((record) => candidateMatchesPresentation(record, args, options))
     .filter((record) => candidateMatches(record, policy.target, policy))
     .map((record) => ({
       record,

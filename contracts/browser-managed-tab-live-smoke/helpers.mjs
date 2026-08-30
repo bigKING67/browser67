@@ -25,6 +25,7 @@ function normalizeTabs(raw) {
     url: String(row?.url ?? ""),
     title: String(row?.title ?? ""),
     active: row?.active === true,
+    windowId: row?.windowId,
     scriptable: row?.scriptable === true || /^https?:/.test(String(row?.url ?? "")),
   })).filter((row) => row.id.length > 0);
 }
