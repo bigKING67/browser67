@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -109,6 +109,117 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
       clientInfo: { name: "browser67-remote-cdp-content-contract", version: "1.0.0" },
     }, timeoutMs);
     rpc.notify("notifications/initialized", {});
+
+    const lifecycleWorkspaceKey = "remote-cdp-managed-lifecycle";
+    const lifecycleTaskId = "isolated-target-create-finalize";
+    const lifecyclePage = await callTool(rpc, "browser_tab_lifecycle", {
+      ...route,
+      action: "select_or_create",
+      url: `${fixtureUrl}?browser67-managed-lifecycle=1`,
+      workspace_key: lifecycleWorkspaceKey,
+      task_id: lifecycleTaskId,
+      fresh: true,
+      focus_policy: "background_only",
+      window_policy: "dedicated",
+    }, timeoutMs);
+    assert.equal(lifecyclePage.created, true);
+    assert.equal(lifecyclePage.presentation?.requested_window_policy, "dedicated");
+    assert.equal(lifecyclePage.presentation?.window_policy, "isolated_target");
+    assert.equal(lifecyclePage.managed_tab?.window_policy, "isolated_target");
+    assert.equal(lifecyclePage.managed_tab?.window_ownership, "remote_cdp");
+    assert.equal(typeof lifecyclePage.managed_tab?.tab_id, "string");
+    assert.equal(lifecyclePage.managed_tab.tab_id.length > 0, true);
+    const lifecycleFinalize = await callTool(rpc, "browser_tab_lifecycle", {
+      ...route,
+      action: "finalize_task",
+      workspace_key: lifecycleWorkspaceKey,
+      task_id: lifecycleTaskId,
+    }, timeoutMs);
+    assert.equal(lifecycleFinalize.status, "success");
+    assert.equal(lifecycleFinalize.cleanup_summary?.closed_count, 1);
+    assert.equal(lifecycleFinalize.cleanup_summary?.remaining_unkept_count, 0);
+
+    const autoFallbackWorkspaceKey = "remote-cdp-auto-fallback-lifecycle";
+    const autoFallbackTaskId = "effective-transport-reuse-finalize";
+    const autoFallbackRoute = {
+      tmwd_mode: "auto",
+      tmwd_transport: "link",
+      tmwd_link_endpoint: "http://127.0.0.1:9/link",
+      cdp_endpoint: cdpEndpoint,
+      switch_tab_id: fixtureTarget.id,
+      timeout_ms: 500,
+    };
+    const autoFallbackUrl = `${fixtureUrl}?browser67-auto-fallback-lifecycle=1`;
+    const autoFallbackRegistry = JSON.parse(await readFile(registryPath, "utf8"));
+    const legacyFutureAt = new Date(Date.now() + 60_000).toISOString();
+    autoFallbackRegistry.managed_tabs.push({
+      tab_id: "legacy-unresolved-auto-fallback-tab",
+      owner: "tmwd",
+      managed: true,
+      ownership_origin: "agent_created",
+      close_on_finalize: true,
+      source: "remote-cdp-contract-legacy-fixture",
+      workspace_key: autoFallbackWorkspaceKey,
+      task_id: "legacy-other-task",
+      reuse_key: autoFallbackUrl,
+      url: autoFallbackUrl,
+      title: "legacy unresolved auto fallback fixture",
+      origin: new URL(autoFallbackUrl).origin,
+      path_scope: new URL(autoFallbackUrl).pathname,
+      keep: false,
+      dry_run: false,
+      status: "open",
+      created_at: legacyFutureAt,
+      updated_at: legacyFutureAt,
+      last_used_at: legacyFutureAt,
+    });
+    autoFallbackRegistry.updated_at = new Date().toISOString();
+    await writeFile(registryPath, `${JSON.stringify(autoFallbackRegistry, null, 2)}\n`);
+    const autoFallbackCreated = await callTool(rpc, "browser_tab_lifecycle", {
+      ...autoFallbackRoute,
+      action: "select_or_create",
+      url: autoFallbackUrl,
+      workspace_key: autoFallbackWorkspaceKey,
+      task_id: autoFallbackTaskId,
+      fresh: true,
+      focus_policy: "background_only",
+    }, timeoutMs);
+    assert.equal(autoFallbackCreated.created, true);
+    assert.equal(autoFallbackCreated.presentation?.requested_window_policy, "dedicated");
+    assert.equal(autoFallbackCreated.presentation?.window_policy, "isolated_target");
+    assert.equal(autoFallbackCreated.managed_tab?.window_ownership, "remote_cdp");
+    assert.equal(
+      autoFallbackCreated.transport_attempts?.some((attempt) => (
+        attempt.transport === "cdp"
+        && attempt.status === "ok"
+        && attempt.reason === "auto_fallback"
+      )),
+      true,
+    );
+    const autoFallbackReused = await callTool(rpc, "browser_tab_lifecycle", {
+      ...autoFallbackRoute,
+      action: "select_or_create",
+      url: autoFallbackUrl,
+      workspace_key: autoFallbackWorkspaceKey,
+      focus_policy: "background_only",
+    }, timeoutMs);
+    assert.equal(autoFallbackReused.created, false);
+    assert.equal(autoFallbackReused.reused, true);
+    assert.equal(
+      autoFallbackReused.managed_tab?.tab_id,
+      autoFallbackCreated.managed_tab?.tab_id,
+    );
+    assert.equal(autoFallbackReused.managed_tab?.window_policy, "isolated_target");
+    assert.equal(autoFallbackReused.managed_tab?.task_id, autoFallbackTaskId);
+    const autoFallbackFinalize = await callTool(rpc, "browser_tab_lifecycle", {
+      ...autoFallbackRoute,
+      action: "finalize_task",
+      workspace_key: autoFallbackWorkspaceKey,
+      task_id: autoFallbackTaskId,
+    }, timeoutMs);
+    assert.equal(autoFallbackFinalize.status, "success");
+    assert.equal(autoFallbackFinalize.cleanup_summary?.closed_count, 1);
+    assert.equal(autoFallbackFinalize.cleanup_summary?.remaining_unkept_count, 0);
 
     const before = await callTool(rpc, "browser_extract", {
       ...route,
@@ -350,6 +461,8 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
       single_pass_main_scan: true,
       network_observation: true,
       raw_network_observation: true,
+      remote_cdp_managed_lifecycle: true,
+      remote_cdp_auto_fallback_lifecycle: true,
       network_idle: true,
       resource_quiet: true,
       dom_stable_filters: true,
