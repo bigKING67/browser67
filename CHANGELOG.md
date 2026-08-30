@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-08-30
+
 - Present the browser67-owned Agent Window with native platform behavior: enter
   a macOS Full Screen Space while retaining Chrome tabs, address bar,
   extensions, and bookmarks, and maximize the ordinary Chrome window on
