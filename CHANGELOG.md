@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 - 2026-08-30
+
 - Make managed browser work non-exclusive by default: create/reuse new
   browser67 and JS-reverse pages in a same-Profile dedicated non-focused Agent
   window with `background_preferred` focus policy and `active:false`; retain an
