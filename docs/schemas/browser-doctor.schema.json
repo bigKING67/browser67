@@ -75,6 +75,26 @@
             "supports_select_or_create": {
               "type": "boolean"
             },
+            "supports_dedicated_agent_window": {
+              "type": "boolean"
+            },
+            "supports_focus_policy": {
+              "type": "boolean"
+            },
+            "supports_focus_lease": {
+              "type": "boolean"
+            },
+            "supports_focus_restore_guard": {
+              "type": "boolean"
+            },
+            "managed_window_policy_default": {
+              "type": "string",
+              "enum": ["dedicated"]
+            },
+            "managed_focus_policy_default": {
+              "type": "string",
+              "enum": ["background_preferred"]
+            },
             "supports_tabs_close": {
               "type": "boolean"
             },

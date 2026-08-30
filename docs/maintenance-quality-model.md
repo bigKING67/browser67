@@ -245,6 +245,9 @@ Planning, readiness, synthetic fixtures, or a template with `ok:false` are not
 physical-input or external-provider evidence. Target-OS GUI, local physical
 CAPTCHA, and approved OAuth/SSO/MFA proofs must be collected on the real scoped
 environment and stored as sanitized repo-external artifacts.
+CAPTCHA/native physical proofs additionally bind the normalized
+`physical-input-v1` behavior-source digest. Date-valid historical proofs do not
+cover later native/focus/runtime changes and are reported as optional gaps.
 
 ## Evidence boundaries
 

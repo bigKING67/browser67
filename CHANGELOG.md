@@ -2,8 +2,32 @@
 
 ## Unreleased
 
-- Review GenericAgent remote main through `17d9f4d`, confirm that the intervening
-  Linux portability fix does not touch `assets/tmwd_cdp_bridge`, and retain the
+- Make managed browser work non-exclusive by default: create/reuse new
+  browser67 and JS-reverse pages in a same-Profile dedicated non-focused Agent
+  window with `background_preferred` focus policy and `active:false`; retain an
+  explicit current-window compatibility mode and intentional foreground mode.
+- Add bounded managed-tab focus leases for CAPTCHA, native input, and real
+  paste, with guarded restoration that yields to user tab/window changes,
+  external-app focus changes, missing targets, foreground drift, expiry, and
+  extension service-worker recovery. Serialize concurrent lease acquisition,
+  live-validate dedicated-tab window ownership, quarantine tabs the user moved
+  out of the Agent window without moving them back, and propagate structured
+  focus errors across extension, Hub, WebSocket, HTTP Link, and MCP wrappers.
+- Serialize extension tab-inventory updates to remove create/update snapshot
+  races, add deterministic focus/window safety contracts, and make real
+  browser and JS-reverse live gates use isolated background managed fixtures
+  while preserving pre-existing active tabs and finalizing all temporary pages.
+- Treat the effective transport as managed-lifecycle authority: when an
+  explicitly permitted `tmwd_mode:auto` call falls back to controlled CDP,
+  preserve `isolated_target` ownership across reuse, liveness, and finalization
+  instead of filtering the page as a dedicated-window tab or refusing cleanup.
+- Bind CAPTCHA/native physical proof artifacts to a normalized
+  `physical-input-v1` behavior-source digest, reject missing or source-mismatched
+  historical proofs even when their expiry remains valid, and expose the
+  comparison through audit, plan, status, template, and record workflows.
+- Review GenericAgent remote main through `7ad2162`, confirm that the intervening
+  docs-only PC device-link SOP does not touch `assets/tmwd_cdp_bridge`, record
+  the local window/focus overlay files in `UPSTREAM.review.json`, and retain the
   existing manual-merge extension decision and historical byte lock.
 
 ## 0.6.0 - 2026-08-27

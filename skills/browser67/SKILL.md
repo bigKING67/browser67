@@ -48,6 +48,26 @@ two paired MCP surfaces:
 4. For real browser work, select/create browser67-owned managed tabs and finalize
    the current `workspace_key`/`task_id` before handoff; report the returned
    `delivery_summary` so tab cleanup state is visible.
+   - Default new work to `window_policy:"dedicated"`,
+     `focus_policy:"background_preferred"`, and `active:false`. This uses a
+     non-focused browser67 Agent window in the same Browser Profile, preserving
+     approved login/session state without replacing the user's active tab.
+   - Use `window_policy:"current"` only for explicit compatibility and
+     `focus_policy:"foreground"` only for an intentional visible handoff.
+     `background_only` must fail closed when an operation requires foreground.
+   - Native/CAPTCHA operations may use a bounded managed-tab focus lease. A
+     Browser Profile permits only one active lease, including concurrent
+     requests. Switching to another app counts as user activity. A
+     default restore is valid only when no user activity was observed, both
+     targets still exist, the managed target remains foreground, and the
+     extension service worker did not restart; otherwise do not steal focus.
+   - Before reusing a dedicated managed tab, verify its live `window_id`. If the
+     user moved it out of the Agent window, quarantine that registry record and
+     select/create another dedicated tab; never move the user's tab back.
+   - Treat effective transport as lifecycle authority. If an explicitly allowed
+     `tmwd_mode:"auto"` call falls back to controlled CDP, keep the managed page
+     as `isolated_target` through reuse and `finalize_task`; do not reinterpret
+     it as a dedicated-window tab or leave it uncloseable.
    - Keep entry, adoption, and `finalize_task` on the same
      `browser_instance_id`. If a workspace/task spans multiple instances,
      omission must fail with `AMBIGUOUS_TARGET`; deliberate cross-instance
@@ -108,6 +128,9 @@ two paired MCP surfaces:
   with the matching explicit coordinate-source confirmation and
   `confirm_physical_input:true`. Never use token/cookie extraction, JS/CDP
   clicks, or fullscreen screenshots to solve a challenge.
+- CAPTCHA/native input uses the managed-tab focus lease, not an unscoped
+  `tabs.switch`. Keep the default guarded restore unless the user explicitly
+  requests `focus_policy:"foreground"`.
 - Configure JFBYM/Yunma only through the repo-external setup path, then run
   `npm run check:captcha-router`, `npm run check:captcha-provider-jfbym`,
   `npm run check:captcha-provider-jfbym-setup`, and
@@ -116,8 +139,11 @@ two paired MCP surfaces:
 - Run `npm run check:native-pointer` before physical click/drag work. The
   optional GUI gate is `npm run check:captcha-assist-physical-live` and requires
   the explicit physical/confirm environment flags; skipped or blocked runs are
-  not proof. Use `npm run check:ljqctrl` only as a diagnostic unless the guarded
-  execution bridge is explicitly enabled.
+  not proof. Accept CAPTCHA/native proof only when its
+  `browser67.optional-proof-source.v1` identity is source-equivalent to the
+  current `physical-input-v1` behavior digest; an unexpired historical proof
+  cannot prove newer focus/native code. Use `npm run check:ljqctrl` only as a
+  diagnostic unless the guarded execution bridge is explicitly enabled.
 - Wait at least five seconds after a failed physical attempt and hand off for
   multi-round image/puzzle challenges. Do not keep trying selectors, unrelated
   profiles, cross-origin IdP actions, or repeated submits.
