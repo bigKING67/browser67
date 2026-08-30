@@ -1,11 +1,12 @@
 import { createToolError } from "../runtime/tool-errors.mjs";
+import { ensureNativeAgentWindowPresentation } from "../native/agent-window-presentation.mjs";
 import {
   agentWindowMetadata,
   bridgeCommandData,
   createdTabMetadata,
 } from "../tab-workspace/presentation.mjs";
 
-async function ensureAgentWindow(presentation, runCommand) {
+async function ensureAgentWindow(presentation, runCommand, options = {}) {
   if (presentation.window_policy !== "dedicated") {
     return {
       status: "not_applicable",
@@ -16,10 +17,56 @@ async function ensureAgentWindow(presentation, runCommand) {
         : "current_user_window",
     };
   }
-  return agentWindowMetadata(await runCommand({
+  const agentWindow = agentWindowMetadata(await runCommand({
     cmd: "window",
     method: "ensure_agent_window",
   }));
+  const ensurePresentation = options.ensure_agent_window_presentation
+    ?? ensureNativeAgentWindowPresentation;
+  const actualPresentation = await ensurePresentation(
+    agentWindow,
+    options.agent_window_presentation,
+  );
+  if (actualPresentation?.verification_required === true) {
+    const verifiedWindow = agentWindowMetadata(await runCommand({
+      cmd: "window",
+      method: "ensure_agent_window",
+    }));
+    if (
+      verifiedWindow.presentation?.mode !== "macos_native_fullscreen_space"
+      || verifiedWindow.presentation?.status !== "ready"
+      || verifiedWindow.presentation?.native_action_required === true
+      || verifiedWindow.presentation?.window_state !== "fullscreen"
+    ) {
+      return {
+        ...verifiedWindow,
+        presentation: {
+          ...actualPresentation,
+          status: "failed",
+          native_action_required: true,
+          verification_required: false,
+          reason: "extension_window_state_not_fullscreen",
+          error: `Agent window state remained ${String(verifiedWindow.presentation?.window_state ?? "unknown")}`,
+        },
+      };
+    }
+    return {
+      ...verifiedWindow,
+      presentation: {
+        ...actualPresentation,
+        ...verifiedWindow.presentation,
+        status: "ready",
+        native_action_required: false,
+        native_fullscreen: true,
+        verification_required: false,
+        verification: "exact_extension_window_state",
+      },
+    };
+  }
+  return {
+    ...agentWindow,
+    presentation: actualPresentation,
+  };
 }
 
 async function resolveCreatedTab(result, runCommand) {

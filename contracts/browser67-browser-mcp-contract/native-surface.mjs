@@ -8,6 +8,122 @@ import {
 } from "../../src/native-capabilities/index.mjs";
 import { buildNativePointerReadinessReport } from "../../src/native-capabilities/pointer-readiness.mjs";
 import { detectPhysicalInputCapabilities } from "../../src/physical-input/index.mjs";
+import { ensureAgentWindow } from "../../src/browser-wrappers/presentation.mjs";
+import { ensureNativeAgentWindowPresentation } from "../../src/native/agent-window-presentation.mjs";
+import {
+  applicationForBrowserFamily,
+  buildMacAgentWindowFullscreenScript,
+  parseMacAgentWindowFullscreenOutput,
+} from "../../src/native-macos/agent-window-presentation.mjs";
+
+async function assertAgentWindowPresentationContract() {
+  assert.equal(applicationForBrowserFamily("chrome"), "Google Chrome");
+  assert.equal(applicationForBrowserFamily("edge"), "Microsoft Edge");
+  assert.throws(() => applicationForBrowserFamily("unknown"), /unsupported Agent window browser family/);
+
+  const script = buildMacAgentWindowFullscreenScript({
+    anchorTabId: 67,
+    anchorUrl: "chrome-extension://fixture/browser67/window-anchor.html",
+    applicationName: "Google Chrome",
+    restoreTabId: 42,
+  }).join("\n");
+  assert.match(script, /AXFullScreen/);
+  assert.match(script, /keystroke \"f\" using \{control down, command down\}/);
+  assert.match(script, /menu item \"进入全屏幕\"/);
+  assert.match(script, /browser67 Agent anchor not found/);
+  assert.match(script, /front window does not contain the exact browser67 Agent anchor/);
+  assert.match(script, /chrome-extension:\/\/fixture\/browser67\/window-anchor\.html/);
+  assert.match(script, /set restoreTabId to 42/);
+
+  const parsed = parseMacAgentWindowFullscreenOutput([
+    "transition_requested",
+    "true",
+    "false",
+    "true",
+    "original_browser_tab",
+    "Google Chrome",
+    "view_menu_zh_cn",
+  ].join("\u001f"));
+  assert.equal(parsed.mode, "macos_native_fullscreen_space");
+  assert.equal(parsed.native_fullscreen, false);
+  assert.equal(parsed.verification_required, true);
+  assert.equal(parsed.toolbar_preserved, true);
+  assert.equal(parsed.focus_restored, true);
+  assert.equal(parsed.restore_reason, "original_browser_tab");
+
+  const presenterCalls = [];
+  const presented = await ensureNativeAgentWindowPresentation({
+    anchor_tab_id: 67,
+    anchor_url: "chrome-extension://fixture/browser67/window-anchor.html",
+    browser_family: "chrome",
+    focus_snapshot: {
+      browser_focused: true,
+      tab_id: 42,
+    },
+    presentation: {
+      mode: "macos_native_fullscreen_space",
+      status: "native_required",
+      native_action_required: true,
+      toolbar_preserved: true,
+      window_state: "normal",
+    },
+  }, {
+    host_platform: "darwin",
+    macos_presenter: async (options) => {
+      presenterCalls.push(options);
+      return parsed;
+    },
+  });
+  assert.equal(presenterCalls.length, 1);
+  assert.equal(presenterCalls[0].anchorTabId, 67);
+  assert.equal(presenterCalls[0].restoreTabId, 42);
+  assert.equal(presented.status, "verification_required");
+  assert.equal(presented.native_action_required, true);
+
+  let bridgeCalls = 0;
+  const wrapped = await ensureAgentWindow(
+    { window_policy: "dedicated" },
+    async () => {
+      bridgeCalls += 1;
+      const verified = bridgeCalls === 2;
+      return {
+        value: {
+          data: {
+          status: "ready",
+          created: !verified,
+          reused: verified,
+          window_id: 3,
+          anchor_tab_id: 67,
+          anchor_url: "chrome-extension://fixture/browser67/window-anchor.html",
+          browser_family: "chrome",
+          platform_os: "mac",
+          focus_snapshot: {
+            browser_focused: true,
+            tab_id: 42,
+            window_id: 1,
+          },
+          presentation: {
+            mode: "macos_native_fullscreen_space",
+            status: verified ? "ready" : "native_required",
+            native_action_required: !verified,
+            toolbar_preserved: true,
+            window_state: verified ? "fullscreen" : "normal",
+          },
+        },
+      },
+      };
+    },
+    {
+      ensure_agent_window_presentation: async () => presented,
+    },
+  );
+  assert.equal(bridgeCalls, 2);
+  assert.equal(wrapped.anchor_tab_id, 67);
+  assert.equal(wrapped.focus_snapshot.tab_id, 42);
+  assert.equal(wrapped.presentation.status, "ready");
+  assert.equal(wrapped.presentation.native_fullscreen, true);
+  assert.equal(wrapped.presentation.verification, "exact_extension_window_state");
+}
 
 async function writeFakePythonProbe(dir, name, payload) {
   const file = path.join(dir, name);
@@ -200,6 +316,7 @@ function assertNativePointerReadinessReportContract() {
 }
 
 async function assertNativeCapabilitySurface() {
+  await assertAgentWindowPresentationContract();
   assertNativePointerReadinessReportContract();
   clearNativeInputCapabilitiesCache();
   const uncachedNativeCapabilities = await detectNativeInputCapabilities({

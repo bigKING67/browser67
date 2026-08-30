@@ -100,7 +100,7 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
     runtimeOptions,
   );
   const agentWindow = options.agent_window
-    ?? await ensureAgentWindow(presentation, runCommand);
+    ?? await ensureAgentWindow(presentation, runCommand, runtimeOptions);
   let tabId = "";
   let title = "";
   let createdTab = {};
@@ -317,7 +317,7 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
     command,
     runtimeOptions,
   );
-  const agentWindow = await ensureAgentWindow(presentation, runCommand);
+  const agentWindow = await ensureAgentWindow(presentation, runCommand, runtimeOptions);
   const instanceArgs = {
     ...initialInstanceArgs,
     window_policy: presentation.requested_window_policy,
