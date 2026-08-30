@@ -133,7 +133,7 @@ function patchBrowserInstanceResponseIdentity(source) {
     ],
     [
       "ws.send(JSON.stringify({ type: res.ok ? 'result' : 'error', id: data.id, result: res.data ?? res.results ?? res, error: res.error }));",
-      "ws.send(JSON.stringify({ type: res.ok ? 'result' : 'error', id: data.id, browser_instance_id: await browser67GetInstanceId(), result: res.data ?? res.results ?? res, error: res.error }));",
+      "ws.send(JSON.stringify({ type: res.ok ? 'result' : 'error', id: data.id, browser_instance_id: await browser67GetInstanceId(), result: res.data ?? res.results ?? res, error: res.error, errorCode: res.errorCode, details: res.errorDetails }));",
     ],
   ];
   let next = source;
@@ -190,6 +190,41 @@ function patchSharedExecutionRuntime(source) {
     .replace(errorAnchor, "return { ok: false, error: e.message, errorCode: e.code, errorDetails: e.details, results: R };");
 }
 
+function patchTabsUpdateSerialization(source) {
+  const anchor = [
+    "async function sendTabsUpdate() {",
+    "  if (!ws || ws.readyState !== WebSocket.OPEN) return;",
+    "  const tabs = (await chrome.tabs.query({})).filter(t => isScriptable(t.url) && !/streamlit/i.test(t.title));",
+    "  ws.send(JSON.stringify({",
+    "    type: 'tabs_update',",
+    "    browser_instance_id: await browser67GetInstanceId(),",
+    "    extension_identity: globalThis.__browser67BuildIdentity ?? null,",
+    "    tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
+    "  }));",
+    "}",
+  ].join("\n");
+  const replacement = [
+    "let browser67TabsUpdateFlight = Promise.resolve();",
+    "function sendTabsUpdate() {",
+    "  browser67TabsUpdateFlight = browser67TabsUpdateFlight.catch(() => {}).then(async () => {",
+    "    if (!ws || ws.readyState !== WebSocket.OPEN) return;",
+    "    const tabs = (await chrome.tabs.query({})).filter(t => isScriptable(t.url) && !/streamlit/i.test(t.title));",
+    "    ws.send(JSON.stringify({",
+    "      type: 'tabs_update',",
+    "      browser_instance_id: await browser67GetInstanceId(),",
+    "      extension_identity: globalThis.__browser67BuildIdentity ?? null,",
+    "      tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))",
+    "    }));",
+    "  });",
+    "  return browser67TabsUpdateFlight;",
+    "}",
+  ].join("\n");
+  if (!source.includes(anchor)) {
+    throw new Error("upstream tab update anchors changed; review browser67 tabs_update serialization");
+  }
+  return source.replace(anchor, replacement);
+}
+
 function buildBackground(source) {
   const normalizedSource = String(source).replace(/\r\n?/g, "\n");
   const installStart = normalizedSource.indexOf("chrome.runtime.onInstalled.addListener(() => {");
@@ -199,7 +234,7 @@ function buildBackground(source) {
   }
   const withoutGlobalCsp = [
     normalizedSource.slice(0, installStart),
-    "importScripts('browser67/build-identity.js', 'browser67/runtime.js');\n\n",
+    "importScripts('browser67/build-identity.js', 'browser67/window-focus-runtime.js', 'browser67/runtime.js');\n\n",
     normalizedSource.slice(handlerStart),
   ].join("");
   const handlerAnchor = "async function handleExtMessage(msg, sender) {\n";
@@ -212,9 +247,13 @@ function buildBackground(source) {
   if (routed === withoutGlobalCsp) {
     throw new Error("failed to inject browser67 command routing into background.js");
   }
-  return patchExtensionIdentityHandshake(
-    patchBrowserInstanceResponseIdentity(
-      patchBrowserInstanceIdentity(patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed))),
+  return patchTabsUpdateSerialization(
+    patchExtensionIdentityHandshake(
+      patchBrowserInstanceResponseIdentity(
+        patchBrowserInstanceIdentity(
+          patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed)),
+        ),
+      ),
     ),
   );
 }
@@ -240,6 +279,8 @@ function buildExtension(options = {}) {
     "background.js",
     "manifest.json",
     "browser67/runtime.js",
+    "browser67/window-focus-runtime.js",
+    "browser67/window-anchor.html",
     "browser67/managed-content.js",
   ]) {
     if (!existsSync(resolve(sourceDir, required))) {

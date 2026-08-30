@@ -401,6 +401,20 @@ async function handleNetworkCommand(message) {
 
 async function browser67HandleCommand(message) {
   try {
+    if (message?.cmd === "window") {
+      return { ok: true, data: await globalThis.browser67HandleWindowFocusCommand(message) };
+    }
+    if (message?.cmd === "focus") {
+      await loadManagedPolicies();
+      const method = String(message.method || "status");
+      const tabId = normalizeBrowser67TabId(message.tabId);
+      if (method === "acquire" && (tabId === null || !managedPolicies.has(tabId))) {
+        throw Object.assign(new Error("focus lease requires a browser67-managed tab"), {
+          code: "MANAGED_TAB_REQUIRED",
+        });
+      }
+      return { ok: true, data: await globalThis.browser67HandleWindowFocusCommand(message) };
+    }
     if (message?.cmd === "network") {
       return { ok: true, data: await handleNetworkCommand(message) };
     }
@@ -433,7 +447,12 @@ async function browser67HandleCommand(message) {
     }
     throw new Error(`unsupported policy method: ${method}`);
   } catch (error) {
-    return { ok: false, error: String(error?.message || error) };
+    return {
+      ok: false,
+      error: String(error?.message || error),
+      errorCode: String(error?.code || ""),
+      errorDetails: error?.details,
+    };
   }
 }
 

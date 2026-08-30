@@ -46,6 +46,11 @@ async function run() {
     const manifest = JSON.parse(readFileSync(resolve(targetDir, "manifest.json"), "utf8"));
     const background = readFileSync(resolve(targetDir, "background.js"), "utf8");
     const runtime = readFileSync(resolve(targetDir, "browser67/runtime.js"), "utf8");
+    const windowFocusRuntime = readFileSync(
+      resolve(targetDir, "browser67/window-focus-runtime.js"),
+      "utf8",
+    );
+    const windowAnchor = readFileSync(resolve(targetDir, "browser67/window-anchor.html"), "utf8");
     const buildIdentity = JSON.parse(readFileSync(resolve(targetDir, "browser67/build-identity.json"), "utf8"));
     const buildIdentityJavaScript = readFileSync(resolve(targetDir, "browser67/build-identity.js"), "utf8");
     assert.equal(result.schema, "browser67.extension-build.v1");
@@ -54,10 +59,14 @@ async function run() {
     assert.deepEqual(manifest.content_scripts, []);
     assert.equal(manifest.permissions.includes("webRequest"), true);
     assert.equal(manifest.permissions.includes("storage"), true);
-    assert.match(background, /importScripts\('browser67\/build-identity\.js', 'browser67\/runtime\.js'\)/);
+    assert.match(
+      background,
+      /importScripts\('browser67\/build-identity\.js', 'browser67\/window-focus-runtime\.js', 'browser67\/runtime\.js'\)/,
+    );
     assert.match(background, /browser67HandleCommand/);
     assert.match(background, /extension_identity: globalThis\.__browser67BuildIdentity \?\? null/);
     assert.match(background, /browser67\.browser_instance_id\.v1/);
+    assert.match(background, /errorCode: res\.errorCode, details: res\.errorDetails/);
     assert.match(background, /crypto\.randomUUID\(\)/);
     assert.match(background, /browser_instance_id: await browser67GetInstanceId\(\)/);
     assert.match(
@@ -67,6 +76,8 @@ async function run() {
     assert.match(background, /const monitorNewTabs = data\.monitorNewTabs !== false/);
     assert.match(background, /monitorNewTabs && newTabIds\.size === 0/);
     assert.match(background, /if \(monitorNewTabs\) chrome\.tabs\.onCreated\.addListener/);
+    assert.match(background, /let browser67TabsUpdateFlight = Promise\.resolve\(\)/);
+    assert.match(background, /browser67TabsUpdateFlight\.catch\(\(\) => \{\}\)\.then/);
     assert.equal(background.includes(extensionPageExecutionSource()), true);
     assert.equal(background.includes(extensionBatchReferenceSource()), true);
     assert.match(background, /browser67ResolveBatchReferences\(rawCommand, R/);
@@ -79,6 +90,12 @@ async function run() {
     assert.match(runtime, /authorize_navigation/);
     assert.match(runtime, /last_navigation_actor/);
     assert.match(runtime, /data-browser67-node-id/);
+    assert.match(runtime, /message\?\.cmd === "window"/);
+    assert.match(runtime, /message\?\.cmd === "focus"/);
+    assert.match(windowFocusRuntime, /ensure_agent_window/);
+    assert.match(windowFocusRuntime, /browser67\.focus-lease\.v1/);
+    assert.match(windowFocusRuntime, /service_worker_restart/);
+    assert.match(windowAnchor, /browser67 Agent Window/);
     assert.equal(buildIdentity.schema, "browser67.extension-identity.v1");
     assert.equal(buildIdentity.product, "browser67");
     assert.equal(buildIdentity.extension_version, packageJson.version);
@@ -157,6 +174,9 @@ async function run() {
       extension_identity_generated: true,
       extension_identity_handshake_injected: true,
       browser_instance_identity_injected: true,
+      dedicated_agent_window_runtime: true,
+      focus_lease_runtime: true,
+      serialized_tab_updates: true,
       source_eol_normalized: true,
     })}\n`);
   } finally {
