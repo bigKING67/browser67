@@ -106,6 +106,7 @@ function acceptedItem(item = {}) {
     expires_at: item.accepted?.expires_at,
     expires_in_days: item.accepted?.expires_in_days,
     expires_soon: item.accepted?.expires_soon,
+    source_identity: item.accepted?.source_identity,
     refresh_command: item.commands?.record_replace,
   };
 }
@@ -189,6 +190,7 @@ async function buildOptionalLiveProofStatus(args = {}) {
         "Templates and placeholder commands never count as accepted proof.",
         "External IdP proofs must prove manual-required handoff/resume, not bypass.",
         "Cross-OS native proofs must be collected on the target GUI OS host.",
+        "CAPTCHA/native proofs must be source-equivalent to the current physical-input behavior scope.",
       ],
       forbidden: [
         "Do not fabricate Linux, Windows, OAuth, SSO, or MFA proofs on a different host/provider.",
@@ -209,7 +211,10 @@ function outputText(status) {
       const freshness = item.expires_at
         ? ` expires_at=${item.expires_at} expires_in_days=${item.expires_in_days}`
         : "";
-      process.stdout.write(`- ${item.id}: proof=${item.proof_path}${freshness}\n`);
+      const sourceDigest = item.source_identity?.observed?.source_digest
+        ? ` source_digest=${item.source_identity.observed.source_digest}`
+        : "";
+      process.stdout.write(`- ${item.id}: proof=${item.proof_path}${freshness}${sourceDigest}\n`);
     });
   }
   if (status.checklist.length > 0) {

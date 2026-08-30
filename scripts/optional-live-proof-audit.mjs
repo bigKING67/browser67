@@ -5,6 +5,12 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { resolveBrowser67HomePath } from "../src/runtime/paths/home.mjs";
+import {
+  DIGEST_ALGORITHM,
+  OPTIONAL_PROOF_SOURCE_IDENTITY_SCHEMA,
+  PHYSICAL_INPUT_SOURCE_SCOPE,
+  buildOptionalProofSourceIdentity,
+} from "./optional-live-proof-source-identity.mjs";
 
 const DEFAULT_OPTIONAL_LIVE_PROOF_DIR = join(resolveBrowser67HomePath(), "optional-live-proofs");
 const SENSITIVE_KEY_PATTERN = /(?:password|passwd|secret|token|cookie|session|authorization|credential)/i;
@@ -30,6 +36,7 @@ const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
       "actions",
       "checked_at",
       "command",
+      "source_identity",
       "managed_tab_only",
       "fixture",
       "slider_completed",
@@ -38,6 +45,7 @@ const LOCAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
       "secrets_redacted",
       "evidence",
     ],
+    source_identity_scope: PHYSICAL_INPUT_SOURCE_SCOPE,
   },
 ];
 
@@ -49,7 +57,8 @@ const DEFAULT_EXTERNAL_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     release_scope: "default",
     default_required: true,
     matches: { platform: "win32" },
-    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "evidence"],
+    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "source_identity", "evidence"],
+    source_identity_scope: PHYSICAL_INPUT_SOURCE_SCOPE,
   },
   {
     id: "idp-oauth-popup",
@@ -88,7 +97,8 @@ const ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS = [
     release_scope: "on_demand",
     default_required: false,
     matches: { platform: "linux" },
-    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "evidence"],
+    required_fields: ["platform", "provider_id", "actions", "checked_at", "command", "source_identity", "evidence"],
+    source_identity_scope: PHYSICAL_INPUT_SOURCE_SCOPE,
   },
 ];
 
@@ -252,6 +262,74 @@ function numericField(value) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function validateSourceIdentity(proof, requirement, currentSourceIdentity) {
+  const requiredScope = requirement.source_identity_scope;
+  if (!requiredScope) {
+    return {
+      required: false,
+      ok: true,
+      source_equivalent: undefined,
+    };
+  }
+  const observed = proof?.source_identity;
+  const current = currentSourceIdentity ?? buildOptionalProofSourceIdentity(requiredScope);
+  const errors = [];
+  if (!isPlainObject(observed)) {
+    errors.push("source_identity_object_required");
+  } else {
+    if (observed.schema !== OPTIONAL_PROOF_SOURCE_IDENTITY_SCHEMA) {
+      errors.push("source_identity_schema_invalid");
+    }
+    if (observed.source_scope !== requiredScope) {
+      errors.push("source_identity_scope_mismatch");
+    }
+    if (observed.digest_algorithm !== DIGEST_ALGORITHM) {
+      errors.push("source_identity_digest_algorithm_mismatch");
+    }
+    if (typeof observed.project_version !== "string" || !observed.project_version) {
+      errors.push("source_identity_project_version_required");
+    }
+    if (typeof observed.build_revision !== "string" || !observed.build_revision) {
+      errors.push("source_identity_build_revision_required");
+    }
+    if (typeof observed.build_revision_source !== "string" || !observed.build_revision_source) {
+      errors.push("source_identity_build_revision_source_required");
+    }
+    if (typeof observed.build_inputs_dirty !== "boolean") {
+      errors.push("source_identity_build_inputs_dirty_boolean_required");
+    }
+    if (!/^[a-f0-9]{64}$/u.test(String(observed.source_digest ?? ""))) {
+      errors.push("source_identity_digest_invalid");
+    }
+    if (!Number.isInteger(observed.source_file_count) || observed.source_file_count <= 0) {
+      errors.push("source_identity_file_count_invalid");
+    }
+    if (observed.project_version !== current.project_version) {
+      errors.push("source_identity_project_version_mismatch");
+    }
+    if (observed.source_digest !== current.source_digest) {
+      errors.push("source_identity_digest_mismatch");
+    }
+    if (observed.source_file_count !== current.source_file_count) {
+      errors.push("source_identity_file_count_mismatch");
+    }
+  }
+  return {
+    required: true,
+    ok: errors.length === 0,
+    source_equivalent: errors.length === 0,
+    errors,
+    observed,
+    current,
+    revision_match: isPlainObject(observed)
+      ? observed.build_revision === current.build_revision
+      : false,
+    dirty_state_match: isPlainObject(observed)
+      ? observed.build_inputs_dirty === current.build_inputs_dirty
+      : false,
+  };
+}
+
 function validTranslateX(value) {
   return typeof value === "string" && /^translateX\(-?\d+(?:\.\d+)?px\)$/.test(value.trim());
 }
@@ -283,8 +361,14 @@ function proofTargetsRequirement(proof, requirement) {
   return true;
 }
 
-function validateProof(proof, requirement) {
+function validateProof(proof, requirement, options = {}) {
   const errors = [];
+  const sourceIdentity = validateSourceIdentity(
+    proof,
+    requirement,
+    options.current_source_identity,
+  );
+  errors.push(...(sourceIdentity.errors ?? []));
   if (!proofMatchesRequirement(proof, requirement)) {
     errors.push("requirement_match_failed");
   }
@@ -440,6 +524,7 @@ function validateProof(proof, requirement) {
   return {
     ok: errors.length === 0,
     errors,
+    source_identity: sourceIdentity,
   };
 }
 
@@ -482,6 +567,18 @@ function buildProofRedactionChecklist(proof, requirement) {
       "Command must be the exact approved gate/runbook command, not a placeholder.",
     ),
   ];
+
+  if (requirement.source_identity_scope) {
+    const sourceIdentity = validateSourceIdentity(proof, requirement);
+    checks.push(
+      checklistItem(
+        "source_identity_current",
+        sourceIdentity.ok,
+        "Physical proof must be bound to source-equivalent current browser67 physical-input behavior files.",
+        sourceIdentity.ok ? {} : { errors: sourceIdentity.errors },
+      ),
+    );
+  }
 
   if (requirement.type === "captcha_physical_live") {
     checks.push(
@@ -563,12 +660,17 @@ function proofFreshness(proof) {
 
 function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREMENTS) {
   return requirements.map((requirement) => {
+    const currentSourceIdentity = requirement.source_identity_scope
+      ? buildOptionalProofSourceIdentity(requirement.source_identity_scope)
+      : undefined;
     const candidates = rows
       .filter((row) => row.proof && proofTargetsRequirement(row.proof, requirement))
       .map((row) => ({
         path: row.path,
         ...proofFreshness(row.proof),
-        validation: validateProof(row.proof, requirement),
+        validation: validateProof(row.proof, requirement, {
+          current_source_identity: currentSourceIdentity,
+        }),
       }));
     const accepted = candidates.find((candidate) => candidate.validation.ok);
     return {
@@ -577,6 +679,8 @@ function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREME
       title: requirement.title,
       release_scope: requirement.release_scope,
       default_required: requirement.default_required,
+      source_identity_scope: requirement.source_identity_scope,
+      current_source_identity: currentSourceIdentity,
       satisfied: Boolean(accepted),
       proof_path: accepted?.path,
       accepted: accepted
@@ -586,6 +690,9 @@ function evaluateRequirements(rows, requirements = OPTIONAL_LIVE_PROOF_REQUIREME
           expires_at: accepted.expires_at,
           expires_in_days: accepted.expires_in_days,
           expires_soon: accepted.expires_soon,
+          source_identity: accepted.validation.source_identity.required
+            ? accepted.validation.source_identity
+            : undefined,
         }
         : undefined,
       candidates,
@@ -710,5 +817,6 @@ export {
   ON_DEMAND_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   proofTargetsRequirement,
+  validateSourceIdentity,
   validateProof,
 };

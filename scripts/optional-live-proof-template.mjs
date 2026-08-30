@@ -9,6 +9,7 @@ import {
   DEFAULT_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
 } from "./optional-live-proof-audit.mjs";
+import { buildOptionalProofSourceIdentity } from "./optional-live-proof-source-identity.mjs";
 
 function parseArgs(argv) {
   const parsed = {
@@ -98,6 +99,7 @@ function createProofTemplate(requirement, now = new Date()) {
       checked_at: checkedAt,
       expires_at: expiresAtFrom(checkedAt),
       command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+      source_identity: buildOptionalProofSourceIdentity(requirement.source_identity_scope),
       managed_tab_only: true,
       fixture: "local browser67-owned managed tab",
       slider_completed: false,
@@ -131,6 +133,7 @@ function createProofTemplate(requirement, now = new Date()) {
       command: requirement.matches.platform === "win32"
         ? '$env:TMWD_NATIVE_LIVE_PHYSICAL="1"; $env:TMWD_NATIVE_LIVE_CONFIRM="1"; npm run proof:native-live -- --write'
         : "TMWD_NATIVE_LIVE_PHYSICAL=1 TMWD_NATIVE_LIVE_CONFIRM=1 npm run proof:native-live -- --write",
+      source_identity: buildOptionalProofSourceIdentity(requirement.source_identity_scope),
       evidence: {
         fixture: "local browser67-owned managed tab",
         managed_tab_only: true,

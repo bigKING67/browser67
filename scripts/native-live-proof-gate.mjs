@@ -11,6 +11,10 @@ import {
   DEFAULT_OPTIONAL_LIVE_PROOF_DIR,
 } from "./optional-live-proof-audit.mjs";
 import { buildOptionalLiveProofRecord } from "./optional-live-proof-record.mjs";
+import {
+  PHYSICAL_INPUT_SOURCE_SCOPE,
+  buildOptionalProofSourceIdentity,
+} from "./optional-live-proof-source-identity.mjs";
 
 const CHECK_ID = "native-live-proof-gate";
 const DEFAULT_PHYSICAL_CHILD_TIMEOUT_MS = 60_000;
@@ -161,6 +165,8 @@ function buildNativeLiveProof(parsed, options = {}) {
     checked_at: checkedAt,
     expires_at: options.expires_at ?? expiresAtFrom(checkedAt),
     command: nativeLiveCommand(platform),
+    source_identity: options.source_identity
+      ?? buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
     evidence: {
       fixture: "local browser67-owned managed tab",
       managed_tab_only: true,
@@ -263,6 +269,7 @@ function compactProofRecord(record, proof) {
     path: record.target_path,
     sha256: record.output?.sha256,
     expires_at: proof.expires_at,
+    source_identity: proof.source_identity,
     validation: record.validation,
     redaction_checklist: record.redaction_checklist,
   };
@@ -374,6 +381,7 @@ async function runNativeLiveProofGate(options = {}) {
         platform,
         checked_at: options.checked_at,
         expires_at: options.expires_at,
+        source_identity: options.source_identity,
       });
       const record = await recordNativeLiveProof(proof, {
         platform,

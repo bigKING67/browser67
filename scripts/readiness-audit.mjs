@@ -270,6 +270,27 @@ function proofPlanDetails(optionalProofAudit = {}, missing = []) {
   };
 }
 
+function sourceIdentityMismatchSummary(requirement = {}) {
+  const candidates = Array.isArray(requirement.candidates) ? requirement.candidates : [];
+  const sourceErrors = candidates.flatMap((candidate) => (
+    Array.isArray(candidate.validation?.errors)
+      ? candidate.validation.errors.filter((error) => (
+        error.startsWith("source_identity_")
+        || error === "missing_field:source_identity"
+      ))
+      : []
+  ));
+  return {
+    candidate_count: candidates.length,
+    mismatch_count: candidates.filter((candidate) => (
+      candidate.validation?.source_identity?.required === true
+      && candidate.validation.source_identity.ok !== true
+    )).length,
+    errors: [...new Set(sourceErrors)].sort(),
+    current_source_digest: requirement.current_source_identity?.source_digest,
+  };
+}
+
 function buildNativePointerGap(capabilities = {}, pointerReadiness = {}) {
   if (nativePointerReady(capabilities)) {
     return null;
@@ -296,8 +317,11 @@ function buildNativePointerGap(capabilities = {}, pointerReadiness = {}) {
 }
 
 function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, pointerReadiness = {}) {
-  const localCaptchaPhysicalProof = optionalProofAudit.local_requirements
-    ?.find((requirement) => requirement.id === "captcha-assist-physical-local" && requirement.satisfied === true);
+  const localCaptchaRequirement = optionalProofAudit.local_requirements
+    ?.find((requirement) => requirement.id === "captcha-assist-physical-local");
+  const localCaptchaPhysicalProof = localCaptchaRequirement?.satisfied === true
+    ? localCaptchaRequirement
+    : undefined;
   if (localCaptchaPhysicalProof) {
     const freshness = localCaptchaPhysicalProof.accepted?.expires_at
       ? ` expires_at=${localCaptchaPhysicalProof.accepted.expires_at} expires_in_days=${localCaptchaPhysicalProof.accepted.expires_in_days}`
@@ -308,6 +332,21 @@ function buildCaptchaPhysicalLiveGap(optionalProofAudit, nativeCapabilities, poi
       0,
       `proof_path=${localCaptchaPhysicalProof.proof_path} proof_dir=${optionalProofAudit.proof_dir}${freshness}`,
       "Keep the repo-external sanitized proof fresh by rerunning the physical gate after CAPTCHA assist or native-input provider changes.",
+    );
+  }
+
+  const sourceMismatch = sourceIdentityMismatchSummary(localCaptchaRequirement);
+  if (sourceMismatch.mismatch_count > 0) {
+    return createGap(
+      "captcha_physical_live_gate_source_mismatch",
+      "optional_live",
+      0.006,
+      `historical_proofs=${sourceMismatch.candidate_count} source_mismatches=${sourceMismatch.mismatch_count} errors=${sourceMismatch.errors.join(",")} current_source_digest=${sourceMismatch.current_source_digest ?? "unknown"}`,
+      "The historical physical proof does not cover the current physical-input behavior source. After explicit local permission and native-pointer readiness, rerun the physical CAPTCHA gate to generate a source-bound proof.",
+      {
+        ...recoveryDetails(pointerReadiness),
+        ...proofPlanDetails(optionalProofAudit, ["captcha-assist-physical-local"]),
+      },
     );
   }
 
@@ -634,12 +673,27 @@ async function buildOptionalGaps({ report }) {
 
   const missingNativeProofs = optionalProofAudit.missing.filter((id) => id.startsWith("native-live-"));
   if (missingNativeProofs.length > 0) {
+    const missingNativeRequirements = optionalProofAudit.requirements
+      .filter((requirement) => missingNativeProofs.includes(requirement.id));
+    const sourceMismatches = missingNativeRequirements
+      .map((requirement) => ({
+        id: requirement.id,
+        ...sourceIdentityMismatchSummary(requirement),
+      }))
+      .filter((summary) => summary.mismatch_count > 0);
+    const sourceMismatchEvidence = sourceMismatches.length > 0
+      ? ` source_mismatches=${sourceMismatches.map((item) => `${item.id}:${item.mismatch_count}`).join(",")} current_source_digests=${sourceMismatches.map((item) => item.current_source_digest).filter(Boolean).join(",")}`
+      : "";
     gaps.push(createGap(
-      "cross_os_native_live_not_proven",
+      sourceMismatches.length > 0
+        ? "cross_os_native_live_source_mismatch"
+        : "cross_os_native_live_not_proven",
       "portability",
       0.004,
-      `current_platform=${process.platform} missing_proofs=${missingNativeProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}`,
-      "Run npm run check:native-live on the Windows GUI host, then explicitly run proof:native-live to generate sanitized target-OS proof JSON. Linux desktop proof is supported on demand and is not part of the default self-use readiness set.",
+      `current_platform=${process.platform} missing_proofs=${missingNativeProofs.join(",")} proof_dir=${optionalProofAudit.proof_dir}${sourceMismatchEvidence}`,
+      sourceMismatches.length > 0
+        ? "The historical target-OS proof does not cover the current physical-input behavior source. Regenerate it on the matching GUI OS from source-equivalent browser67 code."
+        : "Run npm run check:native-live on the Windows GUI host, then explicitly run proof:native-live to generate sanitized target-OS proof JSON. Linux desktop proof is supported on demand and is not part of the default self-use readiness set.",
       proofPlanDetails(optionalProofAudit, missingNativeProofs),
     ));
   }
@@ -669,6 +723,7 @@ function computeScore(requiredChecks, optionalGaps) {
 
 function isExternalOptionalProofGap(gap = {}) {
   return gap.id === "cross_os_native_live_not_proven"
+    || gap.id === "cross_os_native_live_source_mismatch"
     || gap.id === "complex_idp_optional_live_not_proven";
 }
 

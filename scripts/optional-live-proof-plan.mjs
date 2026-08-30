@@ -135,6 +135,8 @@ function baseItem({ requirement, result, proofDir }) {
     proof_path: result?.proof_path,
     accepted: result?.accepted,
     candidates: result?.candidates,
+    source_identity_scope: result?.source_identity_scope,
+    current_source_identity: result?.current_source_identity,
     proof_dir: proofDir,
     commands: baseCommands(requirement, proofDir),
   };
@@ -180,6 +182,7 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer, c
       "js_cdp_widget_click=false",
       "browser_private_state_access=false",
       "secrets_redacted=true",
+      "source_identity.source_digest matches the current physical-input behavior scope",
     ],
     safety_boundaries: [
       "Do not use JS/CDP clicks on CAPTCHA widgets.",
@@ -191,6 +194,7 @@ function buildLocalCaptchaItem({ requirement, result, proofDir, nativePointer, c
       "Run the native pointer readiness check.",
       "Run the explicit physical gate on a browser67-owned local fixture tab.",
       "Confirm the generated proof records slider completion and visible movement.",
+      "Confirm the generated source_identity is source-equivalent to the current checkout.",
       "Validate the repo-external proof directory.",
     ],
     native_pointer: nativePointer,
@@ -244,6 +248,7 @@ function buildNativeHostItem({ requirement, result, proofDir, nativePointer, cur
       "evidence.drag_completed=true",
       "evidence.click_completed=true",
       "evidence.browser_private_state_access=false",
+      "source_identity.source_digest matches the current physical-input behavior scope",
     ],
     safety_boundaries: [
       "Do not run against user unmanaged tabs.",
@@ -256,6 +261,7 @@ function buildNativeHostItem({ requirement, result, proofDir, nativePointer, cur
       "Run check:native-live to confirm the no-input target-host readiness result.",
       "Run the explicit proof:native-live physical gate; it creates a managed fixture, verifies get_window_rect/drag/click, finalizes its tabs, and records sanitized JSON automatically.",
       "Transfer only the generated native-live-*.json file to the release host and record it through proof:optional-live-record.",
+      "Require proof:optional-live-record to confirm source-equivalent current behavior identity on the release checkout.",
       "Validate all optional proofs from the release host's repo-external proof directory.",
     ],
     native_pointer: currentHostMatches ? nativePointer : undefined,
@@ -372,6 +378,9 @@ function outputText(plan) {
     }
     if (item.accepted?.expires_at) {
       process.stdout.write(`  expires_at=${item.accepted.expires_at} expires_in_days=${item.accepted.expires_in_days}\n`);
+    }
+    if (item.accepted?.source_identity?.observed?.source_digest) {
+      process.stdout.write(`  source_digest=${item.accepted.source_identity.observed.source_digest}\n`);
     }
     if (item.permission_recovery) {
       process.stdout.write(`  permission_recovery=${item.permission_recovery.status} blocker=${item.permission_recovery.blocker}\n`);
