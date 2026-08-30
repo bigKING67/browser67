@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Present the browser67-owned Agent Window with native platform behavior: enter
+  a macOS Full Screen Space while retaining Chrome tabs, address bar,
+  extensions, and bookmarks, and maximize the ordinary Chrome window on
+  Windows.
+- Bind Agent Window presentation to the exact browser67 anchor and window,
+  re-verify that identity after a native transition, and leave ordinary user
+  Chrome windows unchanged.
+
 ## 0.7.0 - 2026-08-30
 
 - Make managed browser work non-exclusive by default: create/reuse new
