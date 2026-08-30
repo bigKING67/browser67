@@ -179,6 +179,13 @@ for explicit debug Chrome, CI, or callframe/debugger-level work.
 
 For active browser work, use browser_tab_lifecycle action=select_or_create with
 ownership_policy=tmwd_only and a stable project/surface-level workspace_key.
+Agent-created tabs default to `window_policy=dedicated`,
+`focus_policy=background_preferred`, and `active=false`. The extension creates
+or reuses a non-focused browser67 Agent window inside the selected Chrome/Edge
+Profile, so it retains the same approved login/session state without replacing
+the user's active working tab. Use `window_policy=current` only as an explicit
+compatibility choice and `focus_policy=foreground` only for a deliberate visible
+handoff.
 User-opened unmanaged tabs are read-only by default. Do not navigate, click,
 type into, close, or adopt them unless the user explicitly asks to operate on
 that exact tab. When explicitly requested, use inspect_adoption then
@@ -271,7 +278,7 @@ Cross-origin captcha-like iframes are degraded/manual-only: keep the iframe rect
 and clipped screenshot plan, but do not infer inner controls or send physical
 input into the frame.
 For normal
-browser67-owned tabs it uses the TMWD transport `tabs.switch` to foreground the target before
+browser67-owned tabs it uses a bounded TMWD managed-tab focus lease to foreground the target before
 physical provider input, waits for pre_input_settle_ms, and refreshes
 planner/vision coordinates against the active window before the native click or
 drag. This avoids stale Chrome toolbar/content inset estimates. On macOS the
@@ -279,6 +286,11 @@ native path matches the managed Chrome/Edge tab id first and uses its redacted U
 only as a fallback, foregrounds the exact window, reads logical screen-point
 bounds, and reselects that same tab immediately before `cliclick`. Explicit
 window_title/window_pid/window_active_confirmed are fallbacks.
+With the default `focus_policy=background_preferred`, completion restores the
+prior browser tab only when no user focus/tab activity was observed, the managed
+target is still foreground, the original target still exists, and the extension
+service worker did not restart. `background_only` refuses focus-required input;
+`foreground` intentionally keeps the target visible.
 physical_input_provider=auto currently executes through native-os
 unless the guarded ljq-ctrl bridge is explicitly enabled and reports the
 requested action. Run `npm run check:ljqctrl` to diagnose local Python ljqCtrl

@@ -302,6 +302,25 @@ transport drift.
   suspended and mutations return `ADOPTED_TAB_SUSPENDED`; run a fresh
   `inspect_adoption -> adopt_existing` flow to resume from the new document.
 
+  New agent-created tabs default to `window_policy:"dedicated"`,
+  `focus_policy:"background_preferred"`, and `active:false`. The extension
+  creates/reuses one browser67 Agent window per Browser Profile with
+  `focused:false`; the window shares that Profile's approved cookies/session but
+  is not the user's working window. `window_policy:"current"` is an explicit
+  compatibility mode. `focus_policy:"background_only"` rejects operations that
+  require real foreground focus, while `focus_policy:"foreground"` intentionally
+  leaves the managed tab visible. The legacy `active:true` flag only activates a
+  tab inside its selected window and should not be used as a focus contract.
+  Before reusing a dedicated managed tab, browser67 checks its live window. If
+  the user moved it into another window, browser67 quarantines that registry
+  record and creates or reuses a different dedicated tab; it never moves the
+  user's tab back into the Agent window.
+  If an allowed `tmwd_mode:"auto"` operation actually falls back to controlled
+  CDP, its effective policy is `isolated_target`, not `dedicated`; reuse and
+  `finalize_task` follow that recorded effective transport so the page is not
+  duplicated or stranded. Login-state work still uses `tmwd_mode:"tmwd"` and
+  must not silently fall back to CDP.
+
 Frontend route planners must keep browser policy separate from runtime truth.
 `planned_browser_lifecycle` is the canonical route policy and the legacy
 `browser_lifecycle` field is only its compatibility alias. Planner output uses
@@ -558,7 +577,7 @@ route with `use_provider_coordinates:true` plus
 `confirm_provider_coordinates:true`. Provider coordinates are converted through
 the region artifact clip and refreshed viewport metrics before native input.
 For normal
-browser67-owned tabs, it foregrounds the target with browser67 `tabs.switch` before
+browser67-owned tabs, it acquires a bounded browser67 managed-tab focus lease before
 physical provider input, waits for `pre_input_settle_ms`, then refreshes the
 planner/vision coordinates against the now-active window before sending native
 input. This post-activation refresh avoids stale Chrome toolbar/content inset
@@ -570,6 +589,10 @@ reads logical screen-point bounds, and reselects the same tab immediately before
 TMWD control session, visible browser tab, and OS foreground window aligned even
 when several Chrome windows are open. `window_title`, `window_pid`, and
 `window_active_confirmed:true` are fallbacks for unusual window-manager cases.
+After input, `background_preferred` attempts a guarded restore; observed user
+activity, extension service-worker recovery, target changes, or missing original
+targets suppress restoration. `foreground` keeps the CAPTCHA tab visible, while
+`background_only` refuses to acquire the lease.
 `physical_input_provider:"auto"` currently executes through `native-os` unless
 the guarded `ljq-ctrl` bridge is explicitly enabled and reports the needed
 action. `ljq-ctrl` probe results are TTL-cached to avoid repeated Python startup
@@ -633,6 +656,25 @@ sites to use the generic profile directory above.
 
 - User-opened tabs are `user_unmanaged`: scan/read-only by default. Do not navigate, type, click, close, or adopt them unless the user explicitly asks to operate on the current tab.
 - browser67 work tabs are `tmwd_managed` in the compatibility registry: create them through `browser_tab_lifecycle`.
+- Agent-created managed tabs default to the same-Profile browser67 Agent window
+  (`window_policy:"dedicated"`) and background operation
+  (`focus_policy:"background_preferred"`, `active:false`). Existing legacy
+  managed tabs are not moved into that window; they finish under their existing
+  lifecycle, while new work uses the dedicated pool. Pass
+  `window_policy:"current"` only when the current-window behavior is explicitly
+  required. Dedicated reuse validates the tab's live `window_id`; a tab the user
+  moved out of the Agent window is excluded without being moved back.
+- Ordinary navigation, scan, extraction, wait, page script, and CDP bridge work
+  stay background-only in practice and do not acquire OS focus. A native input
+  or CAPTCHA action with a managed `tab_id` may acquire a bounded focus lease.
+  Default `background_preferred` restores the prior Chrome/Edge tab only if the
+  browser was originally focused, the original target still exists, the managed
+  target is still foreground, no user focus/tab activity was observed, and the
+  extension service worker did not restart. Any uncertainty skips restoration
+  instead of overriding the user. Only one focus lease may be active per Browser
+  Profile, including concurrent acquisition attempts, and switching to another
+  app is treated as user activity. `background_only` fails such actions with
+  `FOREGROUND_REQUIRED`; `foreground` deliberately keeps the target foreground.
 - Managed tab registry is stored outside the repo under the active browser67 home, canonically `~/.browser67/tab-workspace/managed-tabs.json`. Override with `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for tests or isolated runs.
 - `list_managed` returns live sessions by default and limits large arrays. Use `summary_only:true`, `max_items`, or `max_stale_items` for bounded diagnostics; summary mode returns counts and suppresses unrelated live-session rows. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
 - `create_managed` / `select_or_create` wait for the created tab to be visible by default (`wait_until:"listed"`, `wait_timeout_ms:3000`). Use `wait_until:"none"` only for fire-and-forget workflows.
@@ -670,7 +712,7 @@ sites to use the generic profile directory above.
 - Run `npm run check:ljqctrl` after `ljq-ctrl` provider changes. It is a diagnostic-only default gate and exits successfully when the local driver is not configured; use `TMWD_LJQCTRL_REQUIRE=1`, `TMWD_LJQCTRL_REQUIRE_EXECUTE=1`, or `TMWD_LJQCTRL_REQUIRE_CAPTURE=1` for machine-local hard gates.
 - GenericAgent's newer macOS `macljqCtrl` / AX implementation is imported only as reference material under `docs/upstream/genericagent/`. On macOS, `check:ljqctrl -- --json` reports a `macljqctrl` informational diagnostic for `Quartz`, `AppKit`, `ApplicationServices`, `PIL`, `cv2`, and `numpy`, plus the physical-pixel `CropToScreen` coordinate model. This does not promote AX, screenshots, clicks, or window activation into the default path; `native-os` remains the default macOS provider unless a future guarded provider is explicitly enabled.
 - Run `npm run check:readiness` for the near-100 governance score. Its `ljqCtrl` row is platform-aware and uses the same diagnostic-only Python capability probe as `check:ljqctrl`; it distinguishes non-Windows not-applicable defaults, Windows/default not-configured, invalid configured interpreter, importable-but-execution-gated, and execution-bridge-available states without clicking, dragging, activating windows, capturing screenshots, reading cookies, or touching clipboard. It also reports an informational native pointer row when the OS provider lacks click/drag capability or required permissions, and the local CAPTCHA physical-proof row separately distinguishes native pointer blocked, not executed, and proof-missing states. When macOS Accessibility blocks `cliclick`, the affected readiness JSON gaps include the same structured `permission_recovery` plan as `check:native-pointer`, so callers can show the Settings path and copyable recovery commands directly. Optional proof gaps also include a compact `proof_plan` with the plan command, proof directory, and missing proof ids.
-- Run `npm run check:optional-live-proofs` when collecting near-100 default evidence from the local CAPTCHA physical gate, the Windows native-input host, or approved external OAuth/SSO/MFA providers. Proof files live outside the repo by default under `~/.browser67/optional-live-proofs`, must be sanitized, and are documented in `docs/optional-live-proofs.md`. Linux desktop proof remains available through `--id native-live-linux` and `--include-on-demand`; it is not a default self-use requirement. Use `npm run plan:optional-live-proofs` for a no-input, no-browser proof collection runbook with per-proof status, accepted proof freshness, host/provider requirements, blockers, `next_command`, `collection_steps`, commands, and evidence fields. Use `npm run proof:optional-live-status` for an operator-facing accepted/missing checklist with owner, next command, record/write/replace commands, validation command, and the no-fabricated-proof completion policy. Use `npm run proof:optional-live-template` to generate safe `ok:false` starter templates instead of hand-writing proof JSON; after a real host/provider gate produces sanitized JSON, use `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` for dry-run validation and redaction checklist output. The record validator rejects obvious Bearer/JWT/cookie-like values and unredacted IdP tenant/account/provider identifiers. Add `--write` only to persist canonical proof repo-externally, and add `--replace` only for an intentional audited refresh of an existing proof.
+- Run `npm run check:optional-live-proofs` when collecting near-100 default evidence from the local CAPTCHA physical gate, the Windows native-input host, or approved external OAuth/SSO/MFA providers. Proof files live outside the repo by default under `~/.browser67/optional-live-proofs`, must be sanitized, and are documented in `docs/optional-live-proofs.md`. Linux desktop proof remains available through `--id native-live-linux` and `--include-on-demand`; it is not a default self-use requirement. CAPTCHA/native physical proof carries `browser67.optional-proof-source.v1` and is accepted only when its normalized `physical-input-v1` behavior digest is source-equivalent to the current checkout; `checked_at`/`expires_at` alone never proves newer native/focus code. Use `npm run plan:optional-live-proofs` for a no-input, no-browser proof collection runbook with per-proof status, accepted proof freshness/source identity, host/provider requirements, blockers, `next_command`, `collection_steps`, commands, and evidence fields. Use `npm run proof:optional-live-status` for an operator-facing accepted/missing checklist with owner, next command, record/write/replace commands, validation command, and the no-fabricated-proof completion policy. Use `npm run proof:optional-live-template` to generate safe `ok:false` starter templates instead of hand-writing proof JSON; after a real host/provider gate produces sanitized JSON, use `npm run proof:optional-live-record -- --id <proof-id> --from-json <sanitized.json>` for dry-run validation and redaction checklist output. The record validator rejects source-mismatched physical proofs, obvious Bearer/JWT/cookie-like values, and unredacted IdP tenant/account/provider identifiers. Add `--write` only to persist canonical proof repo-externally, and add `--replace` only for an intentional audited refresh of an existing proof.
 
 ## JS reverse boundary
 

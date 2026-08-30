@@ -7,6 +7,8 @@ Codex / MCP client
   -> src/tmwd-hub.mjs
      -> src/tmwd-hub/{config,sessions,relay,ws-server,link-server,shutdown}.mjs
   -> extension/background.js
+     -> extension/browser67/window-focus-runtime.js
+        -> dedicated Agent window / bounded focus lease
   -> Chrome/Edge tab
 
 Codex / MCP client
@@ -41,6 +43,14 @@ native fallback -> src/native/input.mjs -> macOS/Windows/Linux OS input backend
    pretending support.
 8. Keep JS reverse docs and mounted skill content synchronized by script.
 9. Keep the hub optionally managed by user-level launchd, not a hidden global service.
+10. Keep routine managed work background-first in a dedicated, non-focused
+    window within the selected Browser Profile. This isolates tab presentation,
+    not profile data: approved cookies and sessions remain those of the same
+    Profile.
+11. Treat foreground focus as a bounded capability. Ordinary bridge work does
+    not acquire it; native/CAPTCHA work may acquire one managed-tab focus lease.
+    Restore is conditional on unchanged user focus, a still-live original
+    target, an unchanged foreground target, and no service-worker recovery.
 
 ## Maintenance boundaries
 

@@ -180,6 +180,19 @@ Active tasks should create or reuse a browser67-owned tab through
 that exact page requires `inspect_adoption` followed by `adopt_existing`;
 `finalize_task` releases an adopted tab without closing the user's page.
 
+New browser67-owned tabs default to `window_policy:"dedicated"` and
+`focus_policy:"background_preferred"`: they run in a profile-local browser67
+Agent window created with `focused:false`, so ordinary navigation, extraction,
+waits, and scripts do not replace the user's active tab. This is still the same
+Chrome/Edge Profile and therefore keeps the same approved login/session state;
+it is not a second Profile or incognito context. Use `window_policy:"current"`
+only for compatibility, and `focus_policy:"foreground"` only for an intentional
+visible handoff. CAPTCHA and native input use a bounded focus lease and restore
+the prior browser tab only when browser67 can prove that the user did not change
+focus during the lease. Concurrent leases are rejected. If the user manually
+moves an Agent tab into another window, browser67 excludes it from dedicated
+reuse and never moves it back.
+
 User navigation, extension reconnection, or lease-generation changes suspend an
 adopted tab. Re-inspect and re-adopt rather than mutating a target whose identity
 may have changed.

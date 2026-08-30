@@ -125,7 +125,8 @@ The gate:
 4. performs and visibly verifies a slider drag;
 5. performs and verifies an inside-hotspot checkbox click;
 6. finalizes only its managed fixture tabs; and
-7. records sanitized proof through the existing optional-proof validator.
+7. records sanitized proof through the existing optional-proof validator with
+   the current normalized `physical-input-v1` behavior-source identity.
 
 The canonical output file is:
 
@@ -136,6 +137,8 @@ The canonical output file is:
 The proof stores no screenshot, cookie, token, page content, window title, or
 account data. It contains only the target platform, action/result booleans,
 provider/driver class, timestamps, and safe-boundary assertions.
+It also contains non-sensitive build provenance plus a SHA-256 behavior digest;
+it does not contain source text or local filesystem paths.
 
 If an accepted proof already exists, the gate blocks before moving the pointer.
 Use `--replace` only for an intentional refresh:
@@ -162,7 +165,9 @@ npm run proof:optional-live-status -- --id native-live-win32 --json
 
 Transfer only `native-live-win32.json` to the release workstation. Do not copy
 the whole browser67 runtime directory, screenshots, profiles, logs, or browser
-state. On the release workstation, run a dry validation before writing:
+state. The release checkout must contain source-equivalent physical-input
+behavior; an older unexpired proof is rejected when the behavior digest differs.
+On the release workstation, run a dry validation before writing:
 
 ```powershell
 npm run proof:optional-live-record -- `
