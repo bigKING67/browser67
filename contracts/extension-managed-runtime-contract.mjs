@@ -34,6 +34,7 @@ async function run() {
   const scriptCalls = [];
   const alarmsCreated = [];
   const tabQueryCalls = [];
+  let platformOs = "mac";
   const anchorUrl = "chrome-extension://fixture/browser67/window-anchor.html";
   const tabRows = new Map([
     [11, { id: 11, windowId: 1, active: true, url: "https://user.fixture.test/work" }],
@@ -41,8 +42,8 @@ async function run() {
     [42, { id: 42, windowId: 2, active: false, url: "https://fixture.test/other" }],
   ]);
   const windowRows = new Map([
-    [1, { id: 1, focused: true, type: "normal" }],
-    [2, { id: 2, focused: false, type: "normal" }],
+    [1, { id: 1, focused: true, state: "normal", type: "normal" }],
+    [2, { id: 2, focused: false, state: "normal", type: "normal" }],
   ]);
   let nextWindowId = 3;
   let nextTabId = 51;
@@ -144,7 +145,12 @@ async function run() {
         nextWindowId += 1;
         const tabId = nextTabId;
         nextTabId += 1;
-        const windowRow = { id, focused: options.focused === true, type: options.type || "normal" };
+        const windowRow = {
+          id,
+          focused: options.focused === true,
+          state: options.state || "normal",
+          type: options.type || "normal",
+        };
         const tabRow = { id: tabId, windowId: id, active: true, url: String(options.url || "") };
         windowRows.set(id, windowRow);
         tabRows.set(tabId, tabRow);
@@ -162,6 +168,9 @@ async function run() {
       },
     },
     runtime: {
+      async getPlatformInfo() {
+        return { os: platformOs, arch: "arm64" };
+      },
       getURL(path) {
         return `chrome-extension://fixture/${String(path)}`;
       },
@@ -184,6 +193,9 @@ async function run() {
     Set,
     Promise,
     URL,
+    navigator: {
+      userAgent: "Mozilla/5.0 AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+    },
     crypto: {
       randomUUID() {
         return `contract-lease-${String(Date.now())}`;
@@ -212,12 +224,29 @@ async function run() {
   assert.equal(agentWindow.ok, true);
   assert.equal(agentWindow.data.created, true);
   assert.equal(agentWindow.data.focused, false);
+  assert.equal(agentWindow.data.browser_family, "chrome");
+  assert.equal(agentWindow.data.platform_os, "mac");
+  assert.equal(agentWindow.data.presentation.mode, "macos_native_fullscreen_space");
+  assert.equal(agentWindow.data.presentation.status, "native_required");
+  assert.equal(agentWindow.data.presentation.native_action_required, true);
+  assert.equal(agentWindow.data.presentation.toolbar_preserved, true);
+  assert.equal(agentWindow.data.focus_snapshot.window_id, 1);
+  assert.equal(agentWindow.data.focus_snapshot.tab_id, 11);
+  assert.equal(agentWindow.data.focus_snapshot.browser_focused, true);
   assert.equal(tabRows.get(agentWindow.data.anchor_tab_id)?.url, anchorUrl);
   assert.equal(windowRows.get(1)?.focused, true);
   assert.equal(tabQueryCalls.some((query) => query.url === anchorUrl), true);
   const reusedAgentWindow = await handle({ cmd: "window", method: "ensure_agent_window" });
   assert.equal(reusedAgentWindow.data.reused, true);
   assert.equal(reusedAgentWindow.data.window_id, agentWindow.data.window_id);
+  platformOs = "win";
+  const windowsAgentWindow = await handle({ cmd: "window", method: "ensure_agent_window" });
+  assert.equal(windowsAgentWindow.data.presentation.mode, "windows_maximized");
+  assert.equal(windowsAgentWindow.data.presentation.status, "ready");
+  assert.equal(windowsAgentWindow.data.presentation.native_action_required, false);
+  assert.equal(windowsAgentWindow.data.presentation.toolbar_preserved, true);
+  assert.equal(windowRows.get(agentWindow.data.window_id)?.state, "maximized");
+  platformOs = "mac";
   const unmanagedObservation = await handle({
     cmd: "network",
     method: "observe",

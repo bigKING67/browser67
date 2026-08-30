@@ -20,6 +20,92 @@ function browser67AnchorUrl() {
   return chrome.runtime.getURL("browser67/window-anchor.html");
 }
 
+function browser67BrowserFamily() {
+  const userAgent = String(globalThis.navigator?.userAgent || "");
+  if (/\bEdg\//u.test(userAgent)) return "edge";
+  if (/\b(?:Chrome|Chromium)\//u.test(userAgent)) return "chrome";
+  return "chromium_unknown";
+}
+
+async function browser67PlatformInfo() {
+  try {
+    const info = await chrome.runtime.getPlatformInfo();
+    return {
+      os: String(info?.os || "unknown"),
+      arch: String(info?.arch || "unknown"),
+    };
+  } catch {
+    return { os: "unknown", arch: "unknown" };
+  }
+}
+
+function browser67WindowState(windowRow) {
+  const state = String(windowRow?.state || "normal").trim().toLowerCase();
+  return state || "normal";
+}
+
+async function browser67ApplyAgentWindowPresentation(windowId, platform, windowRow) {
+  if (platform.os === "win") {
+    const updatedWindow = browser67WindowState(windowRow) === "maximized"
+      ? windowRow
+      : await chrome.windows.update(windowId, { state: "maximized" });
+    const windowState = browser67WindowState(updatedWindow);
+    if (windowState !== "maximized") {
+      throw new Error(`browser67 Agent window did not enter maximized state: ${windowState}`);
+    }
+    return {
+      mode: "windows_maximized",
+      status: "ready",
+      native_action_required: false,
+      toolbar_preserved: true,
+      window_state: windowState,
+      window: updatedWindow,
+    };
+  }
+  if (platform.os === "mac") {
+    const windowState = browser67WindowState(windowRow);
+    const ready = windowState === "fullscreen";
+    return {
+      mode: "macos_native_fullscreen_space",
+      status: ready ? "ready" : "native_required",
+      native_action_required: !ready,
+      toolbar_preserved: true,
+      window_state: windowState,
+      window: windowRow,
+    };
+  }
+  return {
+    mode: "normal",
+    status: "not_applicable",
+    native_action_required: false,
+    toolbar_preserved: true,
+    window_state: browser67WindowState(windowRow),
+    window: windowRow,
+  };
+}
+
+function browser67PublicAgentWindow(record, windowRow, presentation, platform, focusSnapshot, flags) {
+  return {
+    status: "ready",
+    created: flags.created === true,
+    reused: flags.reused === true,
+    focused: windowRow?.focused === true,
+    browser_family: browser67BrowserFamily(),
+    platform_os: platform.os,
+    platform_arch: platform.arch,
+    anchor_url: browser67AnchorUrl(),
+    focus_snapshot: focusSnapshot,
+    presentation: {
+      mode: presentation.mode,
+      status: presentation.status,
+      native_action_required: presentation.native_action_required === true,
+      toolbar_preserved: presentation.toolbar_preserved === true,
+      window_state: presentation.window_state,
+    },
+    ...record,
+  };
+}
+
 async function browser67GetTab(tabId) {
   const normalized = browser67NumericId(tabId);
   if (normalized === null) return null;
@@ -91,18 +177,28 @@ async function browser67DiscoverAgentWindow() {
 }
 
 async function browser67EnsureAgentWindowInternal() {
+  const [focusSnapshot, platform] = await Promise.all([
+    browser67CurrentFocus(),
+    browser67PlatformInfo(),
+  ]);
   const stored = await browser67ValidateAgentWindow(await browser67StoredAgentWindow());
   const discovered = stored || await browser67DiscoverAgentWindow();
   if (discovered) {
     await browser67PersistAgentWindow(discovered);
     const windowRow = await browser67GetWindow(discovered.window_id);
-    return {
-      status: "ready",
-      created: false,
-      reused: true,
-      focused: windowRow?.focused === true,
-      ...discovered,
-    };
+    const presentation = await browser67ApplyAgentWindowPresentation(
+      discovered.window_id,
+      platform,
+      windowRow,
+    );
+    return browser67PublicAgentWindow(
+      discovered,
+      presentation.window,
+      presentation,
+      platform,
+      focusSnapshot,
+      { created: false, reused: true },
+    );
   }
   const createdWindow = await chrome.windows.create({
     url: browser67AnchorUrl(),
@@ -125,13 +221,19 @@ async function browser67EnsureAgentWindowInternal() {
     updated_at: new Date().toISOString(),
   };
   await browser67PersistAgentWindow(record);
-  return {
-    status: "ready",
-    created: true,
-    reused: false,
-    focused: createdWindow?.focused === true,
-    ...record,
-  };
+  const presentation = await browser67ApplyAgentWindowPresentation(
+    windowId,
+    platform,
+    createdWindow,
+  );
+  return browser67PublicAgentWindow(
+    record,
+    presentation.window,
+    presentation,
+    platform,
+    focusSnapshot,
+    { created: true, reused: false },
+  );
 }
 
 async function browser67EnsureAgentWindow() {
