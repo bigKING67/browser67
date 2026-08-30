@@ -20,6 +20,7 @@ import {
   ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS,
   validateProof,
 } from "../../scripts/optional-live-proof-audit.mjs";
+import { PHYSICAL_INPUT_SOURCE_SCOPE } from "../../scripts/optional-live-proof-source-identity.mjs";
 
 function assertNotCalled(label) {
   return () => {
@@ -129,6 +130,8 @@ async function assertNativeLiveProofGateContract() {
   assert.equal(linuxProof.evidence.drag_completed, true);
   assert.equal(linuxProof.evidence.click_completed, true);
   assert.equal(linuxProof.evidence.browser_private_state_access, false);
+  assert.equal(linuxProof.source_identity.source_scope, PHYSICAL_INPUT_SOURCE_SCOPE);
+  assert.match(linuxProof.source_identity.source_digest, /^[a-f0-9]{64}$/u);
   assert.equal(validateProof(linuxProof, requirement("native-live-linux")).ok, true);
 
   const windowsProof = buildNativeLiveProof(successfulPhysicalPayload("win32"), {
@@ -316,6 +319,7 @@ async function assertNativeLiveProofGateContract() {
     const persisted = JSON.parse(await fs.readFile(persistedPath, "utf8"));
     assert.equal(persisted.platform, "linux");
     assert.equal(persisted.evidence.window_rect_verified, true);
+    assert.equal(persisted.source_identity.source_scope, PHYSICAL_INPUT_SOURCE_SCOPE);
 
     const existingBlocked = await runNativeLiveProofGate({
       argv: ["--write", "--proof-dir", proofDir],

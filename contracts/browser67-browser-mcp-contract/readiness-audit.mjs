@@ -4,6 +4,11 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  PHYSICAL_INPUT_SOURCE_SCOPE,
+  buildOptionalProofSourceIdentity,
+} from "../../scripts/optional-live-proof-source-identity.mjs";
+
 async function writeFakePythonProbe(dir, name, payload) {
   const file = path.join(dir, name);
   await fs.writeFile(
@@ -36,6 +41,7 @@ async function writeLocalCaptchaPhysicalProof(dir) {
       checked_at: checkedAt,
       expires_at: expiresAt,
       command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+      source_identity: buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
       managed_tab_only: true,
       fixture: "local browser67-owned managed tab",
       slider_completed: true,
@@ -71,6 +77,7 @@ async function writeWindowsNativeProof(dir) {
       checked_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
       command: '$env:TMWD_NATIVE_LIVE_PHYSICAL="1"; $env:TMWD_NATIVE_LIVE_CONFIRM="1"; npm run proof:native-live -- --write',
+      source_identity: buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
       evidence: {
         fixture: "local browser67-owned managed tab",
         managed_tab_only: true,
@@ -87,6 +94,12 @@ async function writeWindowsNativeProof(dir) {
     }, null, 2)}\n`,
   );
   return file;
+}
+
+async function removeSourceIdentity(path) {
+  const proof = JSON.parse(await fs.readFile(path, "utf8"));
+  delete proof.source_identity;
+  await fs.writeFile(path, `${JSON.stringify(proof, null, 2)}\n`);
 }
 
 function runReadinessAudit(env = {}) {
@@ -206,6 +219,34 @@ async function assertReadinessLjqCtrlProbeContract() {
     assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_blocked_by_native_pointer"), undefined);
     assert.equal(findGap(provenPhysicalAudit, "captcha_physical_live_gate_proof_missing"), undefined);
     assert.equal(findGap(provenPhysicalAudit, "cross_os_native_live_not_proven"), undefined);
+
+    const staleProofDir = path.join(tmpDir, "source-mismatched-proofs");
+    await fs.mkdir(staleProofDir, { recursive: true });
+    const staleCaptchaPath = await writeLocalCaptchaPhysicalProof(staleProofDir);
+    const staleWindowsPath = await writeWindowsNativeProof(staleProofDir);
+    await removeSourceIdentity(staleCaptchaPath);
+    await removeSourceIdentity(staleWindowsPath);
+    const sourceMismatchAudit = runReadinessAudit({
+      TMWD_OPTIONAL_PROOF_DIR: staleProofDir,
+      TMWD_CAPTCHA_ASSIST_PHYSICAL: "",
+      TMWD_CAPTCHA_ASSIST_CONFIRM: "",
+      TMWD_LJQCTRL_PYTHON: "",
+      TMWD_LJQCTRL_PYTHON_CANDIDATES: "",
+      TMWD_LJQCTRL_EXECUTE: "",
+    });
+    const captchaSourceMismatch = findGap(
+      sourceMismatchAudit,
+      "captcha_physical_live_gate_source_mismatch",
+    );
+    assert.match(captchaSourceMismatch?.evidence ?? "", /source_mismatches=1/);
+    assert.match(captchaSourceMismatch?.evidence ?? "", /missing_field:source_identity/);
+    const nativeSourceMismatch = findGap(
+      sourceMismatchAudit,
+      "cross_os_native_live_source_mismatch",
+    );
+    assert.match(nativeSourceMismatch?.evidence ?? "", /native-live-win32:1/);
+    assert.equal(findGap(sourceMismatchAudit, "captcha_physical_live_gate_not_executed"), undefined);
+    assert.equal(findGap(sourceMismatchAudit, "cross_os_native_live_not_proven"), undefined);
 
     const emptyProofDir = path.join(tmpDir, "empty-proofs");
     await fs.mkdir(emptyProofDir, { recursive: true });

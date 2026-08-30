@@ -48,6 +48,14 @@ function normalizeCloseVerifyPoll(args = {}) {
   return Math.max(50, Math.min(1_000, Math.floor(raw)));
 }
 
+function recordUsesIsolatedTarget(record, args = {}) {
+  if (["remote_cdp", "cdp"].includes(String(args?.tmwd_mode ?? ""))) {
+    return true;
+  }
+  return record?.window_policy === "isolated_target"
+    && record?.window_ownership === "remote_cdp";
+}
+
 async function verifyTabClosed(args, preferred, tabId, options = {}) {
   const timeoutMs = normalizeCloseVerifyTimeout(args);
   const pollMs = normalizeCloseVerifyPoll(args);
@@ -100,7 +108,7 @@ async function closeOneManagedTab(args, record, preferred = null, options = {}) 
       reason: "dry_run",
     };
   }
-  if (!record.browser_instance_id && String(args?.tmwd_mode ?? "tmwd") !== "remote_cdp") {
+  if (!record.browser_instance_id && !recordUsesIsolatedTarget(record, args)) {
     throw createToolError(
       "BROWSER_INSTANCE_UNRESOLVED",
       "legacy managed tab has no Browser Instance identity and cannot be closed automatically",
@@ -358,7 +366,7 @@ async function pruneStaleManagedTabs(args = {}, options = {}) {
     };
   }
   const livenessRows = await Promise.all(records.map(async (record) => {
-    if (!record.browser_instance_id && String(args?.tmwd_mode ?? "tmwd") !== "remote_cdp") {
+    if (!record.browser_instance_id && !recordUsesIsolatedTarget(record, args)) {
       return { record, liveness: { live: true, reason: "legacy_browser_instance_unresolved" } };
     }
     const recordArgs = record.browser_instance_id

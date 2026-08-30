@@ -9,7 +9,9 @@ import {
   buildSliderDragHint,
   clampRectToViewport,
   clientPointToNativeWindowScreen,
+  finiteNumber,
 } from "../../src/auth/captcha/coordinates.mjs";
+import { selectScreenCoordinates } from "../../src/auth/captcha-assist/input-coordinates.mjs";
 import {
   isSupportedWindowsBrowserProcess,
   resolveManagedTabNativeWindowTitle,
@@ -250,6 +252,50 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(macToolbarPoint?.y, 313);
   assert.equal(macToolbarPoint?.calibration?.viewport_origin_screen?.y, 215);
   assert.equal(macToolbarPoint?.calibration?.native_reference_frame, "browser_window");
+  assert.equal(finiteNumber(null), null);
+  assert.equal(finiteNumber(undefined), null);
+  assert.equal(finiteNumber(""), null);
+
+  const correctedMacCoordinates = selectScreenCoordinates({}, {
+    assist_target: "slider",
+    viewport: {
+      device_pixel_ratio: 2,
+      inner_height: 767,
+      inner_width: 1_512,
+      outer_height: 823,
+      outer_width: 1_512,
+      visual_viewport: {
+        offset_left: 0,
+        offset_top: 0,
+        scale: 1,
+      },
+    },
+    coordinate_transform: {
+      vision_correction: {
+        corrected_coordinates: {
+          drag: {
+            from: { x: 75, y: 98.5 },
+            to: { x: 334.9, y: 98.5 },
+          },
+        },
+      },
+    },
+  }, {
+    useCorrectedCoordinates: true,
+    nativeWindowRect: {
+      left: 0,
+      top: 159,
+      width: 1_512,
+      height: 823,
+      coordinate_system: "screen_points",
+      reference_frame: "browser_window",
+    },
+  });
+  assert.equal(correctedMacCoordinates.screenX, 75);
+  assert.equal(correctedMacCoordinates.screenY, 313.5);
+  assert.equal(correctedMacCoordinates.screenToX, 334.9);
+  assert.equal(correctedMacCoordinates.screenToY, 313.5);
+  assert.equal(correctedMacCoordinates.source, "vision_corrected_native_window_rect");
 
   const feiguaSliderTarget = {
     role: "slider",
@@ -575,6 +621,8 @@ async function assertPhysicalLiveGateContract() {
   assert.equal(proof.js_cdp_widget_click, false);
   assert.equal(proof.secrets_redacted, true);
   assert.equal(proof.evidence.browser_private_state_access, false);
+  assert.equal(proof.source_identity.source_scope, "physical-input-v1");
+  assert.match(proof.source_identity.source_digest, /^[a-f0-9]{64}$/u);
 
   const primaryAttempt = buildPhysicalAssistAttemptPlan(1, null, {
     dragDurationMs: 900,

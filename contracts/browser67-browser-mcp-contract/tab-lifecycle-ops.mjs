@@ -246,10 +246,36 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabCreateDryRunPayload?.status, "success");
   assert.equal(tabCreateDryRunPayload?.created, false);
   assert.equal(tabCreateDryRunPayload?.owner, "tmwd");
+  assert.equal(tabCreateDryRunPayload?.presentation?.focus_policy, "background_preferred");
+  assert.equal(tabCreateDryRunPayload?.presentation?.window_policy, "dedicated");
+  assert.equal(tabCreateDryRunPayload?.presentation?.active, false);
   assert.equal(typeof tabCreateDryRunPayload?.managed_tab?.tab_id, "string");
+  assert.equal(tabCreateDryRunPayload?.managed_tab?.focus_policy, "background_preferred");
+  assert.equal(tabCreateDryRunPayload?.managed_tab?.window_policy, "dedicated");
+  assert.equal(tabCreateDryRunPayload?.managed_tab?.window_ownership, "browser67_agent");
   assert.equal(tabCreateDryRunPayload?.finalize_hint?.required, false);
   assert.equal(tabCreateDryRunPayload?.finalize_hint?.tool, "browser_tab_lifecycle");
   assert.equal(tabCreateDryRunPayload?.finalize_hint?.suggested_arguments?.action, "finalize_task");
+
+  const remoteCdpDryRunCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "create_managed",
+        url: "about:blank",
+        tmwd_mode: "remote_cdp",
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(remoteCdpDryRunCall?.result?.isError, undefined);
+  const remoteCdpDryRunPayload = firstJsonContent(remoteCdpDryRunCall.result);
+  assert.equal(remoteCdpDryRunPayload?.presentation?.requested_window_policy, "dedicated");
+  assert.equal(remoteCdpDryRunPayload?.presentation?.window_policy, "isolated_target");
+  assert.equal(remoteCdpDryRunPayload?.managed_tab?.window_policy, "isolated_target");
+  assert.equal(remoteCdpDryRunPayload?.managed_tab?.window_ownership, "remote_cdp");
 
   const tabSelectOrCreateDryRunCall = await rpc.call(
     "tools/call",
@@ -273,6 +299,8 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabSelectOrCreateDryRunPayload?.created, false);
   assert.equal(tabSelectOrCreateDryRunPayload?.reused, false);
   assert.equal(tabSelectOrCreateDryRunPayload?.would_create, true);
+  assert.equal(tabSelectOrCreateDryRunPayload?.presentation?.active, false);
+  assert.equal(tabSelectOrCreateDryRunPayload?.presentation?.window_policy, "dedicated");
   assert.equal(tabSelectOrCreateDryRunPayload?.managed_tab?.workspace_key, "contract-workspace");
   assert.equal(tabSelectOrCreateDryRunPayload?.finalize_hint?.required, false);
   assert.equal(tabSelectOrCreateDryRunPayload?.finalize_hint?.workspace_key, "contract-workspace");
@@ -297,6 +325,43 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabSelectOrCreateReuseDryRunPayload?.created, false);
   assert.equal(tabSelectOrCreateReuseDryRunPayload?.reused, false);
   assert.equal(tabSelectOrCreateReuseDryRunPayload?.would_create, true);
+
+  const foregroundDryRunCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "create_managed",
+        url: "about:blank",
+        focus_policy: "foreground",
+        window_policy: "current",
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(foregroundDryRunCall?.result?.isError, undefined);
+  const foregroundDryRunPayload = firstJsonContent(foregroundDryRunCall.result);
+  assert.equal(foregroundDryRunPayload?.presentation?.focus_policy, "foreground");
+  assert.equal(foregroundDryRunPayload?.presentation?.window_policy, "current");
+  assert.equal(foregroundDryRunPayload?.presentation?.active, true);
+
+  const conflictingFocusCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "create_managed",
+        url: "about:blank",
+        focus_policy: "background_only",
+        active: true,
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(conflictingFocusCall?.result?.isError, true);
+  assert.equal(firstJsonContent(conflictingFocusCall.result)?.error_code, "INVALID_ARGUMENT");
 
   const tabMissingCall = await rpc.call(
     "tools/call",
@@ -563,8 +628,14 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   const tabListManagedPayload = firstJsonContent(tabListManagedCall.result);
   assert.equal(tabListManagedPayload?.status, "success");
   assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
-  assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v4");
-  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 3);
+  assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v5");
+  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 4);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_dedicated_agent_window, true);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_focus_policy, true);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_focus_lease, true);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_focus_restore_guard, true);
+  assert.equal(tabListManagedPayload?.capabilities?.managed_window_policy_default, "dedicated");
+  assert.equal(tabListManagedPayload?.capabilities?.managed_focus_policy_default, "background_preferred");
   assert.equal(tabListManagedPayload?.capabilities?.supports_durable_jobs, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_job_restart_recovery, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_job_abort, false);

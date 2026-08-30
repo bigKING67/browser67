@@ -8,12 +8,14 @@ import {
   extractCreatedTabId,
   findReusableManagedTab,
   getManagedTab,
+  managedWindowRecordFields,
   managedTabFinalizeHint,
   managedTabPayload,
   planManagedTab,
   recordManagedTab,
   summarizeUnmanagedMatches,
   updateManagedTab,
+  resolveManagedPresentation,
 } from "../tab-workspace/index.mjs";
 import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
@@ -45,6 +47,12 @@ import {
   pruneStaleManagedTabs,
 } from "./tab-lifecycle-close.mjs";
 import { listManagedTabs } from "./tab-lifecycle-list.mjs";
+import {
+  ensureAgentWindow,
+  foregroundManagedTab,
+  inspectReusableManagedTabPresentation,
+  resolveCreatedTab,
+} from "./presentation.mjs";
 
 async function createManagedTab(args, options = {}, runtimeOptions = {}) {
   const sessionStore = runtimeOptions.runtime?.sessionStore ?? defaultSessionRegistry;
@@ -55,10 +63,11 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
       `url is required when action=${options.action ?? "create_managed"}`,
     );
   }
-  const active = args?.active !== false;
+  const dryRunPresentation = resolveManagedPresentation(args);
   if (args?.dry_run === true) {
     const record = planManagedTab({
       ...args,
+      ...managedWindowRecordFields(dryRunPresentation),
       url,
       title: "",
       keep: args?.keep === true,
@@ -73,31 +82,47 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
       reused: false,
       would_create: true,
       owner: "tmwd",
+      presentation: dryRunPresentation,
       managed_tab: managedTabPayload(record),
       finalize_hint: managedTabFinalizeHint(record),
     };
   }
-  const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, runtimeOptions);
+  const preferred = options.preferred
+    ?? await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, runtimeOptions);
   const browserInstanceId = String(preferred.context?.target?.browser_instance_id ?? args?.browser_instance_id ?? "").trim();
   const instanceArgs = browserInstanceId ? { ...args, browser_instance_id: browserInstanceId } : args;
+  const presentation = options.presentation
+    ?? resolveManagedPresentation(instanceArgs, { transport: preferred.transport });
+  const runCommand = (command) => executeTmwdCommandWithPreferred(
+    instanceArgs,
+    preferred,
+    command,
+    runtimeOptions,
+  );
+  const agentWindow = options.agent_window
+    ?? await ensureAgentWindow(presentation, runCommand);
   let tabId = "";
   let title = "";
+  let createdTab = {};
   let transport = preferred.transport;
   let transportAttempts = Array.isArray(preferred.transport_attempts) ? preferred.transport_attempts : [];
   if (preferred.transport === "tmwd_ws" || preferred.transport === "tmwd_link") {
-    const commandResult = await executeTmwdCommandWithPreferred(args, preferred, {
+    const commandResult = await runCommand({
       cmd: "tabs",
       method: "create",
       url,
-      active,
-    }, runtimeOptions);
-    tabId = extractCreatedTabId(commandResult);
-    title = String(commandResult?.value?.title ?? commandResult?.value?.data?.title ?? "");
+      active: presentation.active,
+      windowId: agentWindow.window_id,
+    });
+    createdTab = await resolveCreatedTab(commandResult, runCommand);
+    tabId = createdTab.tab_id || extractCreatedTabId(commandResult);
+    title = createdTab.title || String(commandResult?.value?.title ?? commandResult?.value?.data?.title ?? "");
     transport = commandResult.transport;
     transportAttempts = commandResult.transport_attempts;
   } else {
     const cdp = await cdpRunCommand(args ?? {}, "Target.createTarget", { url }, runtimeOptions);
     tabId = String(cdp.result.response?.targetId ?? "").trim();
+    createdTab = { tab_id: tabId };
     transport = "cdp";
   }
   if (!tabId) {
@@ -107,6 +132,7 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
   const visibleTab = visible.tab;
   let record = await recordManagedTab({
     ...args,
+    ...managedWindowRecordFields(presentation, agentWindow, createdTab),
     tab_id: tabId,
     browser_instance_id: browserInstanceId,
     url: String(visibleTab?.url ?? "").trim() || url,
@@ -140,6 +166,12 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
       touch: false,
     }, record.browser_instance_id) ?? record;
   }
+  const focusTransition = await foregroundManagedTab(
+    presentation,
+    instanceArgs,
+    record.tab_id,
+    runCommand,
+  );
   sessionStore.select(record.session_key || tabId, { make_default: false });
   return {
     status: "success",
@@ -147,6 +179,9 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
     created: true,
     reused: false,
     owner: "tmwd",
+    presentation,
+    agent_window: agentWindow,
+    focus_transition: focusTransition,
     transport,
     transport_attempts: transportAttempts,
     ready: visible.ready,
@@ -169,12 +204,28 @@ async function findLiveReusableManagedTab(
   liveById,
   attemptsLeft = 5,
   runtimeOptions = {},
+  presentationContext = {},
 ) {
-  const reusable = await findReusableManagedTab(args, url, liveTabs);
-  if (!reusable.record || attemptsLeft <= 0) {
+  const reusable = await findReusableManagedTab(args, url, liveTabs, {
+    window_policy: presentationContext.presentation?.window_policy,
+  });
+  if (!reusable.record) {
     return {
       reusable,
       reusable_liveness: undefined,
+      reusable_presentation: undefined,
+    };
+  }
+  if (attemptsLeft <= 0) {
+    return {
+      reusable: {
+        ...reusable,
+        record: null,
+        selected_by: "none",
+        reason: "validation_attempts_exhausted",
+      },
+      reusable_liveness: undefined,
+      reusable_presentation: undefined,
     };
   }
   const reusableLiveness = await resolveManagedRecordLiveness(
@@ -185,9 +236,37 @@ async function findLiveReusableManagedTab(
     runtimeOptions,
   );
   if (reusableLiveness.live === true) {
+    const reusablePresentation = await inspectReusableManagedTabPresentation(
+      presentationContext.presentation,
+      presentationContext.agent_window,
+      reusable.record,
+      presentationContext.run_command,
+    );
+    if (reusablePresentation.reusable !== true) {
+      if (reusablePresentation.record_action === "delete") {
+        await deleteManagedTab(reusable.record.tab_id, reusable.record.browser_instance_id);
+      } else {
+        await updateManagedTab(reusable.record.tab_id, {
+          window_id: reusablePresentation.actual_window_id,
+          window_ownership: "outside_agent_window",
+          touch: false,
+        }, reusable.record.browser_instance_id);
+      }
+      return findLiveReusableManagedTab(
+        args,
+        preferred,
+        url,
+        liveTabs,
+        liveById,
+        attemptsLeft - 1,
+        runtimeOptions,
+        presentationContext,
+      );
+    }
     return {
       reusable,
       reusable_liveness: reusableLiveness,
+      reusable_presentation: reusablePresentation,
     };
   }
   await deleteManagedTab(reusable.record.tab_id, reusable.record.browser_instance_id);
@@ -199,6 +278,7 @@ async function findLiveReusableManagedTab(
     liveById,
     attemptsLeft - 1,
     runtimeOptions,
+    presentationContext,
   );
 }
 
@@ -229,10 +309,27 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
   }
   const preferred = await resolvePreferredBrowserContext({ ...args, refresh_sessions: true }, runtimeOptions);
   const browserInstanceId = String(preferred.context?.target?.browser_instance_id ?? args?.browser_instance_id ?? "").trim();
-  const instanceArgs = browserInstanceId ? { ...args, browser_instance_id: browserInstanceId } : args;
+  const initialInstanceArgs = browserInstanceId ? { ...args, browser_instance_id: browserInstanceId } : args;
+  const presentation = resolveManagedPresentation(initialInstanceArgs, { transport: preferred.transport });
+  const runCommand = (command) => executeTmwdCommandWithPreferred(
+    initialInstanceArgs,
+    preferred,
+    command,
+    runtimeOptions,
+  );
+  const agentWindow = await ensureAgentWindow(presentation, runCommand);
+  const instanceArgs = {
+    ...initialInstanceArgs,
+    window_policy: presentation.requested_window_policy,
+    window_id: agentWindow.window_id,
+  };
   const liveTabs = Array.isArray(preferred.context?.targets) ? preferred.context.targets : [];
   const liveById = liveTabMap(liveTabs);
-  const { reusable, reusable_liveness: reusableLiveness } = await findLiveReusableManagedTab(
+  const {
+    reusable,
+    reusable_liveness: reusableLiveness,
+    reusable_presentation: reusablePresentation,
+  } = await findLiveReusableManagedTab(
     instanceArgs,
     preferred,
     url,
@@ -240,6 +337,11 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
     liveById,
     5,
     runtimeOptions,
+    {
+      presentation,
+      agent_window: agentWindow,
+      run_command: runCommand,
+    },
   );
   const unmanagedIgnored = await summarizeUnmanagedMatches(instanceArgs, url, liveTabs);
   if (reusable.record) {
@@ -275,12 +377,22 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
         authorization: navigationAuthorization,
       };
       record = await updateManagedTab(record.tab_id, {
+        focus_policy: presentation.focus_policy,
         url,
         title: String(nav.value?.title ?? record.title ?? ""),
       }, record.browser_instance_id) ?? record;
     } else {
-      record = await updateManagedTab(record.tab_id, { touch: true }, record.browser_instance_id) ?? record;
+      record = await updateManagedTab(record.tab_id, {
+        focus_policy: presentation.focus_policy,
+        touch: true,
+      }, record.browser_instance_id) ?? record;
     }
+    const focusTransition = await foregroundManagedTab(
+      presentation,
+      instanceArgs,
+      record.tab_id,
+      runCommand,
+    );
     sessionStore.select(record.session_key || record.tab_id, { make_default: false });
     return {
       status: "success",
@@ -288,9 +400,13 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
       created: false,
       reused: true,
       owner: "tmwd",
+      presentation,
+      agent_window: agentWindow,
+      focus_transition: focusTransition,
       selected_by: reusable.selected_by,
       reuse_policy: reusable.policy,
       liveness: reusableLiveness,
+      presentation_validation: reusablePresentation,
       managed_tab: managedTabPayload(record),
       finalize_hint: managedTabFinalizeHint(record),
       unmanaged_tabs_ignored: unmanagedIgnored,
@@ -298,7 +414,12 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
       ...sessionStore.sessionPointers(),
     };
   }
-  const created = await createManagedTab(instanceArgs, { action: "select_or_create" }, runtimeOptions);
+  const created = await createManagedTab(instanceArgs, {
+    action: "select_or_create",
+    preferred,
+    presentation,
+    agent_window: agentWindow,
+  }, runtimeOptions);
   return {
     ...created,
     reuse_policy: reusable.policy,

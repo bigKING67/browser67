@@ -93,6 +93,12 @@ const IO_TOOL_SCHEMAS = {
         timeout_ms: { type: "number", minimum: 100, maximum: 120_000 },
         window_title: { type: "string" },
         window_pid: { type: "number" },
+        focus_policy: {
+          type: "string",
+          enum: ["background_only", "background_preferred", "foreground"],
+          default: "background_preferred",
+        },
+        focus_lease_timeout_ms: { type: "number", minimum: 1_000, maximum: 120_000 },
       },
       required: ["action"],
     },

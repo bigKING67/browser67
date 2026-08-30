@@ -79,6 +79,18 @@ const AUTH_TOOL_SCHEMAS = {
           type: "string",
           description: "Optional managed-tab workspace key to echo in non-secret manual_context for handoff/resume.",
         },
+        focus_policy: {
+          type: "string",
+          enum: ["background_only", "background_preferred", "foreground"],
+          default: "background_preferred",
+          description: "CAPTCHA/native handoff focus policy. background_preferred temporarily foregrounds the managed tab and safely restores the prior user tab when no intervening user activity is observed.",
+        },
+        focus_lease_timeout_ms: {
+          type: "number",
+          minimum: 1_000,
+          maximum: 120_000,
+          description: "Temporary managed-tab focus lease TTL.",
+        },
         assist_target: {
           type: "string",
           enum: ["auto", "checkbox", "slider"],
@@ -188,16 +200,16 @@ const AUTH_TOOL_SCHEMAS = {
         },
         window_title: {
           type: "string",
-          description: "Optional native window title selector fallback used to activate the browser window before physical input when TMWD tabs.switch is unavailable.",
+          description: "Optional native window title selector fallback used to activate the browser window before physical input when a managed-tab focus lease is unavailable.",
         },
         window_pid: {
           type: "number",
-          description: "Optional native window pid selector fallback used to activate the browser window before physical input when TMWD tabs.switch is unavailable.",
+          description: "Optional native window pid selector fallback used to activate the browser window before physical input when a managed-tab focus lease is unavailable.",
         },
         window_active_confirmed: {
           type: "boolean",
           default: false,
-          description: "Fallback caller assertion that the target browser window is already foregrounded if TMWD tabs.switch and native window selectors are unavailable.",
+          description: "Fallback caller assertion that the target browser window is already foregrounded if a managed-tab focus lease and native window selectors are unavailable.",
         },
         wait_after_ms: {
           type: "number",

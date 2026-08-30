@@ -15,6 +15,11 @@ import { buildOptionalLiveProofPlan } from "../../scripts/optional-live-proof-pl
 import { buildOptionalLiveProofRecord } from "../../scripts/optional-live-proof-record.mjs";
 import { buildOptionalLiveProofStatus } from "../../scripts/optional-live-proof-status.mjs";
 import { createProofTemplate } from "../../scripts/optional-live-proof-template.mjs";
+import {
+  PHYSICAL_INPUT_SOURCE_SCOPE,
+  buildOptionalProofSourceIdentity,
+  digestSourceFiles,
+} from "../../scripts/optional-live-proof-source-identity.mjs";
 
 function requirement(id) {
   const found = ALL_OPTIONAL_LIVE_PROOF_REQUIREMENTS.find((item) => item.id === id);
@@ -34,6 +39,7 @@ function validNativeProof(platform) {
     command: platform === "win32"
       ? '$env:TMWD_NATIVE_LIVE_PHYSICAL="1"; $env:TMWD_NATIVE_LIVE_CONFIRM="1"; npm run proof:native-live -- --write'
       : "TMWD_NATIVE_LIVE_PHYSICAL=1 TMWD_NATIVE_LIVE_CONFIRM=1 npm run proof:native-live -- --write",
+    source_identity: buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
     evidence: {
       fixture: "local browser67-owned managed tab",
       managed_tab_only: true,
@@ -69,6 +75,24 @@ function validIdpProof(providerKind) {
 }
 
 async function assertOptionalLiveProofContract() {
+  const sourceIdentity = buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE);
+  assert.equal(sourceIdentity.schema, "browser67.optional-proof-source.v1");
+  assert.equal(sourceIdentity.source_scope, PHYSICAL_INPUT_SOURCE_SCOPE);
+  assert.match(sourceIdentity.source_digest, /^[a-f0-9]{64}$/u);
+  assert.equal(sourceIdentity.source_file_count > 0, true);
+
+  const digestTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-proof-source-digest-contract-"));
+  try {
+    const sourcePath = path.join(digestTmpDir, "fixture.mjs");
+    await fs.writeFile(sourcePath, "const first = 1;\nconst second = 2;\n");
+    const lfDigest = digestSourceFiles(digestTmpDir, ["fixture.mjs"]);
+    await fs.writeFile(sourcePath, "const first = 1;\r\nconst second = 2;\r\n");
+    const crlfDigest = digestSourceFiles(digestTmpDir, ["fixture.mjs"]);
+    assert.equal(crlfDigest, lfDigest);
+  } finally {
+    await fs.rm(digestTmpDir, { recursive: true, force: true });
+  }
+
   const nativeLinux = requirement("native-live-linux");
   assert.equal(nativeLinux.release_scope, "on_demand");
   assert.equal(nativeLinux.default_required, false);
@@ -79,9 +103,40 @@ async function assertOptionalLiveProofContract() {
   assert.equal(nativeTemplateValidation.ok, false);
   assert.ok(nativeTemplateValidation.errors.includes("requirement_match_failed"));
   assert.ok(nativeTemplateValidation.errors.includes("template_only_not_accepted"));
+  assert.equal(nativeTemplate.source_identity.source_scope, PHYSICAL_INPUT_SOURCE_SCOPE);
 
   const nativeValid = validateProof(validNativeProof("linux"), nativeLinux);
   assert.equal(nativeValid.ok, true, nativeValid.errors.join(","));
+  assert.equal(nativeValid.source_identity.source_equivalent, true);
+
+  const sourceEquivalentDifferentRevision = validateProof({
+    ...validNativeProof("linux"),
+    source_identity: {
+      ...buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
+      build_revision: "different-commit-after-identical-behavior-bytes",
+      build_inputs_dirty: false,
+    },
+  }, nativeLinux);
+  assert.equal(sourceEquivalentDifferentRevision.ok, true);
+  assert.equal(sourceEquivalentDifferentRevision.source_identity.source_equivalent, true);
+  assert.equal(sourceEquivalentDifferentRevision.source_identity.revision_match, false);
+
+  const nativeLegacyProof = validNativeProof("linux");
+  delete nativeLegacyProof.source_identity;
+  const nativeLegacy = validateProof(nativeLegacyProof, nativeLinux);
+  assert.equal(nativeLegacy.ok, false);
+  assert.ok(nativeLegacy.errors.includes("source_identity_object_required"));
+  assert.ok(nativeLegacy.errors.includes("missing_field:source_identity"));
+
+  const nativeSourceMismatch = validateProof({
+    ...validNativeProof("linux"),
+    source_identity: {
+      ...buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
+      source_digest: "0".repeat(64),
+    },
+  }, nativeLinux);
+  assert.equal(nativeSourceMismatch.ok, false);
+  assert.ok(nativeSourceMismatch.errors.includes("source_identity_digest_mismatch"));
 
   const nativeMissingDrag = validateProof({
     ...validNativeProof("linux"),
@@ -170,6 +225,7 @@ async function assertOptionalLiveProofContract() {
     checked_at: "2026-06-17T00:00:00.000Z",
     expires_at: "2099-06-17T00:00:00.000Z",
     command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+    source_identity: buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
     managed_tab_only: true,
     fixture: "local browser67-owned managed tab",
     slider_completed: true,
@@ -197,6 +253,7 @@ async function assertOptionalLiveProofContract() {
     checked_at: "2026-06-17T00:00:00.000Z",
     expires_at: "2099-06-17T00:00:00.000Z",
     command: "TMWD_CAPTCHA_ASSIST_PHYSICAL=1 TMWD_CAPTCHA_ASSIST_CONFIRM=1 npm run check:captcha-assist-physical-live",
+    source_identity: buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
     managed_tab_only: true,
     fixture: "local browser67-owned managed tab",
     slider_completed: true,
@@ -297,6 +354,7 @@ async function assertOptionalLiveProofContract() {
     assert.equal(win32?.satisfied, true);
     assert.equal(win32?.accepted?.path?.endsWith("native-live-win32.json"), true);
     assert.equal(win32?.accepted?.expires_at, "2099-06-17T00:00:00.000Z");
+    assert.equal(win32?.accepted?.source_identity?.source_equivalent, true);
     assert.equal(typeof win32?.accepted?.expires_in_days, "number");
     const fullAudit = await buildOptionalLiveProofAudit({
       proof_dir: tmpDir,
@@ -356,6 +414,7 @@ async function assertOptionalLiveProofContract() {
     assert.equal(win32Plan?.satisfied, true);
     assert.equal(win32Plan?.proof_path?.endsWith("native-live-win32.json"), true);
     assert.equal(win32Plan?.accepted?.expires_at, "2099-06-17T00:00:00.000Z");
+    assert.equal(win32Plan?.accepted?.source_identity?.source_equivalent, true);
     assert.equal(typeof win32Plan?.accepted?.expires_in_days, "number");
     assert.equal(win32Plan?.next_command, `TMWD_OPTIONAL_PROOF_DIR=${tmpDir} npm run check:optional-live-proofs`);
     assert.equal(win32Plan?.commands.record_replace, "npm run proof:optional-live-record -- --id native-live-win32 --from-json <sanitized.json> --write --replace");

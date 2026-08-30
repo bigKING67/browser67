@@ -97,6 +97,40 @@ async function assertNativeInputOpsContract({ rpc, timeoutMs }) {
   assert.equal(nativeDryRunPayload?.dry_run, true);
   assert.equal(typeof nativeDryRunPayload?.next_step, "string");
   assert.equal(typeof nativeDryRunPayload?.capabilities_summary?.supported, "boolean");
+  assert.equal(nativeDryRunPayload?.focus_lease_planned, false);
+
+  const nativeManagedDryRunCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_native_input",
+      arguments: {
+        action: "click",
+        x: 120,
+        y: 200,
+        tab_id: "managed-contract-tab",
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(nativeManagedDryRunCall?.result?.isError, undefined);
+  assert.equal(firstJsonContent(nativeManagedDryRunCall.result)?.focus_lease_planned, true);
+
+  const nativeManagedActivateDryRunCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_native_input",
+      arguments: {
+        action: "activate_window",
+        window_title: "Browser fixture",
+        tab_id: "managed-tab-id",
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(nativeManagedActivateDryRunCall?.result?.isError, undefined);
+  assert.equal(firstJsonContent(nativeManagedActivateDryRunCall.result)?.focus_lease_planned, true);
 
   const nativeDragDryRunCall = await rpc.call(
     "tools/call",

@@ -149,8 +149,9 @@ async function executeTmwdCommandWithPreferred(args, preferred, command, runtime
   const result = await executeTmwdJsWithFallback(args ?? {}, preferred.context, command, runtimeOptions);
   if (result.executed?.raw?.ok === false) {
     throw createToolError(
-      "EXECUTION_ERROR",
+      String(result.executed.raw.errorCode || "EXECUTION_ERROR"),
       String(result.executed.raw.error ?? "TMWD command failed"),
+      { details: result.executed.raw.details },
     );
   }
   return {
