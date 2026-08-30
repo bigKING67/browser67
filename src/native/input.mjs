@@ -15,6 +15,25 @@ import { runNativeInputLinux } from "../native-linux/index.mjs";
 import { runNativeInputMac } from "../native-macos/index.mjs";
 import { runNativeInputWindows } from "../native-windows/index.mjs";
 import { nowIso } from "../runtime/identity.mjs";
+import { getManagedTab } from "../tab-workspace/index.mjs";
+import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
+import { executeTmwdCommandWithPreferred } from "../browser-wrappers/shared.mjs";
+import {
+  acquireManagedFocusLease,
+  releaseManagedFocusLease,
+} from "../browser-wrappers/presentation.mjs";
+
+const FOCUS_BOUND_NATIVE_ACTIONS = new Set([
+  "activate_window",
+  "move",
+  "drag",
+  "click",
+  "double_click",
+  "press",
+  "type",
+  "paste",
+  "scroll",
+]);
 
 function mapNativeInputError(action, error) {
   if (typeof error?.errorCode === "string" && error.errorCode.trim().length > 0) {
@@ -53,7 +72,38 @@ function mapNativeInputError(action, error) {
   return createToolError("NATIVE_INPUT_EXECUTION_FAILED", `native input execution failed action=${action}: ${rawMessage}`);
 }
 
-async function handleBrowserNativeInput(args) {
+async function acquireNativeInputFocus(args, action, options = {}) {
+  const tabId = String(args?.tab_id ?? "").trim();
+  if (!tabId || !FOCUS_BOUND_NATIVE_ACTIONS.has(action)) {
+    return { lease: undefined, run_command: undefined };
+  }
+  const record = await getManagedTab(tabId, args?.browser_instance_id);
+  if (!record || record.status === "closed") {
+    throw createToolError(
+      "MANAGED_TAB_REQUIRED",
+      "tab_id must identify a live browser67-managed tab before native input can acquire focus",
+      { details: { tab_id: tabId } },
+    );
+  }
+  const focusArgs = {
+    ...args,
+    browser_instance_id: record.browser_instance_id || args?.browser_instance_id,
+    tab_id: tabId,
+    switch_tab_id: tabId,
+    session_id: tabId,
+  };
+  const preferred = await resolvePreferredBrowserContext(focusArgs, options);
+  const runCommand = (command) => executeTmwdCommandWithPreferred(
+    focusArgs,
+    preferred,
+    command,
+    options,
+  );
+  const lease = await acquireManagedFocusLease(focusArgs, tabId, runCommand);
+  return { lease, run_command: runCommand };
+}
+
+async function handleBrowserNativeInput(args, options = {}) {
   const action = normalizeNativeInputAction(args?.action);
   const timeoutMs = normalizeNativeInputTimeoutMs(args?.timeout_ms);
   const dryRun = args?.dry_run === true;
@@ -74,10 +124,22 @@ async function handleBrowserNativeInput(args) {
   };
   if (dryRun) {
     const capabilities = await detectNativeInputCapabilities();
-    return buildNativeInputDryRunResponse(action, effectiveArgs, timeoutMs, capabilities);
+    return {
+      ...buildNativeInputDryRunResponse(action, effectiveArgs, timeoutMs, capabilities),
+      focus_lease_planned: Boolean(
+        String(args?.tab_id ?? "").trim()
+        && FOCUS_BOUND_NATIVE_ACTIONS.has(action)
+      ),
+    };
   }
+  let focus;
   try {
+    focus = await acquireNativeInputFocus(args, action, options);
     const payload = await runNativeInputAction(action, effectiveArgs, timeoutMs);
+    const focusRestore = focus.lease
+      ? await releaseManagedFocusLease(focus.lease, focus.run_command, "native_input_complete")
+      : undefined;
+    focus = undefined;
     return {
       status: "success",
       platform: process.platform,
@@ -85,10 +147,15 @@ async function handleBrowserNativeInput(args) {
       dry_run: false,
       timeout_ms: timeoutMs,
       ...payload,
+      focus_lease: focusRestore ? { acquired: true, restore: focusRestore } : undefined,
       at: nowIso(),
     };
   } catch (error) {
     throw mapNativeInputError(action, error);
+  } finally {
+    if (focus?.lease) {
+      await releaseManagedFocusLease(focus.lease, focus.run_command, "native_input_failed");
+    }
   }
 }
 
