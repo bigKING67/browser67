@@ -10,6 +10,7 @@ import { solveJfbymCoordinateChallenge } from "../captcha/providers/jfbym-coordi
 import { CAPTCHA_ASSIST_REASONS } from "../captcha/reasons.mjs";
 import {
   getManagedTabContext,
+  releaseManagedTabAfterPhysicalInput,
   sleep,
 } from "./context.mjs";
 import { activateCaptchaTarget } from "./activation.mjs";
@@ -25,20 +26,12 @@ import { assistBlocked } from "./outcome.mjs";
 import { handlePlanCaptchaAssist } from "./plan-handler.mjs";
 import { prepareAssistRequest } from "./preflight.mjs";
 
-async function handleAssistCaptcha(args, options = {}) {
-  const planned = await handlePlanCaptchaAssist(args, options);
-  const managedTab = await getManagedTabContext(args);
-  const preflight = prepareAssistRequest(args, planned, managedTab);
-  if (!preflight.ok) return preflight.outcome;
+async function executeActivatedCaptchaAssist(args, options, planned, activation, preflight) {
   const {
     autoScreenCoordinates,
     useCorrectedCoordinates,
     useProviderCoordinates,
   } = preflight;
-
-  const activationResult = await activateCaptchaTarget(args, planned, managedTab, options);
-  if (!activationResult.ok) return activationResult.outcome;
-  const activation = activationResult.activation;
 
   const preInputSettleMs = normalizePreInputSettleMs(args?.pre_input_settle_ms);
   if (preInputSettleMs > 0) {
@@ -243,6 +236,46 @@ async function handleAssistCaptcha(args, options = {}) {
     next_step: "browser_auth_ops.ensure_login",
     secrets_redacted: true,
   };
+}
+
+async function handleAssistCaptcha(args, options = {}) {
+  const planned = await handlePlanCaptchaAssist(args, options);
+  const managedTab = await getManagedTabContext(args);
+  const preflight = prepareAssistRequest(args, planned, managedTab);
+  if (!preflight.ok) return preflight.outcome;
+
+  const activationResult = await activateCaptchaTarget(args, planned, managedTab, options);
+  if (!activationResult.ok) {
+    const focusRestore = await releaseManagedTabAfterPhysicalInput(
+      args,
+      activationResult.outcome?.activation,
+      options,
+    );
+    return {
+      ...activationResult.outcome,
+      focus_restore: focusRestore,
+    };
+  }
+  const activation = activationResult.activation;
+  let focusRestore;
+  try {
+    const outcome = await executeActivatedCaptchaAssist(
+      args,
+      options,
+      planned,
+      activation,
+      preflight,
+    );
+    focusRestore = await releaseManagedTabAfterPhysicalInput(args, activation, options);
+    return {
+      ...outcome,
+      focus_restore: focusRestore,
+    };
+  } finally {
+    if (focusRestore === undefined) {
+      await releaseManagedTabAfterPhysicalInput(args, activation, options);
+    }
+  }
 }
 
 export {

@@ -3,6 +3,10 @@ import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { DEFAULT_OPTIONAL_LIVE_PROOF_DIR } from "../../scripts/optional-live-proof-audit.mjs";
+import {
+  PHYSICAL_INPUT_SOURCE_SCOPE,
+  buildOptionalProofSourceIdentity,
+} from "../../scripts/optional-live-proof-source-identity.mjs";
 
 function expiresAtFrom(checkedAt) {
   const date = new Date(checkedAt);
@@ -25,6 +29,8 @@ function buildPhysicalProof(parsed, options = {}) {
     checked_at: checkedAt,
     expires_at: options.expires_at ?? expiresAtFrom(checkedAt),
     command: physicalGateCommand(),
+    source_identity: options.source_identity
+      ?? buildOptionalProofSourceIdentity(PHYSICAL_INPUT_SOURCE_SCOPE),
     managed_tab_only: true,
     fixture: "local browser67-owned managed tab",
     slider_completed: parsed.physical_completion?.slider_completed === true,
@@ -75,6 +81,7 @@ async function writePhysicalProof(parsed, options = {}) {
     platform: options.platform,
     checked_at: options.checked_at,
     expires_at: options.expires_at,
+    source_identity: options.source_identity,
   });
   const safeTimestamp = proof.checked_at.replace(/[:.]/g, "-");
   const proofPath = join(proofDir, `captcha-assist-physical-${proof.platform}-${safeTimestamp}.json`);
@@ -86,6 +93,7 @@ async function writePhysicalProof(parsed, options = {}) {
     path: proofPath,
     sha256: createHash("sha256").update(body).digest("hex"),
     expires_at: proof.expires_at,
+    source_identity: proof.source_identity,
   };
 }
 

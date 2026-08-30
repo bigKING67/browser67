@@ -436,8 +436,12 @@ async function runSinglePhysicalAttempt({
   if (nextPhysicalAssist.status !== "success") {
     throw physicalGateError("physical assist did not report success", nextPhysicalAssist, physicalCompletion, physicalAttempts);
   }
-  if (nextPhysicalAssist.activation?.method !== "tmwd_tabs_switch") {
-    throw physicalGateError("physical assist did not activate managed tab via TMWD switch", nextPhysicalAssist, physicalCompletion, physicalAttempts);
+  if (
+    nextPhysicalAssist.activation?.method !== "tmwd_focus_lease"
+    || nextPhysicalAssist.activation?.status !== "foregrounded"
+    || nextPhysicalAssist.activation?.os_foreground_verified !== true
+  ) {
+    throw physicalGateError("physical assist did not foreground the managed tab through a verified TMWD focus lease", nextPhysicalAssist, physicalCompletion, physicalAttempts);
   }
   if (typeof nextPhysicalAssist.physical_input_provider?.provider_id !== "string") {
     throw physicalGateError("physical assist did not report physical input provider id", nextPhysicalAssist, physicalCompletion, physicalAttempts);
@@ -615,8 +619,12 @@ async function runCheckboxPhysicalAttempt({
   if (checkboxPhysicalAssist.status !== "success") {
     throw physicalGateError("physical checkbox assist did not report success", checkboxPhysicalAssist, null);
   }
-  if (checkboxPhysicalAssist.activation?.method !== "tmwd_tabs_switch") {
-    throw physicalGateError("physical checkbox assist did not activate managed tab via TMWD switch", checkboxPhysicalAssist, null);
+  if (
+    checkboxPhysicalAssist.activation?.method !== "tmwd_focus_lease"
+    || checkboxPhysicalAssist.activation?.status !== "foregrounded"
+    || checkboxPhysicalAssist.activation?.os_foreground_verified !== true
+  ) {
+    throw physicalGateError("physical checkbox assist did not foreground the managed tab through a verified TMWD focus lease", checkboxPhysicalAssist, null);
   }
   if (typeof checkboxPhysicalAssist.physical_input_provider?.provider_id !== "string") {
     throw physicalGateError("physical checkbox assist did not report physical input provider id", checkboxPhysicalAssist, null);

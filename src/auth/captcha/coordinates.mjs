@@ -2,6 +2,13 @@ const CAPTCHA_ASSIST_POST_INPUT_WAIT_MS = 3_000;
 const CAPTCHA_ASSIST_MIN_POST_INPUT_WAIT_MS = 1_000;
 
 function finiteNumber(raw) {
+  if (
+    raw === null
+    || raw === undefined
+    || (typeof raw === "string" && raw.trim() === "")
+  ) {
+    return null;
+  }
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }

@@ -23,6 +23,12 @@ async function activateInitialWindow(args, planned, managedTab, options = {}) {
   const windowTitle = String(args?.window_title ?? "").trim();
   const windowPid = finiteNumber(args?.window_pid);
   if (windowTitle || windowPid !== null) {
+    if (String(args?.focus_policy ?? "background_preferred") === "background_only") {
+      return blockedActivation(planned, undefined, {
+        activation_error: "native window activation requires foreground focus but focus_policy=background_only",
+        focus_policy: "background_only",
+      });
+    }
     const activated = await runPhysicalInputAction("activate_window", {
       window_title: windowTitle || undefined,
       window_pid: windowPid ?? undefined,
@@ -58,7 +64,7 @@ async function activateInitialWindow(args, planned, managedTab, options = {}) {
     return blockedActivation(planned, undefined, {
       activation_error: String(error?.message ?? error),
       required_one_of: [
-        "TMWD tabs.switch on managed tab",
+        "TMWD managed-tab focus lease",
         "window_title",
         "window_pid",
         "window_active_confirmed:true",
@@ -211,7 +217,7 @@ async function activateCaptchaTarget(args, planned, managedTab, options = {}) {
   if (!initial.ok) return initial;
 
   const activation = initial.activation;
-  if (activation.method !== "tmwd_tabs_switch") {
+  if (activation.method !== "tmwd_focus_lease") {
     return { ok: true, activation };
   }
   if (planned.native_input_capabilities?.platform === "darwin") {

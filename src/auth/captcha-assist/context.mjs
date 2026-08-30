@@ -3,6 +3,10 @@ import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
 } from "../../tmwd-runtime/index.mjs";
+import {
+  acquireManagedFocusLease,
+  releaseManagedFocusLease,
+} from "../../browser-wrappers/presentation.mjs";
 import { executeBrowserScript } from "../login-detect.mjs";
 import { MANUAL_CHALLENGE_DETECTOR_JS } from "../manual-challenge.mjs";
 import { buildCaptchaAssistInspectorJs } from "../captcha/targets.mjs";
@@ -104,23 +108,72 @@ async function activateManagedTabForPhysicalInput(args = {}, tabId = "", options
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw new Error(`TMWD activation requires TMWD transport, got ${preferred.transport}`);
   }
-  const result = await executeTmwdJsWithFallback(activationArgs, preferred.context, {
-    cmd: "tabs",
-    method: "switch",
-    tabId: normalizedTabId,
-  }, options);
-  const raw = result.executed?.raw;
-  if (raw?.ok === false) {
-    throw new Error(String(raw.error ?? "TMWD tabs.switch failed"));
-  }
+  const runCommand = async (command) => {
+    const result = await executeTmwdJsWithFallback(
+      activationArgs,
+      preferred.context,
+      command,
+      options,
+    );
+    if (result.executed?.raw?.ok === false) {
+      const error = new Error(String(result.executed.raw.error ?? "TMWD command failed"));
+      error.code = result.executed.raw.errorCode;
+      throw error;
+    }
+    return {
+      value: result.executed?.value,
+      raw: result.executed?.raw,
+      transport: result.context.tmwd_transport === "ws" ? "tmwd_ws" : "tmwd_link",
+      transport_attempts: result.transport_attempts,
+    };
+  };
+  const focusLease = await acquireManagedFocusLease(
+    activationArgs,
+    normalizedTabId,
+    runCommand,
+  );
   return {
     status: "foregrounded",
-    method: "tmwd_tabs_switch",
+    method: "tmwd_focus_lease",
     tab_id: normalizedTabId,
-    transport: result.context.tmwd_transport === "ws" ? "tmwd_ws" : "tmwd_link",
-    transport_attempts: result.transport_attempts,
-    tab: result.executed?.value,
+    transport: preferred.transport,
+    transport_attempts: preferred.transport_attempts,
+    focus_lease: focusLease,
   };
+}
+
+async function releaseManagedTabAfterPhysicalInput(args = {}, activation = {}, options = {}) {
+  const leaseId = String(activation?.focus_lease?.lease_id ?? "").trim();
+  if (!leaseId) return { status: "not_active", restored: false };
+  const tabId = String(activation.tab_id ?? normalizeExplicitTabId(args)).trim();
+  const releaseArgs = {
+    ...args,
+    tab_id: tabId,
+    switch_tab_id: tabId,
+    session_id: tabId,
+  };
+  try {
+    const preferred = await resolvePreferredBrowserContext(releaseArgs, options);
+    const runCommand = async (command) => {
+      const result = await executeTmwdJsWithFallback(
+        releaseArgs,
+        preferred.context,
+        command,
+        options,
+      );
+      if (result.executed?.raw?.ok === false) {
+        throw new Error(String(result.executed.raw.error ?? "TMWD focus release failed"));
+      }
+      return { value: result.executed?.value, raw: result.executed?.raw };
+    };
+    return releaseManagedFocusLease(activation.focus_lease, runCommand, "physical_input_complete");
+  } catch (error) {
+    return {
+      status: "release_failed",
+      restored: false,
+      error: String(error?.message ?? error),
+    };
+  }
 }
 
 export {
@@ -132,5 +185,6 @@ export {
   normalizeExplicitTabId,
   resolveManagedTabNativeWindowTitle,
   resolveManagedTabNativeWindowUrl,
+  releaseManagedTabAfterPhysicalInput,
   sleep,
 };
