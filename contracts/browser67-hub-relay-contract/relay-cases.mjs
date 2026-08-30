@@ -130,6 +130,57 @@ async function runExplicitInstanceRelay({
   return relayed;
 }
 
+async function runExtensionErrorRelayCase(extensionWs, controllerWs, linkUrl) {
+  const wsRelayPromise = waitForWsMessage(
+    extensionWs,
+    (message) => message?.code?.method === "contract_error_ws",
+    "relayed extension error ws",
+  );
+  const wsResponsePromise = sendControllerRequest(controllerWs, {
+    id: "extension_error_ws",
+    browser_instance_id: browserInstanceId,
+    tabId: 123,
+    code: { cmd: "focus", method: "contract_error_ws" },
+  });
+  const wsRelay = await wsRelayPromise;
+  extensionWs.send(JSON.stringify({
+    type: "error",
+    id: wsRelay.id,
+    browser_instance_id: browserInstanceId,
+    error: "focus lease busy",
+    errorCode: "FOCUS_LEASE_BUSY",
+    details: { retry_after_ms: 1000 },
+  }));
+  const wsResponse = await wsResponsePromise;
+  assert.equal(wsResponse?.type, "error");
+  assert.equal(wsResponse?.errorCode, "FOCUS_LEASE_BUSY");
+  assert.equal(wsResponse?.details?.retry_after_ms, 1000);
+
+  const linkRelayPromise = waitForWsMessage(
+    extensionWs,
+    (message) => message?.code?.method === "contract_error_link",
+    "relayed extension error link",
+  );
+  const linkResponsePromise = sendLinkCommand(linkUrl, {
+    cmd: "execute_js",
+    browser_instance_id: browserInstanceId,
+    sessionId: 123,
+    code: { cmd: "focus", method: "contract_error_link" },
+  });
+  const linkRelay = await linkRelayPromise;
+  extensionWs.send(JSON.stringify({
+    type: "error",
+    id: linkRelay.id,
+    browser_instance_id: browserInstanceId,
+    error: "foreground required",
+    errorCode: "FOREGROUND_REQUIRED",
+    details: { focus_policy: "background_only" },
+  }));
+  const linkResponse = await linkResponsePromise;
+  assert.equal(linkResponse?.r?.errorCode, "FOREGROUND_REQUIRED");
+  assert.equal(linkResponse?.r?.details?.focus_policy, "background_only");
+}
+
 async function runTabsListCase(extensionWs, controllerWs, linkUrl) {
   extensionWs.send(JSON.stringify({
     type: "ext_ready",
@@ -735,6 +786,7 @@ export {
   runNoExtensionCase,
   runMultiBrowserInstanceRelayCase,
   runResponseListenerOrderingCase,
+  runExtensionErrorRelayCase,
   runRuntimeIdentityCase,
   runTabsCreateRelayCase,
   runTabsListCase,

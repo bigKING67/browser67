@@ -175,6 +175,8 @@ async function handleExecuteJs(hub, config, res, payload) {
     respondJson(res, 200, {
       r: {
         error: execResult.error ?? "unknown extension error",
+        errorCode: execResult.errorCode,
+        details: execResult.details,
         newTabs: execResult.newTabs,
       },
     });

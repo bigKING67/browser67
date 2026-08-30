@@ -96,6 +96,8 @@ function settlePendingFromExtension(hub, socket, message) {
     ok: type === "result",
     result: message.result,
     error: message.error,
+    errorCode: message.errorCode,
+    details: message.details,
     browser_instance_id: pending.browserInstanceId,
     newTabs: Array.isArray(message.newTabs)
       ? message.newTabs.map((tab) => ({ ...tab, browser_instance_id: pending.browserInstanceId }))
@@ -107,6 +109,8 @@ function settlePendingFromExtension(hub, socket, message) {
       id: pending.replyId || relayId,
       result: payload.result,
       error: payload.error,
+      errorCode: payload.errorCode,
+      details: payload.details,
       browser_instance_id: payload.browser_instance_id,
       newTabs: payload.newTabs,
     });

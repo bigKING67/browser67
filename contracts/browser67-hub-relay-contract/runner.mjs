@@ -8,6 +8,7 @@ import {
 import { pickFreePortPair, sleep, waitForPort } from "./ports.mjs";
 import {
   runNewTabMonitoringRelayCase,
+  runExtensionErrorRelayCase,
   runNoExtensionCase,
   runMultiBrowserInstanceRelayCase,
   runRuntimeIdentityCase,
@@ -34,6 +35,7 @@ async function runHubRelayContract() {
     await runTabsListCase(extensionWs, controllerWs, linkUrl);
     await runRuntimeIdentityCase(controllerWs, linkUrl);
     await runTabsCreateRelayCase(extensionWs, controllerWs);
+    await runExtensionErrorRelayCase(extensionWs, controllerWs, linkUrl);
     await runNewTabMonitoringRelayCase(extensionWs, controllerWs, linkUrl);
     await runMultiBrowserInstanceRelayCase(extensionWs, controllerWs, linkUrl, wsUrl);
     await runNoExtensionCase(extensionWs, controllerWs, linkUrl);
@@ -51,6 +53,7 @@ async function runHubRelayContract() {
       extension_identity_handshake_ok: true,
       extension_identity_ws_link_query_ok: true,
       tabs_create_relay_ok: true,
+      extension_error_code_relay_ok: true,
       monitor_new_tabs_ws_relay_ok: true,
       monitor_new_tabs_link_relay_ok: true,
       monitor_new_tabs_default_compatible: true,

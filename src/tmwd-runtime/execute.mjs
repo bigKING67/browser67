@@ -43,7 +43,14 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
     );
     const raw = response.success
       ? { ok: true, data: response.result, newTabs: response.newTabs }
-      : { ok: false, error: response.error, result: response.result, newTabs: response.newTabs };
+      : {
+        ok: false,
+        error: response.error,
+        errorCode: response.errorCode,
+        details: response.details,
+        result: response.result,
+        newTabs: response.newTabs,
+      };
     if (!response.success) {
       return {
         raw,
@@ -82,7 +89,10 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
   );
   const raw = exec.value;
   if (raw && typeof raw === "object" && typeof raw.error === "string" && raw.error.length > 0) {
-    throw new Error(raw.error);
+    throw Object.assign(new Error(raw.error), {
+      errorCode: raw.errorCode,
+      details: raw.details,
+    });
   }
   return {
     raw,
