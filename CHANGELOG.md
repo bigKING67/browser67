@@ -9,6 +9,10 @@
 - Bind Agent Window presentation to the exact browser67 anchor and window,
   re-verify that identity after a native transition, and leave ordinary user
   Chrome windows unchanged.
+- Review GenericAgent remote main through `efb3bc6`, confirm that its compiled
+  React Desktop 2.0 v0.2.1 update changes only `.github` and `frontends` while
+  preserving all six `assets/tmwd_cdp_bridge` blob hashes, and retain the
+  manual-merge extension decision and historical byte lock without syncing.
 
 ## 0.7.0 - 2026-08-30
 
