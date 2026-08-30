@@ -18,6 +18,7 @@ async function runJsReverseLiveGate(argv) {
       pages_count: result.pages_count,
       scripts_count: result.scripts_count,
       requests_count: result.requests_count,
+      managed_lifecycle: result.managed_lifecycle,
       tmwd_transport: cli.tmwd_transport,
       tmwd_ws_endpoint: cli.tmwd_ws_endpoint,
       tmwd_link_endpoint: cli.tmwd_link_endpoint,

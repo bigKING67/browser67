@@ -3,7 +3,7 @@ const VERSION = "0.5.0";
 const TOOL_DEFINITIONS = {
   check_browser_health: "Verify browser67-backed browser connectivity for JS reverse tasks.",
   navigate_page: "Navigate the selected page.",
-  new_page: "Create a new browser page.",
+  new_page: "Create/reuse a browser67-managed page in the dedicated background Agent window by default.",
   finalize_task: "Finalize js-reverse browser67-managed pages for a workspace or task.",
   list_pages: "List TMWD-visible browser pages.",
   select_page: "Select a browser page by id.",
@@ -111,7 +111,18 @@ const TOOL_SCHEMAS = Object.fromEntries(
           script_hashes: { type: "array", items: { type: "string" } },
           storage_keys: { type: "array", items: { type: "string" } },
           user_agent: { type: "string" },
-          active: { type: "boolean", default: true },
+          active: { type: "boolean", default: false },
+          focus_policy: {
+            type: "string",
+            enum: ["background_only", "background_preferred", "foreground"],
+            default: "background_preferred",
+          },
+          window_policy: {
+            type: "string",
+            enum: ["dedicated", "current"],
+            default: "dedicated",
+          },
+          focus_lease_timeout_ms: { type: "number", minimum: 1000, maximum: 120000 },
           keep: { type: "boolean", default: false },
           fresh: { type: "boolean", default: false },
           reuse: { type: "boolean", default: true },

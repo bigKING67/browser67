@@ -2,6 +2,7 @@ import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
 } from "../tmwd-runtime/index.mjs";
+import { createToolError } from "../runtime/tool-errors.mjs";
 import { normalizeTransport } from "./utils.mjs";
 
 function browserArgs(args = {}) {
@@ -46,6 +47,13 @@ async function bridgeCommand(args, command) {
   const callArgs = browserArgs(args);
   const preferred = await resolveTmwd(callArgs);
   const result = await executeTmwdJsWithFallback(callArgs, preferred.context, command);
+  if (result.executed?.raw?.ok === false) {
+    throw createToolError(
+      String(result.executed.raw.errorCode || "EXECUTION_ERROR"),
+      String(result.executed.raw.error ?? "TMWD command failed"),
+      { details: result.executed.raw.details },
+    );
+  }
   return {
     value: result.executed.value,
     raw: result.executed.raw,

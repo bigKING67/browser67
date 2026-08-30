@@ -47,6 +47,10 @@ async function runLifecycleCases(rpc, cli) {
   assert.equal(newPageDryRunPayload?.created, false);
   assert.equal(newPageDryRunPayload?.reused, false);
   assert.equal(newPageDryRunPayload?.would_create, true);
+  assert.equal(newPageDryRunPayload?.presentation?.focus_policy, "background_preferred");
+  assert.equal(newPageDryRunPayload?.presentation?.window_policy, "dedicated");
+  assert.equal(newPageDryRunPayload?.presentation?.active, false);
+  assert.equal(newPageDryRunPayload?.page?.window_ownership, "browser67_agent");
 
   const newPageReuseDryRunCall = await rpc.call(
     "tools/call",

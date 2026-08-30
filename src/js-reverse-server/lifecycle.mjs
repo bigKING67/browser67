@@ -4,14 +4,21 @@ import {
 } from "../runtime/sessions/registry.mjs";
 import {
   extractCreatedTabId,
+  deleteManagedTab,
   findReusableManagedTab,
+  managedWindowRecordFields,
   managedTabFinalizeHint,
   managedTabPayload,
   planManagedTab,
   recordManagedTab,
   summarizeUnmanagedMatches,
   updateManagedTab,
+  resolveManagedPresentation,
 } from "../tab-workspace/index.mjs";
+import {
+  applyManagedTabPolicy,
+  normalizeManagementPolicy,
+} from "../tab-workspace/policy-bridge.mjs";
 import {
   assertManagedExecutionContext,
   authorizeManagedExecutionNavigation,
@@ -24,6 +31,12 @@ import {
 } from "./tmwd-adapter.mjs";
 import { handleFinalizeTask } from "./finalizer.mjs";
 import { browserTabKey } from "../tab-workspace/identity.mjs";
+import {
+  ensureAgentWindow,
+  foregroundManagedTab,
+  inspectReusableManagedTabPresentation,
+  resolveCreatedTab,
+} from "../browser-wrappers/presentation.mjs";
 
 function browserHealthPayload(tabs, args = {}) {
   const rows = Array.isArray(tabs?.value) ? tabs.value : [];
@@ -43,6 +56,68 @@ function browserHealthPayload(tabs, args = {}) {
     summary_only: args?.summary_only === true,
     ...(args?.summary_only === true ? {} : { pages: rows.slice(0, 40) }),
     transport_attempts: tabs?.transport_attempts,
+  };
+}
+
+async function waitForTmwdTarget(args = {}) {
+  const timeoutMs = Math.max(0, Math.min(10_000, Number(args.wait_timeout_ms ?? 5_000)));
+  const pollMs = Math.max(50, Math.min(1_000, Number(args.wait_poll_ms ?? 100)));
+  const startedAt = Date.now();
+  let latestError;
+  do {
+    try {
+      return {
+        preferred: await resolveTmwd(args),
+        ready: true,
+        ready_after_ms: Date.now() - startedAt,
+      };
+    } catch (error) {
+      latestError = error;
+    }
+    if (Date.now() - startedAt >= timeoutMs) break;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, pollMs));
+  } while (true);
+  throw new Error(
+    `new_page target did not become routable within ${String(timeoutMs)}ms: ${String(latestError?.message ?? latestError)}`,
+  );
+}
+
+async function findPresentationSafeReusablePage(args, url, liveTabs, presentation, agentWindow, runCommand) {
+  let latest;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    latest = await findReusableManagedTab(args, url, liveTabs, {
+      window_policy: presentation?.window_policy,
+    });
+    if (!latest.record) {
+      return { reusable: latest, presentation_validation: undefined };
+    }
+    const validation = await inspectReusableManagedTabPresentation(
+      presentation,
+      agentWindow,
+      latest.record,
+      runCommand,
+    );
+    if (validation.reusable === true) {
+      return { reusable: latest, presentation_validation: validation };
+    }
+    if (validation.record_action === "delete") {
+      await deleteManagedTab(latest.record.tab_id, latest.record.browser_instance_id);
+    } else {
+      await updateManagedTab(latest.record.tab_id, {
+        window_id: validation.actual_window_id,
+        window_ownership: "outside_agent_window",
+        touch: false,
+      }, latest.record.browser_instance_id);
+    }
+  }
+  return {
+    reusable: {
+      ...(latest ?? {}),
+      record: null,
+      selected_by: "none",
+      reason: "presentation_validation_attempts_exhausted",
+    },
+    presentation_validation: undefined,
   };
 }
 
@@ -87,6 +162,7 @@ async function handleSelectPage(args) {
 
 async function handleNewPage(args) {
   const url = String(args?.url ?? "about:blank").trim() || "about:blank";
+  const dryRunPresentation = resolveManagedPresentation(args);
   if (args?.dry_run === true) {
     const reusable = await findReusableManagedTab(
       { ...args, workspace_key: args?.workspace_key ?? "js-reverse" },
@@ -112,6 +188,7 @@ async function handleNewPage(args) {
     }
     const record = planManagedTab({
       ...args,
+      ...managedWindowRecordFields(dryRunPresentation),
       workspace_key: args?.workspace_key ?? "js-reverse",
       url,
       source: "js-reverse",
@@ -127,6 +204,7 @@ async function handleNewPage(args) {
       would_create: true,
       dry_run: true,
       owner: "tmwd",
+      presentation: dryRunPresentation,
       page: managedTabPayload(record),
       finalize_hint: managedTabFinalizeHint(record, {
         tool: "finalize_task",
@@ -142,8 +220,27 @@ async function handleNewPage(args) {
     browser_instance_id: browserInstanceId,
     workspace_key: args?.workspace_key ?? "js-reverse",
   };
-  const reusable = await findReusableManagedTab(workspaceArgs, url, liveTabs);
-  const unmanagedIgnored = await summarizeUnmanagedMatches(workspaceArgs, url, liveTabs);
+  const presentation = resolveManagedPresentation(workspaceArgs, { transport: tabs.transport });
+  const initialRunCommand = (command) => bridgeCommand(workspaceArgs, command);
+  const agentWindow = await ensureAgentWindow(presentation, initialRunCommand);
+  const presentationArgs = {
+    ...workspaceArgs,
+    window_policy: presentation.requested_window_policy,
+    window_id: agentWindow.window_id,
+  };
+  const runCommand = (command) => bridgeCommand(presentationArgs, command);
+  const {
+    reusable,
+    presentation_validation: reusablePresentation,
+  } = await findPresentationSafeReusablePage(
+    presentationArgs,
+    url,
+    liveTabs,
+    presentation,
+    agentWindow,
+    runCommand,
+  );
+  const unmanagedIgnored = await summarizeUnmanagedMatches(presentationArgs, url, liveTabs);
   if (reusable.record) {
     let record = reusable.record;
     let navigation;
@@ -174,12 +271,22 @@ async function handleNewPage(args) {
         authorization,
       };
       record = await updateManagedTab(record.tab_id, {
+        focus_policy: presentation.focus_policy,
         url,
         title: String(nav.value?.title ?? record.title ?? ""),
       }, record.browser_instance_id) ?? record;
     } else {
-      record = await updateManagedTab(record.tab_id, { touch: true }, record.browser_instance_id) ?? record;
+      record = await updateManagedTab(record.tab_id, {
+        focus_policy: presentation.focus_policy,
+        touch: true,
+      }, record.browser_instance_id) ?? record;
     }
+    const focusTransition = await foregroundManagedTab(
+      presentation,
+      presentationArgs,
+      record.tab_id,
+      runCommand,
+    );
     markSessionSelected(record.session_key || record.tab_id, { make_default: false });
     return {
       ok: true,
@@ -187,8 +294,12 @@ async function handleNewPage(args) {
       created: false,
       reused: true,
       owner: "tmwd",
+      presentation,
+      agent_window: agentWindow,
+      focus_transition: focusTransition,
       selected_by: reusable.selected_by,
       reuse_policy: reusable.policy,
+      presentation_validation: reusablePresentation,
       page: managedTabPayload(record),
       finalize_hint: managedTabFinalizeHint(record, {
         tool: "finalize_task",
@@ -199,13 +310,15 @@ async function handleNewPage(args) {
       ...sessionPointers(),
     };
   }
-  const result = await bridgeCommand(args, {
+  const result = await runCommand({
     cmd: "tabs",
     method: "create",
     url,
-    active: args?.active !== false,
+    active: presentation.active,
+    windowId: agentWindow.window_id,
   });
-  const tabId = extractCreatedTabId(result);
+  const createdTab = await resolveCreatedTab(result, runCommand);
+  const tabId = createdTab.tab_id || extractCreatedTabId(result);
   if (!tabId) {
     return {
       ok: false,
@@ -215,16 +328,43 @@ async function handleNewPage(args) {
       page: result.value,
     };
   }
-  const record = await recordManagedTab({
+  let record = await recordManagedTab({
     ...args,
+    ...managedWindowRecordFields(presentation, agentWindow, createdTab),
     tab_id: tabId,
     browser_instance_id: String(result.page?.browser_instance_id ?? args?.browser_instance_id ?? "").trim(),
     workspace_key: args?.workspace_key ?? "js-reverse",
     url,
-    title: String(result?.value?.title ?? result?.value?.data?.title ?? ""),
+    title: createdTab.title || String(result?.value?.title ?? result?.value?.data?.title ?? ""),
     source: "js-reverse",
     keep: args?.keep === true,
+    ownership_origin: "agent_created",
+    close_on_finalize: true,
+    management_policy: normalizeManagementPolicy(),
   });
+  const targetArgs = {
+    ...presentationArgs,
+    session_id: tabId,
+    page_id: tabId,
+  };
+  const targetReadiness = await waitForTmwdTarget(targetArgs);
+  const targetPreferred = targetReadiness.preferred;
+  const policyApplication = await applyManagedTabPolicy(
+    browserArgs(targetArgs),
+    targetPreferred,
+    record,
+  );
+  record = await updateManagedTab(record.tab_id, {
+    management_policy_applied: policyApplication.applied === true,
+    management_policy_status: policyApplication.status,
+    touch: false,
+  }, record.browser_instance_id) ?? record;
+  const focusTransition = await foregroundManagedTab(
+    presentation,
+    targetArgs,
+    record.tab_id,
+    runCommand,
+  );
   if (record.tab_id) {
     markSessionSelected(record.session_key || record.tab_id, { make_default: false });
   }
@@ -235,10 +375,16 @@ async function handleNewPage(args) {
     created: true,
     reused: false,
     owner: "tmwd",
+    presentation,
+    agent_window: agentWindow,
+    focus_transition: focusTransition,
     selected_by: "created_new_tmwd_owned_tab",
     reuse_policy: reusable.policy,
     page: result.value,
     managed_page: managedTabPayload(record),
+    policy_application: policyApplication,
+    ready: targetReadiness.ready,
+    ready_after_ms: targetReadiness.ready_after_ms,
     finalize_hint: managedTabFinalizeHint(record, {
       tool: "finalize_task",
       include_action: false,
