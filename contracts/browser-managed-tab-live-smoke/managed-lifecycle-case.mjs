@@ -26,6 +26,17 @@ async function runManagedLifecycleCase(context) {
   assert.equal(firstManaged.presentation?.window_policy, "dedicated");
   assert.equal(firstManaged.presentation?.active, false);
   assert.equal(firstManaged.agent_window?.ownership, "browser67_agent");
+  assert.equal(firstManaged.agent_window?.presentation?.status, "ready");
+  assert.equal(firstManaged.agent_window?.presentation?.toolbar_preserved, true);
+  if (process.platform === "darwin") {
+    assert.equal(firstManaged.agent_window?.presentation?.mode, "macos_native_fullscreen_space");
+    assert.equal(firstManaged.agent_window?.presentation?.native_fullscreen, true);
+    assert.equal(firstManaged.agent_window?.presentation?.window_state, "fullscreen");
+  } else if (process.platform === "win32") {
+    assert.equal(firstManaged.agent_window?.presentation?.mode, "windows_maximized");
+    assert.equal(firstManaged.agent_window?.presentation?.maximized, true);
+    assert.equal(firstManaged.agent_window?.presentation?.window_state, "maximized");
+  }
   assert.equal(firstManaged.managed_tab?.window_ownership, "browser67_agent");
   assert.equal(firstManaged.managed_tab?.window_id, firstManaged.agent_window?.window_id);
   const createdTab = await context.bridgeCommand({
@@ -101,6 +112,7 @@ async function runManagedLifecycleCase(context) {
     first_ready: firstManaged.ready === true,
     policy_applied: firstManaged.policy_application?.applied === true,
     dedicated_agent_window: firstManaged.managed_tab?.window_ownership === "browser67_agent",
+    agent_window_presentation: firstManaged.agent_window?.presentation,
     background_default: createdTab?.active === false,
     preexisting_active_tabs_preserved: true,
     second_reused: secondManaged.reused === true,

@@ -43,6 +43,30 @@ function normalizeTabIdNumber(value) {
   return Number.isInteger(number) && number >= 0 ? number : undefined;
 }
 
+function normalizeAgentWindowPresentation(data = {}) {
+  const presentation = /** @type {Record<string, unknown>} */ (
+    data && typeof data === "object" ? data : {}
+  );
+  return {
+    mode: String(presentation.mode ?? "normal"),
+    status: String(presentation.status ?? "unknown"),
+    native_action_required: presentation.native_action_required === true,
+    toolbar_preserved: presentation.toolbar_preserved === true,
+    window_state: String(presentation.window_state ?? "unknown"),
+  };
+}
+
+function normalizeAgentWindowFocusSnapshot(data = {}) {
+  const snapshot = /** @type {Record<string, unknown>} */ (
+    data && typeof data === "object" ? data : {}
+  );
+  return {
+    window_id: normalizeWindowId(snapshot.window_id ?? snapshot.windowId),
+    tab_id: normalizeTabIdNumber(snapshot.tab_id ?? snapshot.tabId),
+    browser_focused: snapshot.browser_focused === true,
+  };
+}
+
 function resolveManagedPresentation(args = {}, options = {}) {
   const focusPolicy = normalizeFocusPolicy(args.focus_policy);
   const requestedWindowPolicy = normalizeWindowPolicy(args.window_policy);
@@ -100,6 +124,14 @@ function agentWindowMetadata(result = {}) {
     reused: data.reused === true,
     window_id: windowId,
     anchor_tab_id: anchorTabId,
+    anchor_url: String(data.anchor_url ?? data.anchorUrl ?? ""),
+    browser_family: String(data.browser_family ?? data.browserFamily ?? "unknown"),
+    platform_os: String(data.platform_os ?? data.platformOs ?? "unknown"),
+    platform_arch: String(data.platform_arch ?? data.platformArch ?? "unknown"),
+    focus_snapshot: normalizeAgentWindowFocusSnapshot(
+      data.focus_snapshot ?? data.focusSnapshot,
+    ),
+    presentation: normalizeAgentWindowPresentation(data.presentation),
     focused: data.focused === true,
     ownership: "browser67_agent",
   };
