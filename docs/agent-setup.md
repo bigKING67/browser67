@@ -183,7 +183,10 @@ Agent-created tabs default to `window_policy=dedicated`,
 `focus_policy=background_preferred`, and `active=false`. The extension creates
 or reuses a non-focused browser67 Agent window inside the selected Chrome/Edge
 Profile, so it retains the same approved login/session state without replacing
-the user's active working tab. Use `window_policy=current` only as an explicit
+the user's active working tab. The exact dedicated window enters a native macOS
+Full Screen Space or an ordinary maximized Windows window while preserving the
+Chrome/Edge tab and address UI; it never uses immersive browser fullscreen for
+this presentation. Use `window_policy=current` only as an explicit
 compatibility choice and `focus_policy=foreground` only for a deliberate visible
 handoff.
 User-opened unmanaged tabs are read-only by default. Do not navigate, click,

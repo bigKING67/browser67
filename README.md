@@ -193,6 +193,14 @@ focus during the lease. Concurrent leases are rejected. If the user manually
 moves an Agent tab into another window, browser67 excludes it from dedicated
 reuse and never moves it back.
 
+The dedicated window uses a platform-native, toolbar-preserving presentation:
+on macOS it enters its own native Full Screen Space, while Windows uses the
+ordinary maximized window state. browser67 never requests Chrome's immersive
+`fullscreen` window state for this purpose, because that hides the tab and
+address-bar UI. The one-time macOS transition targets the exact Agent anchor
+tab and restores the previously focused browser tab or application when it can
+do so safely.
+
 User navigation, extension reconnection, or lease-generation changes suspend an
 adopted tab. Re-inspect and re-adopt rather than mutating a target whose identity
 may have changed.

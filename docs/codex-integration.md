@@ -306,7 +306,10 @@ transport drift.
   `focus_policy:"background_preferred"`, and `active:false`. The extension
   creates/reuses one browser67 Agent window per Browser Profile with
   `focused:false`; the window shares that Profile's approved cookies/session but
-  is not the user's working window. `window_policy:"current"` is an explicit
+  is not the user's working window. On macOS that exact Agent window uses a
+  native Full Screen Space (Chrome tabs/address/bookmarks remain available); on
+  Windows it uses ordinary maximized state. It does not use Chrome's immersive
+  `fullscreen` window state. `window_policy:"current"` is an explicit
   compatibility mode. `focus_policy:"background_only"` rejects operations that
   require real foreground focus, while `focus_policy:"foreground"` intentionally
   leaves the managed tab visible. The legacy `active:true` flag only activates a
