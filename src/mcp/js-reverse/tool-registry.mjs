@@ -9,6 +9,7 @@ import {
 } from "../../runtime/tool-outcome.mjs";
 import { JS_REVERSE_HANDLERS } from "../../js-reverse-server/dispatch.mjs";
 import { TOOL_SCHEMAS } from "../../js-reverse-server/tool-schemas.mjs";
+import { disposeJsReverseState } from "../../js-reverse-server/state.mjs";
 
 function topLevelClosedSchema(inputSchema = {}) {
   return {
@@ -97,7 +98,11 @@ async function dispatchJsReverseTool(name, args = {}) {
 }
 
 async function disposeJsReverseRuntime() {
-  return JS_REVERSE_RUNTIME.dispose();
+  try {
+    return await JS_REVERSE_RUNTIME.dispose();
+  } finally {
+    disposeJsReverseState();
+  }
 }
 
 export {

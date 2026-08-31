@@ -56,6 +56,47 @@ async function runToolCases(rpc, cli) {
   assert.equal(hookPayload?.ok, true);
   assert.equal(hookPayload?.hook?.id, "contract_fetch_hook");
 
+  const isolatedHookCall = await rpc.call(
+    "tools/call",
+    {
+      name: "create_hook",
+      arguments: {
+        workspace_key: "isolated-workspace",
+        task_id: "isolated-task",
+        hook_id: "contract_fetch_hook",
+        type: "xhr",
+        pattern: "/isolated/",
+      },
+    },
+    cli.timeout_ms,
+  );
+  assert.equal(jsReverseData(isolatedHookCall.result, "isolated create_hook")?.ok, true);
+  const contractHookList = await rpc.call(
+    "tools/call",
+    {
+      name: "list_hooks",
+      arguments: {},
+    },
+    cli.timeout_ms,
+  );
+  const contractHooks = jsReverseData(contractHookList.result, "default list_hooks")?.hooks ?? [];
+  assert.equal(contractHooks.some((hook) => hook.id === "contract_fetch_hook" && hook.type === "fetch"), true);
+  assert.equal(contractHooks.some((hook) => hook.type === "xhr"), false);
+  const isolatedHookList = await rpc.call(
+    "tools/call",
+    {
+      name: "list_hooks",
+      arguments: {
+        workspace_key: "isolated-workspace",
+        task_id: "isolated-task",
+      },
+    },
+    cli.timeout_ms,
+  );
+  const isolatedHooks = jsReverseData(isolatedHookList.result, "isolated list_hooks")?.hooks ?? [];
+  assert.equal(isolatedHooks.length, 1);
+  assert.equal(isolatedHooks[0]?.type, "xhr");
+
   const unsupportedCall = await rpc.call(
     "tools/call",
     {
@@ -78,7 +119,10 @@ async function runToolCases(rpc, cli) {
       name: "record_reverse_evidence",
       arguments: {
         task_id: "contract",
+        workspace_key: "js-reverse-contract",
         channel: "evidence-schema",
+        source: "hook",
+        confidence: "exact",
         evidence: {
           source: "hook",
           confidence: "exact",
@@ -99,6 +143,7 @@ async function runToolCases(rpc, cli) {
       name: "export_session_report",
       arguments: {
         task_id: "contract",
+        workspace_key: "js-reverse-contract",
       },
     },
     cli.timeout_ms,
@@ -110,12 +155,24 @@ async function runToolCases(rpc, cli) {
   assert.equal(foundEvidence?.source, "hook");
   assert.equal(foundEvidence?.confidence, "exact");
 
+  const defaultReportCall = await rpc.call(
+    "tools/call",
+    {
+      name: "export_session_report",
+      arguments: {},
+    },
+    cli.timeout_ms,
+  );
+  const defaultReportPayload = jsReverseData(defaultReportCall.result, "default export_session_report");
+  assert.equal(defaultReportPayload?.evidence?.some((entry) => entry.task_id === "contract"), false);
+
   const bundleCall = await rpc.call(
     "tools/call",
     {
       name: "export_evidence_bundle",
       arguments: {
         task_id: "contract",
+        workspace_key: "js-reverse-contract",
         url: "https://example.invalid/contract",
         frame_path: "top",
         script_hashes: ["sha256:contract"],

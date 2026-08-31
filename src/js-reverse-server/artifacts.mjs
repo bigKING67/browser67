@@ -9,7 +9,12 @@ import { dirname, resolve } from "node:path";
 import { normalizeEvidenceRecord } from "../runtime/evidence/schema.mjs";
 import { runtimeRoot } from "./paths.mjs";
 import { runtimeScript } from "./runtime-script.mjs";
-import { serverEvidence, serverHooks } from "./state.mjs";
+import {
+  appendServerEvidence,
+  listServerEvidence,
+  listServerHooks,
+  resolveJsReverseScope,
+} from "./state.mjs";
 import { pageEval } from "./tmwd-adapter.mjs";
 
 async function writeJsonFile(path, payload) {
@@ -17,8 +22,21 @@ async function writeJsonFile(path, payload) {
   await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function safePathSegment(raw) {
+  return String(raw).replace(/[^a-zA-Z0-9_.-]/g, "_");
+}
+
+function artifactScope(args = {}) {
+  const scope = resolveJsReverseScope(args);
+  return {
+    ...scope,
+    workspace_path: safePathSegment(scope.workspace_key),
+    task_path: safePathSegment(scope.task_id),
+  };
+}
+
 async function appendEvidence(args) {
-  const taskId = String(args?.task_id ?? "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const scope = artifactScope(args);
   const channel = String(args?.channel ?? "runtime-evidence").replace(/[^a-zA-Z0-9_.-]/g, "_");
   const evidenceInput = args?.evidence && typeof args.evidence === "object"
     ? args.evidence
@@ -29,11 +47,18 @@ async function appendEvidence(args) {
       source: args?.source ?? "tool",
       confidence: args?.confidence ?? "unknown",
     }),
-    task_id: taskId,
+    workspace_key: scope.workspace_key,
+    task_id: scope.task_id,
     channel,
   };
-  serverEvidence.push(payload);
-  const path = resolve(runtimeRoot, "evidence", taskId, `${channel}-${payload.id}.json`);
+  appendServerEvidence(args, payload);
+  const path = resolve(
+    runtimeRoot,
+    "evidence",
+    scope.workspace_path,
+    scope.task_path,
+    `${channel}-${payload.id}.json`,
+  );
   await writeJsonFile(path, payload);
   return { payload, path };
 }
@@ -44,27 +69,38 @@ async function handleRecordReverseEvidence(args) {
 }
 
 async function handleExportSessionReport(args) {
-  const taskId = String(args?.task_id ?? "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const scope = artifactScope(args);
   const payload = {
     ok: true,
-    task_id: taskId,
+    workspace_key: scope.workspace_key,
+    task_id: scope.task_id,
     ts: new Date().toISOString(),
-    hooks: Array.from(serverHooks.values()),
-    evidence: serverEvidence.filter((entry) => entry.task_id === taskId || taskId === "default"),
+    hooks: listServerHooks(args),
+    evidence: listServerEvidence(args),
   };
-  const path = resolve(runtimeRoot, "reports", `${taskId}-${Date.now()}.json`);
+  const path = resolve(
+    runtimeRoot,
+    "reports",
+    `${scope.workspace_path}-${scope.task_path}-${Date.now()}.json`,
+  );
   await writeJsonFile(path, payload);
   return { ...payload, path };
 }
 
 async function handleExportRebuildBundle(args) {
-  const taskId = String(args?.task_id ?? "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
-  const bundleDir = resolve(runtimeRoot, "bundles", `${taskId}-${Date.now()}`, "env");
+  const scope = artifactScope(args);
+  const bundleDir = resolve(
+    runtimeRoot,
+    "bundles",
+    `${scope.workspace_path}-${scope.task_path}-${Date.now()}`,
+    "env",
+  );
   await mkdir(bundleDir, { recursive: true });
   const capture = {
     ts: new Date().toISOString(),
-    task_id: taskId,
-    evidence: serverEvidence.filter((entry) => entry.task_id === taskId || taskId === "default"),
+    workspace_key: scope.workspace_key,
+    task_id: scope.task_id,
+    evidence: listServerEvidence(args),
     input: args?.data ?? {},
   };
   await writeJsonFile(resolve(bundleDir, "capture.json"), capture);
@@ -234,11 +270,15 @@ async function handleGetStorage(args) {
 }
 
 async function handleExportEvidenceBundle(args) {
-  const taskId = String(args?.task_id ?? "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const scope = artifactScope(args);
   const selectedFrame = args?.frame_path ? String(args.frame_path) : "top";
-  const bundleDir = resolve(runtimeRoot, "evidence-bundles", `${taskId}-${Date.now()}`);
-  const evidence = serverEvidence.filter((entry) => entry.task_id === taskId || taskId === "default");
-  const hooks = Array.from(serverHooks.values());
+  const bundleDir = resolve(
+    runtimeRoot,
+    "evidence-bundles",
+    `${scope.workspace_path}-${scope.task_path}-${Date.now()}`,
+  );
+  const evidence = listServerEvidence(args);
+  const hooks = listServerHooks(args);
   const requestIds = [...new Set(evidence.flatMap((entry) => Array.isArray(entry.request_ids) ? entry.request_ids : []))];
   const scriptIds = [...new Set(evidence.flatMap((entry) => Array.isArray(entry.script_ids) ? entry.script_ids : []))];
   await Promise.all([
@@ -248,7 +288,8 @@ async function handleExportEvidenceBundle(args) {
   ]);
   const summary = {
     schema_version: "js-reverse-evidence-bundle.v1",
-    task_id: taskId,
+    workspace_key: scope.workspace_key,
+    task_id: scope.task_id,
     url: args?.url ?? null,
     timestamp: new Date().toISOString(),
     selected_frame: selectedFrame,
@@ -269,7 +310,8 @@ async function handleExportEvidenceBundle(args) {
     .map((entry) => JSON.stringify(entry));
   const storageRedacted = {
     schema_version: "storage-redacted.v1",
-    task_id: taskId,
+    workspace_key: scope.workspace_key,
+    task_id: scope.task_id,
     note: "Values intentionally redacted. Use get_local_storage/get_session_storage/search_storage for scoped live retrieval when needed.",
     keys: Array.isArray(args?.storage_keys) ? args.storage_keys.map(String) : [],
   };
@@ -312,8 +354,12 @@ async function handleExportEvidenceBundle(args) {
 
 async function handleSaveSessionState(args) {
   const state = await handleGetStorage(args);
-  const taskId = String(args?.task_id ?? "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
-  const path = resolve(runtimeRoot, "session-state", `${taskId}-${Date.now()}.json`);
+  const scope = artifactScope(args);
+  const path = resolve(
+    runtimeRoot,
+    "session-state",
+    `${scope.workspace_path}-${scope.task_path}-${Date.now()}.json`,
+  );
   await writeJsonFile(path, state.storage);
   return { ok: true, path, state: state.storage };
 }

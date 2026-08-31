@@ -66,6 +66,24 @@ function assertRequiredTools(tools) {
   assert.equal(evidenceBundleTool?.inputSchema?.properties?.script_hashes?.items?.type, "string");
   const evidenceTool = tools.find((entry) => entry?.name === "record_reverse_evidence");
   assert.equal(evidenceTool?.inputSchema?.properties?.evidence?.type, "object");
+  assert.equal(evidenceTool?.inputSchema?.properties?.source?.type, "string");
+  assert.equal(evidenceTool?.inputSchema?.properties?.confidence?.type, "string");
+  const restoreStateTool = tools.find((entry) => entry?.name === "restore_session_state");
+  assert.equal(restoreStateTool?.inputSchema?.properties?.path?.type, "string");
+  const monitorEventsTool = tools.find((entry) => entry?.name === "monitor_events");
+  assert.equal(monitorEventsTool?.inputSchema?.properties?.monitor_id?.type, "string");
+  const scriptSearchTool = tools.find((entry) => entry?.name === "search_in_scripts");
+  assert.equal(scriptSearchTool?.inputSchema?.properties?.script_limit?.maximum, 500);
+  assert.equal(newPageTool?.inputSchema?.properties?.wait_timeout_ms?.maximum, 10000);
+  assert.equal(newPageTool?.inputSchema?.properties?.wait_poll_ms?.minimum, 50);
+  const finalizeTool = tools.find((entry) => entry?.name === "finalize_task");
+  assert.equal(finalizeTool?.inputSchema?.properties?.taskId?.type, "string");
+  assert.equal(finalizeTool?.inputSchema?.properties?.workspaceKey?.type, "string");
+  const understandTool = tools.find((entry) => entry?.name === "understand_code");
+  assert.equal(understandTool?.inputSchema?.properties?.code?.type, "string");
+  assert.equal(understandTool?.inputSchema?.properties?.browser_instance_id, undefined);
+  const schemaFingerprints = new Set(tools.map((entry) => JSON.stringify(entry?.inputSchema)));
+  assert.equal(schemaFingerprints.size >= 12, true, "js-reverse tools must expose scoped schemas rather than one shared wide schema");
   return names;
 }
 

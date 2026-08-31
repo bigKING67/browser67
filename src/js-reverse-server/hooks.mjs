@@ -1,21 +1,28 @@
 import { randomUUID } from "node:crypto";
 
 import { runtimeScript } from "./runtime-script.mjs";
-import { serverHooks } from "./state.mjs";
+import {
+  getServerHook,
+  listServerHooks,
+  resolveJsReverseScope,
+  setServerHook,
+} from "./state.mjs";
 import { pageEval } from "./tmwd-adapter.mjs";
 import { asArray } from "./utils.mjs";
 
 function createHookDefinition(args) {
   const id = String(args?.hook_id ?? `hook_${randomUUID().slice(0, 8)}`);
+  const scope = resolveJsReverseScope(args);
   const hook = {
     id,
     type: String(args?.type ?? "fetch").trim() || "fetch",
     target: String(args?.target ?? args?.pattern ?? "").trim(),
+    workspace_key: scope.workspace_key,
+    task_id: scope.task_id,
     created_at: new Date().toISOString(),
     enabled: false,
   };
-  serverHooks.set(id, hook);
-  return hook;
+  return setServerHook(args, hook);
 }
 
 async function handleCreateHook(args) {
@@ -24,7 +31,7 @@ async function handleCreateHook(args) {
 
 async function handleInjectHook(args) {
   const hookId = String(args?.hook_id ?? "").trim();
-  const hook = serverHooks.get(hookId) ?? createHookDefinition(args);
+  const hook = getServerHook(args, hookId) ?? createHookDefinition(args);
   const result = await pageEval(args, `
     ${runtimeScript()}
     const hook = input.hook;
@@ -41,7 +48,7 @@ async function handleInjectHook(args) {
     return { ok: true, hook: root.hooks[hook.id], functionHook };
   `, { hook });
   hook.enabled = true;
-  serverHooks.set(hook.id, hook);
+  setServerHook(args, hook);
   return { ok: true, transport: result.transport, page: result.page, result: result.value };
 }
 
@@ -78,10 +85,10 @@ async function handleGetHookData(args) {
 
 async function handleRemoveHook(args) {
   const hookId = String(args?.hook_id ?? "").trim();
-  const hook = serverHooks.get(hookId);
+  const hook = getServerHook(args, hookId);
   if (hook) {
     hook.enabled = false;
-    serverHooks.set(hookId, hook);
+    setServerHook(args, hook);
   }
   const result = await pageEval(args, `
     ${runtimeScript()}
@@ -91,8 +98,8 @@ async function handleRemoveHook(args) {
   return { ok: true, transport: result.transport, page: result.page, hook_id: hookId, page_hooks: result.value?.hooks };
 }
 
-function handleListHooks() {
-  return { ok: true, hooks: Array.from(serverHooks.values()) };
+function handleListHooks(args) {
+  return { ok: true, hooks: listServerHooks(args) };
 }
 
 async function handleHookFunction(args) {

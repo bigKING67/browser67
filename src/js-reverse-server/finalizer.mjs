@@ -11,6 +11,7 @@ import {
   cleanupCreatedAgentWindow,
   createdAgentWindowCleanupCandidate,
 } from "../browser-wrappers/tab-lifecycle-close.mjs";
+import { clearJsReverseStateScope } from "./state.mjs";
 
 function resolveFinalizeScope(args = {}) {
   const taskId = String(args.task_id ?? args.taskId ?? "").trim();
@@ -245,12 +246,34 @@ async function handleFinalizeTask(args) {
   const agentWindowCleanupTerminal = ["closed", "already_closed"].includes(agentWindowCleanup.status)
     && agentWindowCleanup.close_verified === true
     && agentWindowCleanup.ownership_record_removed === true;
+  const agentWindowUserContentPreserved = agentWindowCleanup.status === "preserved"
+    && agentWindowCleanup.user_content_preserved === true
+    && agentWindowCleanup.internal_tab_removed === true
+    && agentWindowCleanup.ownership_record_removed === true;
   const agentWindowCleanupOk = agentWindowCleanup.requested !== true
     || agentWindowCleanupTerminal
+    || agentWindowUserContentPreserved
     || ["not_owned", "dry_run"].includes(agentWindowCleanup.status);
   const ok = (pruneStale?.ok ?? true) === true
     && closeUnkept.ok === true
     && agentWindowCleanupOk;
+  const serverStateCleanup = dryRun
+    ? {
+        status: "dry_run",
+        hooks_removed: 0,
+        evidence_removed: 0,
+      }
+    : ok
+      ? {
+          status: "cleared",
+          ...clearJsReverseStateScope(args),
+        }
+      : {
+          status: "preserved",
+          reason: "browser_cleanup_incomplete",
+          hooks_removed: 0,
+          evidence_removed: 0,
+        };
   return {
     ok,
     action: "finalize_task",
@@ -268,13 +291,16 @@ async function handleFinalizeTask(args) {
       ignores_unmanaged_user_tabs: true,
       cleans_up_created_agent_window_only_when_requested: true,
       preserves_nonempty_agent_window: true,
+      preserves_concurrent_user_content: true,
       recovers_exact_owned_orphan_new_tab: true,
       agent_window_orphan_recovery_policy: "same_browser_profile_epoch_exact_window_sole_browser_new_tab",
       prunes_stale_registry_records: args?.prune_stale !== false,
+      clears_scoped_server_state_after_success: true,
     },
     prune_stale: pruneStale,
     close_unkept: closeUnkept,
     agent_window_cleanup: agentWindowCleanup,
+    server_state_cleanup: serverStateCleanup,
     remaining,
     cleanup_summary: cleanupSummary,
     delivery_summary: formatFinalizeDeliverySummary(cleanupSummary, {
