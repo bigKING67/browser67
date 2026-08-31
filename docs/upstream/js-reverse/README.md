@@ -39,7 +39,7 @@ These repositories are reference only:
 
 | Reference | Reviewed commit | Role |
 | --- | --- | --- |
-| `zhaoxuya520/reverse-skill` | `289c24b1617411a16b1e8d3032cce0f2fe52911d` | reverse/security/CTF skill router pack |
+| `zhaoxuya520/reverse-skill` | `71acc8e3115f76bad7a914c36466c1086232288c` | reverse/security/CTF skill router pack |
 | `NoOne-hub/JSReverser-MCP` | `65e2e3cb70c10a79dfd1ba4410a2c876113e676c` | external JS reverse MCP reference candidate |
 | `zhizhuodemao/js-reverse-mcp` | `f45172a7b2a8d98daf29434e99baf35bc08bb959` | external JS reverse MCP reference candidate |
 
@@ -54,6 +54,13 @@ JS-specific update adds labels for JSVMP, control-flow/string-array
 deobfuscation, and anti-debug side paths, all already covered by browser67's
 VMP instrumentation, AST deobfuscation, hook-first, and breakpoint-last
 guidance. No external files or runtime semantics were imported.
+
+The 2026-08-31 incremental review from
+`37162cf9547c571c680c07005e9863d4610282dd` to
+`71acc8e3115f76bad7a914c36466c1086232288c` found only README star-history and
+sponsor presentation changes plus one sponsor image. No Skill, router, script,
+runtime, MCP schema, or browser workflow changed, so the review ledger advanced
+without importing any external artifact.
 
 Audit current remote freshness with:
 
