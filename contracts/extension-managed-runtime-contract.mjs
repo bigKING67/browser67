@@ -26,6 +26,18 @@ function eventBus() {
   };
 }
 
+function snapshotEventListeners(events) {
+  return Object.fromEntries(
+    Object.entries(events).map(([name, bus]) => [name, bus.listeners.length]),
+  );
+}
+
+function restoreEventListeners(events, snapshot) {
+  for (const [name, bus] of Object.entries(events)) {
+    bus.listeners.length = snapshot[name];
+  }
+}
+
 async function run() {
   const repoRoot = fileURLToPath(new URL("..", import.meta.url));
   const windowFocusSource = readFileSync(resolve(
@@ -401,6 +413,7 @@ async function run() {
     tabId: 41,
     restore: true,
   });
+  const restartListenerSnapshot = snapshotEventListeners(events);
   const restartContext = vm.createContext({
     chrome,
     console,
@@ -428,6 +441,8 @@ async function run() {
   });
   assert.equal(restartRelease.data.restored, false);
   assert.equal(restartRelease.data.restore_reason, "service_worker_restart");
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 600));
+  restoreEventListeners(events, restartListenerSnapshot);
 
   const presentationMatch = await inspectReusableManagedTabPresentation(
     { window_policy: "dedicated" },
@@ -575,6 +590,7 @@ async function run() {
   const extensionReloadWindowId = extensionReloadAgentWindow.data.window_id;
   const extensionReloadAnchorTabId = extensionReloadAgentWindow.data.anchor_tab_id;
   tabRows.get(extensionReloadAnchorTabId).url = "chrome://newtab/";
+  const extensionReloadListenerSnapshot = snapshotEventListeners(events);
   const extensionReloadContext = vm.createContext({
     chrome,
     console,
@@ -602,6 +618,7 @@ async function run() {
     method: "status_agent_windows",
   });
   assert.equal(extensionReloadStatus.data.status, "not_owned");
+  restoreEventListeners(events, extensionReloadListenerSnapshot);
 
   const coldStartAgentWindow = await handle({
     cmd: "window",
@@ -611,6 +628,7 @@ async function run() {
   const coldStartAnchorTabId = coldStartAgentWindow.data.anchor_tab_id;
   tabRows.get(coldStartAnchorTabId).url = "chrome://newtab/";
   await events.runtimeStartup.emit();
+  const coldStartListenerSnapshot = snapshotEventListeners(events);
   const coldStartContext = vm.createContext({
     chrome,
     console,
@@ -638,6 +656,7 @@ async function run() {
     method: "status_agent_windows",
   });
   assert.equal(coldStartStatus.data.status, "not_owned");
+  restoreEventListeners(events, coldStartListenerSnapshot);
   await chrome.windows.remove(coldStartWindowId);
 
   const exactOrphanAgentWindow = await handle({
