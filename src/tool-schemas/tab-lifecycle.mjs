@@ -31,7 +31,7 @@ const TAB_LIFECYCLE_TOOL_SCHEMAS = {
           type: "string",
           enum: ["background_only", "background_preferred", "foreground"],
           default: "background_preferred",
-          description: "Foreground contract. background_only rejects required focus; background_preferred uses temporary focus leases only when needed; foreground intentionally leaves the managed tab visible.",
+          description: "Foreground contract. background_only rejects required focus; background_preferred uses temporary focus leases only when needed; foreground intentionally leaves the managed tab visible and activates the exact browser67-owned native Full Screen Space on macOS.",
         },
         window_policy: {
           type: "string",
@@ -99,7 +99,7 @@ const TAB_LIFECYCLE_TOOL_SCHEMAS = {
         cleanup_created_agent_window: {
           type: "boolean",
           default: false,
-          description: "For finalize_task only: retire the exact Agent window only when this scoped task created it, all managed records are gone, and the extension verifies either the sole anchor or a same browser-start epoch sole browser-generated New Tab after exact anchor removal or replacement. Any user/content or unowned window is preserved.",
+          description: "For finalize_task only: retire the exact Agent window only when this scoped task created it, all managed records are gone, and the extension verifies either the sole anchor or a same browser-start epoch sole browser-generated New Tab after exact anchor removal or replacement. Cleanup removes only exact internal tabs, follows bounded browser-generated New Tab successors, preserves any concurrent user/content tab, and retains ownership when an internal successor cannot be resolved.",
         },
         summary_only: {
           type: "boolean",

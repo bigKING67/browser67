@@ -15,6 +15,7 @@ function parseArgs(argv) {
     tmwd_link_endpoint: "http://127.0.0.1:18766/link",
     cdp_endpoint: "http://127.0.0.1:9222",
     require_tabs_get: false,
+    foreground_visibility: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] ?? "";
@@ -50,6 +51,10 @@ function parseArgs(argv) {
     }
     if (token === "--require-tabs-get") {
       parsed.require_tabs_get = true;
+      continue;
+    }
+    if (token === "--foreground-visibility") {
+      parsed.foreground_visibility = true;
       continue;
     }
     if (!token) {

@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { constants as fsConstants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 
 import { compactText } from "../browser/content/output-limits.mjs";
 import { normalizeNativeInputTimeoutMs } from "./normalize.mjs";
@@ -82,9 +84,23 @@ async function runNativeCommand(command, args = [], options = {}) {
 }
 
 async function commandExists(command, timeoutMs = 2_000) {
+  const commandText = String(command ?? "").trim();
+  if (/[\\/]/u.test(commandText)) {
+    try {
+      const metadata = await stat(commandText);
+      if (!metadata.isFile()) return false;
+      await access(
+        commandText,
+        process.platform === "win32" ? fsConstants.F_OK : fsConstants.X_OK,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   const probeCommand = process.platform === "win32" ? "where" : "which";
   try {
-    const result = await runNativeCommand(probeCommand, [command], { timeoutMs });
+    const result = await runNativeCommand(probeCommand, [commandText], { timeoutMs });
     return result.code === 0;
   } catch {
     return false;

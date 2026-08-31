@@ -171,6 +171,13 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
     instanceArgs,
     record.tab_id,
     runCommand,
+    {
+      agent_window: agentWindow,
+      host_platform: runtimeOptions.agent_window_presentation?.host_platform,
+      macos_foregrounder: runtimeOptions.macos_agent_window_foregrounder,
+      native_agent_window_foreground: runtimeOptions.native_agent_window_foreground,
+      timeout_ms: runtimeOptions.agent_window_presentation?.timeout_ms,
+    },
   );
   sessionStore.select(record.session_key || tabId, { make_default: false });
   return {
@@ -392,6 +399,13 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
       instanceArgs,
       record.tab_id,
       runCommand,
+      {
+        agent_window: agentWindow,
+        host_platform: runtimeOptions.agent_window_presentation?.host_platform,
+        macos_foregrounder: runtimeOptions.macos_agent_window_foregrounder,
+        native_agent_window_foreground: runtimeOptions.native_agent_window_foreground,
+        timeout_ms: runtimeOptions.agent_window_presentation?.timeout_ms,
+      },
     );
     sessionStore.select(record.session_key || record.tab_id, { make_default: false });
     return {

@@ -1,5 +1,8 @@
 import { createToolError } from "../runtime/tool-errors.mjs";
-import { ensureNativeAgentWindowPresentation } from "../native/agent-window-presentation.mjs";
+import {
+  ensureNativeAgentWindowPresentation,
+  foregroundNativeAgentWindowTab,
+} from "../native/agent-window-presentation.mjs";
 import {
   agentWindowMetadata,
   bridgeCommandData,
@@ -228,7 +231,7 @@ async function releaseManagedFocusLease(lease, runCommand, reason = "operation_c
   }
 }
 
-async function foregroundManagedTab(presentation, args, tabId, runCommand) {
+async function foregroundManagedTab(presentation, args, tabId, runCommand, options = {}) {
   if (presentation.foreground_requested !== true) return undefined;
   const lease = await acquireManagedFocusLease(
     { ...args, focus_policy: "foreground" },
@@ -236,8 +239,40 @@ async function foregroundManagedTab(presentation, args, tabId, runCommand) {
     runCommand,
     { restore: false },
   );
+  const nativeForeground = options.native_agent_window_foreground
+    ?? foregroundNativeAgentWindowTab;
+  let nativeTransition;
+  try {
+    nativeTransition = await nativeForeground(options.agent_window, tabId, {
+      host_platform: options.host_platform,
+      macos_foregrounder: options.macos_foregrounder,
+      timeout_ms: options.timeout_ms,
+    });
+  } catch (error) {
+    const release = await releaseManagedFocusLease(
+      lease,
+      runCommand,
+      "native_agent_window_foreground_failed",
+    );
+    throw createToolError(
+      "FOCUS_LEASE_FAILED",
+      "browser67 could not foreground the exact macOS Agent Window Full Screen Space",
+      {
+        retryable: true,
+        details: {
+          tab_id: String(tabId),
+          error: String(error?.message ?? error),
+          release_status: release.status,
+        },
+      },
+    );
+  }
   const release = await releaseManagedFocusLease(lease, runCommand, "foreground_entry_complete");
-  return { lease, release };
+  return {
+    lease,
+    native_foreground: nativeTransition,
+    release,
+  };
 }
 
 export {

@@ -8,8 +8,14 @@ import {
 } from "../../src/native-capabilities/index.mjs";
 import { buildNativePointerReadinessReport } from "../../src/native-capabilities/pointer-readiness.mjs";
 import { detectPhysicalInputCapabilities } from "../../src/physical-input/index.mjs";
-import { ensureAgentWindow } from "../../src/browser-wrappers/presentation.mjs";
-import { ensureNativeAgentWindowPresentation } from "../../src/native/agent-window-presentation.mjs";
+import {
+  ensureAgentWindow,
+  foregroundManagedTab,
+} from "../../src/browser-wrappers/presentation.mjs";
+import {
+  ensureNativeAgentWindowPresentation,
+  foregroundNativeAgentWindowTab,
+} from "../../src/native/agent-window-presentation.mjs";
 import {
   applicationForBrowserFamily,
   buildMacAgentWindowFullscreenScript,
@@ -127,6 +133,101 @@ async function assertAgentWindowPresentationContract() {
   assert.equal(wrapped.presentation.status, "ready");
   assert.equal(wrapped.presentation.native_fullscreen, true);
   assert.equal(wrapped.presentation.verification, "exact_extension_window_state");
+
+  const nativeForegroundCalls = [];
+  const nativeForeground = await foregroundNativeAgentWindowTab({
+    browser_family: "chrome",
+    presentation: {
+      mode: "macos_native_fullscreen_space",
+      status: "ready",
+      window_state: "fullscreen",
+    },
+  }, 91, {
+    host_platform: "darwin",
+    macos_foregrounder: async (options) => {
+      nativeForegroundCalls.push(options);
+      return {
+        foregrounded: true,
+        driver: "contract-native-foreground",
+        application_name: "Google Chrome",
+        browser_tab_id: 91,
+        window_index: 2,
+        tab_index: 1,
+      };
+    },
+  });
+  assert.equal(nativeForegroundCalls.length, 1);
+  assert.equal(nativeForegroundCalls[0].activate, true);
+  assert.equal(nativeForegroundCalls[0].preferredApplication, "Google Chrome");
+  assert.equal(nativeForegroundCalls[0].strictApplication, true);
+  assert.equal(nativeForegroundCalls[0].windowTabId, 91);
+  assert.equal(nativeForeground.status, "foregrounded");
+  assert.equal(nativeForeground.space_activation, "exact_tab_native_activation");
+  assert.equal(nativeForeground.document_visibility_verification, "caller_required");
+
+  const focusCommands = [];
+  const focusTransition = await foregroundManagedTab(
+    {
+      foreground_requested: true,
+      focus_policy: "foreground",
+      window_policy: "dedicated",
+    },
+    { focus_policy: "foreground" },
+    "91",
+    async (command) => {
+      focusCommands.push(command);
+      if (command.method === "acquire") {
+        return { value: { data: { status: "foregrounded", lease_id: "lease-91" } } };
+      }
+      return { value: { data: { status: "kept_foreground", restored: false } } };
+    },
+    {
+      agent_window: {
+        browser_family: "chrome",
+        presentation: { mode: "macos_native_fullscreen_space" },
+      },
+      native_agent_window_foreground: async (_agentWindow, tabId) => ({
+        status: "foregrounded",
+        foregrounded: true,
+        browser_tab_id: Number(tabId),
+      }),
+    },
+  );
+  assert.deepEqual(focusCommands.map((command) => command.method), ["acquire", "release"]);
+  assert.equal(focusTransition.native_foreground.foregrounded, true);
+  assert.equal(focusTransition.release.status, "kept_foreground");
+
+  const failureCommands = [];
+  await assert.rejects(
+    foregroundManagedTab(
+      {
+        foreground_requested: true,
+        focus_policy: "foreground",
+        window_policy: "dedicated",
+      },
+      { focus_policy: "foreground" },
+      "92",
+      async (command) => {
+        failureCommands.push(command);
+        if (command.method === "acquire") {
+          return { value: { data: { status: "foregrounded", lease_id: "lease-92" } } };
+        }
+        return { value: { data: { status: "kept_foreground", restored: false } } };
+      },
+      {
+        agent_window: {
+          browser_family: "chrome",
+          presentation: { mode: "macos_native_fullscreen_space" },
+        },
+        native_agent_window_foreground: async () => {
+          throw new Error("contract native activation failed");
+        },
+      },
+    ),
+    (error) => error?.errorCode === "FOCUS_LEASE_FAILED"
+      && /exact macOS Agent Window Full Screen Space/.test(error.message),
+  );
+  assert.deepEqual(failureCommands.map((command) => command.method), ["acquire", "release"]);
 }
 
 async function writeFakePythonProbe(dir, name, payload) {

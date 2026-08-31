@@ -1,4 +1,8 @@
-import { ensureMacAgentWindowNativeFullscreen } from "../native-macos/agent-window-presentation.mjs";
+import {
+  applicationForBrowserFamily,
+  ensureMacAgentWindowNativeFullscreen,
+} from "../native-macos/agent-window-presentation.mjs";
+import { findChromiumTabWindow } from "../native-macos/chromium-window.mjs";
 
 function presentationFailure(requested, error, reason) {
   return {
@@ -73,4 +77,62 @@ async function ensureNativeAgentWindowPresentation(agentWindow, options = {}) {
   }
 }
 
-export { ensureNativeAgentWindowPresentation };
+async function foregroundNativeAgentWindowTab(agentWindow, tabId, options = {}) {
+  const presentation = agentWindow?.presentation && typeof agentWindow.presentation === "object"
+    ? agentWindow.presentation
+    : {};
+  if (presentation.mode !== "macos_native_fullscreen_space") {
+    return {
+      status: "not_applicable",
+      foregrounded: false,
+      reason: "agent_window_not_macos_native_fullscreen",
+    };
+  }
+  const hostPlatform = String(options.host_platform ?? process.platform);
+  if (hostPlatform !== "darwin") {
+    throw new Error(`native macOS Agent window foreground cannot run on host platform=${hostPlatform}`);
+  }
+  const fullscreenReady = presentation.status === "ready"
+    && (
+      presentation.native_fullscreen === true
+      || presentation.window_state === "fullscreen"
+    );
+  if (!fullscreenReady) {
+    throw new Error("macOS Agent window native Full Screen state is not verified");
+  }
+  const applicationName = applicationForBrowserFamily(agentWindow?.browser_family);
+  const foregrounder = options.macos_foregrounder ?? findChromiumTabWindow;
+  const result = await foregrounder({
+    activate: true,
+    preferredApplication: applicationName,
+    strictApplication: true,
+    timeoutMs: options.timeout_ms,
+    windowTabId: tabId,
+  });
+  if (result?.foregrounded !== true) {
+    throw new Error("native macOS Agent window foreground did not confirm activation");
+  }
+  if (
+    String(result.application_name ?? "") !== applicationName
+    || Number(result.browser_tab_id) !== Number(tabId)
+  ) {
+    throw new Error("native macOS Agent window foreground returned a mismatched browser identity");
+  }
+  return {
+    status: "foregrounded",
+    foregrounded: true,
+    mode: "macos_native_fullscreen_space",
+    driver: String(result.driver ?? "macos-chromium-applescript"),
+    application_name: String(result.application_name ?? ""),
+    browser_tab_id: result.browser_tab_id,
+    window_index: result.window_index,
+    tab_index: result.tab_index,
+    space_activation: "exact_tab_native_activation",
+    document_visibility_verification: "caller_required",
+  };
+}
+
+export {
+  ensureNativeAgentWindowPresentation,
+  foregroundNativeAgentWindowTab,
+};

@@ -286,6 +286,7 @@ async function handleNewPage(args) {
       presentationArgs,
       record.tab_id,
       runCommand,
+      { agent_window: agentWindow },
     );
     markSessionSelected(record.session_key || record.tab_id, { make_default: false });
     return {
@@ -364,6 +365,7 @@ async function handleNewPage(args) {
     targetArgs,
     record.tab_id,
     runCommand,
+    { agent_window: agentWindow },
   );
   if (record.tab_id) {
     markSessionSelected(record.session_key || record.tab_id, { make_default: false });

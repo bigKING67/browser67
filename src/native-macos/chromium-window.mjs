@@ -176,11 +176,12 @@ function parseChromiumTabWindowOutput(raw, windowUrl, windowTabId) {
   };
 }
 
-function chromiumApplicationCandidates(preferredApplication) {
+function chromiumApplicationCandidates(preferredApplication, strictApplication = false) {
   const preferred = String(preferredApplication ?? "").trim();
   if (!preferred) {
     return [...CHROMIUM_APPLICATIONS];
   }
+  if (strictApplication) return [preferred];
   return [
     preferred,
     ...CHROMIUM_APPLICATIONS.filter((item) => item !== preferred),
@@ -190,6 +191,7 @@ function chromiumApplicationCandidates(preferredApplication) {
 async function findChromiumTabWindow({
   activate = false,
   preferredApplication,
+  strictApplication = false,
   timeoutMs,
   windowTabId,
   windowUrl,
@@ -200,7 +202,10 @@ async function findChromiumTabWindow({
     throw new Error("window not found: window_tab_id or window_url is required");
   }
   const failures = [];
-  for (const applicationName of chromiumApplicationCandidates(preferredApplication)) {
+  for (const applicationName of chromiumApplicationCandidates(
+    preferredApplication,
+    strictApplication,
+  )) {
     const result = await runAppleScript(buildChromiumTabWindowScript({
       activate,
       applicationName,

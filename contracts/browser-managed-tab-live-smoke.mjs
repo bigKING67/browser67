@@ -4,6 +4,7 @@ import { runAdoptionCase } from "./browser-managed-tab-live-smoke/adoption-case.
 import { createManagedSmokeContext } from "./browser-managed-tab-live-smoke/context.mjs";
 import { runDirectBridgeCase } from "./browser-managed-tab-live-smoke/direct-bridge-case.mjs";
 import { runExternalCloseCase } from "./browser-managed-tab-live-smoke/external-close-case.mjs";
+import { runForegroundVisibilityCase } from "./browser-managed-tab-live-smoke/foreground-visibility-case.mjs";
 import { runManagedLifecycleCase } from "./browser-managed-tab-live-smoke/managed-lifecycle-case.mjs";
 import { readRegistryRemaining } from "./browser-managed-tab-live-smoke/registry.mjs";
 
@@ -13,6 +14,7 @@ async function run(argv = process.argv.slice(2)) {
   try {
     const directBridge = await runDirectBridgeCase(context);
     const managedLifecycle = await runManagedLifecycleCase(context);
+    const foregroundVisibility = await runForegroundVisibilityCase(context);
     const externalClose = await runExternalCloseCase(context);
     const adoption = await runAdoptionCase(context);
     const registryRemaining = await readRegistryRemaining(context.registryPath);
@@ -24,6 +26,7 @@ async function run(argv = process.argv.slice(2)) {
         externally_closed_not_reused: externalClose.externally_closed_not_reused,
         registry_remaining: registryRemaining,
       },
+      foreground_visibility: foregroundVisibility,
       adoption,
     };
   } finally {
