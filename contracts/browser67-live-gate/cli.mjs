@@ -4,6 +4,7 @@ import { normalizeTmwdMode } from "./modes.mjs";
 function parseArgs(argv) {
   const parsed = {
     timeout_ms: 12_000,
+    live_process_timeout_ms: 60_000,
     tmwd_mode: "auto",
     tmwd_transport: "auto",
     tmwd_ws_endpoint: "ws://127.0.0.1:18765",
@@ -30,6 +31,15 @@ function parseArgs(argv) {
         throw new Error("invalid --timeout-ms value");
       }
       parsed.timeout_ms = Math.floor(value);
+      index += 1;
+      continue;
+    }
+    if (token === "--live-process-timeout-ms") {
+      const value = Number(argv[index + 1] ?? "");
+      if (!Number.isFinite(value) || value < 250 || value > 600_000) {
+        throw new Error("invalid --live-process-timeout-ms value");
+      }
+      parsed.live_process_timeout_ms = Math.floor(value);
       index += 1;
       continue;
     }

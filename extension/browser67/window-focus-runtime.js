@@ -16,6 +16,10 @@ function browser67NumericId(raw) {
   return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+function browser67OwnershipToken(raw) {
+  return String(raw ?? "").trim();
+}
+
 function browser67AnchorUrl() {
   return chrome.runtime.getURL("browser67/window-anchor.html");
 }
@@ -156,6 +160,7 @@ async function browser67ValidateAgentWindow(record) {
     schema: "browser67.agent-window.v1",
     window_id: windowId,
     anchor_tab_id: anchorTabId,
+    ownership_token: browser67OwnershipToken(record?.ownership_token) || crypto.randomUUID(),
     created_at: String(record?.created_at || new Date().toISOString()),
     updated_at: new Date().toISOString(),
   };
@@ -217,6 +222,7 @@ async function browser67EnsureAgentWindowInternal() {
     schema: "browser67.agent-window.v1",
     window_id: windowId,
     anchor_tab_id: anchorTabId,
+    ownership_token: crypto.randomUUID(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -234,6 +240,86 @@ async function browser67EnsureAgentWindowInternal() {
     focusSnapshot,
     { created: true, reused: false },
   );
+}
+
+async function browser67RetireAgentWindow(message = {}) {
+  const windowId = browser67NumericId(message.windowId ?? message.window_id);
+  const anchorTabId = browser67NumericId(message.anchorTabId ?? message.anchor_tab_id);
+  const ownershipToken = browser67OwnershipToken(
+    message.ownershipToken ?? message.ownership_token,
+  );
+  if (windowId === null || anchorTabId === null || !ownershipToken) {
+    const error = new Error("retire_agent_window requires exact window, anchor, and ownership token identity");
+    error.code = "INVALID_ARGUMENT";
+    throw error;
+  }
+  const stored = await browser67ValidateAgentWindow(await browser67StoredAgentWindow());
+  if (
+    !stored
+    || stored.window_id !== windowId
+    || stored.anchor_tab_id !== anchorTabId
+    || stored.ownership_token !== ownershipToken
+  ) {
+    return {
+      status: "preserved",
+      closed: false,
+      close_verified: false,
+      reason: "agent_window_identity_mismatch",
+      window_id: windowId,
+      anchor_tab_id: anchorTabId,
+    };
+  }
+  const windowRow = await browser67GetWindow(windowId, true);
+  if (!windowRow) {
+    await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_STORAGE_KEY);
+    return {
+      status: "already_closed",
+      closed: false,
+      close_verified: true,
+      reason: "agent_window_unavailable",
+      window_id: windowId,
+      anchor_tab_id: anchorTabId,
+    };
+  }
+  const tabs = Array.isArray(windowRow.tabs) ? windowRow.tabs : [];
+  const anchor = tabs.find((tab) => browser67NumericId(tab?.id) === anchorTabId);
+  if (
+    windowRow.type !== "normal"
+    || tabs.length !== 1
+    || !anchor
+    || anchor.url !== browser67AnchorUrl()
+  ) {
+    return {
+      status: "preserved",
+      closed: false,
+      close_verified: false,
+      reason: tabs.length !== 1 ? "agent_window_not_empty" : "agent_window_anchor_mismatch",
+      window_id: windowId,
+      anchor_tab_id: anchorTabId,
+      tab_count: tabs.length,
+      user_content_preserved: true,
+    };
+  }
+  await chrome.windows.remove(windowId);
+  const closeVerified = (await browser67GetWindow(windowId)) === null;
+  if (closeVerified) {
+    const current = await browser67StoredAgentWindow();
+    if (
+      browser67NumericId(current?.window_id) === windowId
+      && browser67NumericId(current?.anchor_tab_id) === anchorTabId
+      && browser67OwnershipToken(current?.ownership_token) === ownershipToken
+    ) {
+      await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_STORAGE_KEY);
+    }
+  }
+  return {
+    status: closeVerified ? "closed" : "close_unverified",
+    closed: closeVerified,
+    close_verified: closeVerified,
+    reason: closeVerified ? "empty_created_agent_window_retired" : "window_remained_visible",
+    window_id: windowId,
+    anchor_tab_id: anchorTabId,
+  };
 }
 
 async function browser67EnsureAgentWindow() {
@@ -476,10 +562,10 @@ async function browser67MarkFocusActivity(kind, value) {
 
 async function browser67HandleWindowFocusCommand(message) {
   if (message?.cmd === "window") {
-    if (String(message.method || "") !== "ensure_agent_window") {
-      throw new Error(`unsupported window method: ${String(message.method || "")}`);
-    }
-    return browser67EnsureAgentWindow();
+    const method = String(message.method || "");
+    if (method === "ensure_agent_window") return browser67EnsureAgentWindow();
+    if (method === "retire_agent_window") return browser67RetireAgentWindow(message);
+    throw new Error(`unsupported window method: ${method}`);
   }
   if (message?.cmd === "focus") {
     return browser67RunFocusCommand(async () => {

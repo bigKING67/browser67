@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Prevent live/release verification from leaving a browser67-created Agent
+  window that Chrome can later surface as an ordinary New Tab window. Scoped
+  finalizers may now request exact empty-window retirement; the extension binds
+  that request to the stored window/anchor ownership token, refuses identity
+  mismatches, and preserves any window containing another tab. Reused or
+  pre-existing Agent windows remain untouched.
+- Bound the live-contract child process with a 60-second default supervisor
+  deadline and an explicit `live_timeout` result. MCP contract shutdown now
+  installs its close listener before signaling the child and has a hard settle
+  deadline, eliminating an intermittent unbounded wait during cold macOS Agent
+  Window presentation or cleanup.
+
 ## 0.8.0 - 2026-08-30
 
 - Present the browser67-owned Agent Window with native platform behavior: enter

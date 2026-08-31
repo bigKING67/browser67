@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -13,6 +13,10 @@ import {
 import { parseArgs as parseLiveContractArgs } from "./browser67-live-contract/cli.mjs";
 import { buildLiveArgs } from "./browser67-live-gate/args.mjs";
 import { parseArgs as parseLiveGateArgs } from "./browser67-live-gate/cli.mjs";
+import {
+  childProcessTimedOut,
+  runNodeScript,
+} from "./browser67-live-gate/child-process.mjs";
 import { createBrowserRuntime } from "../src/runtime/browser-runtime.mjs";
 import { createSessionRegistry } from "../src/runtime/sessions/registry.mjs";
 import { handleBrowserRunOps } from "../src/runtime/runs/lifecycle.mjs";
@@ -132,12 +136,22 @@ async function run() {
     switch_tab_id: "fixture",
   });
   const liveGateArgs = parseLiveGateArgs([
+    "--live-process-timeout-ms", "43210",
     "--browser-instance-id", "browser-instance-a",
     "--target-tab-id", "fixture",
     "--target-url-contains", "http://127.0.0.1:4567/",
   ]);
   assert.equal(liveGateArgs.browser_instance_id, "browser-instance-a");
   assert.equal(liveGateArgs.target_tab_id, "fixture");
+  assert.equal(liveGateArgs.live_process_timeout_ms, 43_210);
+  assert.throws(
+    () => parseLiveGateArgs(["--live-process-timeout-ms", "249"]),
+    /invalid --live-process-timeout-ms value/,
+  );
+  assert.throws(
+    () => parseLiveGateArgs(["--live-process-timeout-ms", "600001"]),
+    /invalid --live-process-timeout-ms value/,
+  );
   assert.deepEqual(
     buildLiveArgs(liveGateArgs).slice(-6),
     [
@@ -213,6 +227,17 @@ async function run() {
     /live scan\/execute target drift/,
   );
 
+  const timeoutFixtureRoot = await mkdtemp(path.join(os.tmpdir(), "browser67-live-child-timeout-"));
+  const timeoutFixtureScript = path.join(timeoutFixtureRoot, "hang.mjs");
+  try {
+    await writeFile(timeoutFixtureScript, "setInterval(() => {}, 1000);\n", "utf8");
+    const timedOutChild = runNodeScript(timeoutFixtureScript, [], { timeout_ms: 250 });
+    assert.equal(childProcessTimedOut(timedOutChild), true);
+    assert.equal(timedOutChild.signal, "SIGKILL");
+  } finally {
+    await rm(timeoutFixtureRoot, { recursive: true, force: true });
+  }
+
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "browser-runtime-contract",
@@ -222,6 +247,7 @@ async function run() {
     explicit_target_routing: explicit.selection.selected_by,
     isolated_runtime_stores: true,
     target_mismatch_rejected: true,
+    bounded_live_gate_child: true,
   })}\n`);
 }
 

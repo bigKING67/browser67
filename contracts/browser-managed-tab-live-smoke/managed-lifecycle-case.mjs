@@ -77,6 +77,7 @@ async function runManagedLifecycleCase(context) {
     action: "finalize_task",
     workspace_key: context.workspaceKey,
     prune_stale: false,
+    cleanup_created_agent_window: true,
   });
   assert.equal(managedFinalize.status, "success", "managed finalize_task did not succeed");
   assert.equal(

@@ -94,6 +94,7 @@ async function assertAgentWindowPresentationContract() {
           reused: verified,
           window_id: 3,
           anchor_tab_id: 67,
+          ownership_token: "agent-window-contract-token",
           anchor_url: "chrome-extension://fixture/browser67/window-anchor.html",
           browser_family: "chrome",
           platform_os: "mac",
@@ -119,6 +120,9 @@ async function assertAgentWindowPresentationContract() {
   );
   assert.equal(bridgeCalls, 2);
   assert.equal(wrapped.anchor_tab_id, 67);
+  assert.equal(wrapped.created, true);
+  assert.equal(wrapped.reused, false);
+  assert.equal(wrapped.ownership_token, "agent-window-contract-token");
   assert.equal(wrapped.focus_snapshot.tab_id, 42);
   assert.equal(wrapped.presentation.status, "ready");
   assert.equal(wrapped.presentation.native_fullscreen, true);

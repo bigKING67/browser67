@@ -117,23 +117,49 @@ function createRpcClient() {
 
   const close = async () => {
     if (closed) {
-      return;
+      return { status: "already_closed", close_observed: true };
     }
     closed = true;
     rejectAll("browser67-browser-mcp closing");
-    child.kill("SIGTERM");
-    await new Promise((resolveClose) => {
-      const timer = setTimeout(() => {
+    return new Promise((resolveClose) => {
+      let settled = false;
+      let terminateTimer;
+      let hardDeadlineTimer;
+      const finish = (status, closeObserved) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(terminateTimer);
+        clearTimeout(hardDeadlineTimer);
+        child.off("close", onClose);
+        resolveClose({ status, close_observed: closeObserved });
+      };
+      const onClose = () => finish("closed", true);
+      child.once("close", onClose);
+      terminateTimer = setTimeout(() => {
+        if (settled) return;
         try {
           child.kill("SIGKILL");
         } catch {
           // ignore
         }
       }, 1_000);
-      child.once("close", () => {
-        clearTimeout(timer);
-        resolveClose();
-      });
+      hardDeadlineTimer = setTimeout(() => {
+        finish("close_deadline_reached", false);
+      }, 2_500);
+      if (child.exitCode !== null || child.signalCode !== null) {
+        finish("already_exited", true);
+        return;
+      }
+      try {
+        const signaled = child.kill("SIGTERM");
+        if (!signaled && (child.exitCode !== null || child.signalCode !== null)) {
+          finish("already_exited", true);
+        }
+      } catch {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          finish("already_exited", true);
+        }
+      }
     });
   };
 

@@ -118,6 +118,7 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
       url: `${fixtureUrl}?browser67-managed-lifecycle=1`,
       workspace_key: lifecycleWorkspaceKey,
       task_id: lifecycleTaskId,
+      cleanup_created_agent_window: true,
       fresh: true,
       focus_policy: "background_only",
       window_policy: "dedicated",
@@ -181,6 +182,7 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
       url: autoFallbackUrl,
       workspace_key: autoFallbackWorkspaceKey,
       task_id: autoFallbackTaskId,
+      cleanup_created_agent_window: true,
       fresh: true,
       focus_policy: "background_only",
     }, timeoutMs);

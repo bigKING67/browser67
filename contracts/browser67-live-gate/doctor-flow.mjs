@@ -70,7 +70,9 @@ function doctorSummary(payload) {
 }
 
 function runDoctorContract(config) {
-  const result = runNodeScript(liveDoctorPath, buildDoctorArgs(config));
+  const result = runNodeScript(liveDoctorPath, buildDoctorArgs(config), {
+    timeout_ms: Math.max(30_000, Number(config.timeout_ms ?? 0) + 5_000),
+  });
   if (result.error) {
     throw result.error;
   }
@@ -116,7 +118,9 @@ async function ensureTmwdHub(config, doctorPayloadBefore) {
     "--wait-ms", String(config.ensure_tmwd_hub_wait_ms),
     "--tmwd-ws-endpoint", config.tmwd_ws_endpoint,
     "--tmwd-link-endpoint", config.tmwd_link_endpoint,
-  ]);
+  ], {
+    timeout_ms: Math.max(30_000, Number(config.ensure_tmwd_hub_wait_ms ?? 0) + 5_000),
+  });
   if (controlResult.error) {
     ensureState.reason = "control_exec_failed";
     ensureState.error = controlResult.error instanceof Error

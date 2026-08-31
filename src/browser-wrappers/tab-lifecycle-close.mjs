@@ -5,6 +5,7 @@ import { defaultSessionRegistry } from "../runtime/sessions/registry.mjs";
 import {
   deleteManagedTab,
   getManagedTab,
+  bridgeCommandData,
   buildFinalizeCleanupSummary,
   formatFinalizeDeliverySummary,
   listManagedTabRecords,
@@ -54,6 +55,131 @@ function recordUsesIsolatedTarget(record, args = {}) {
   }
   return record?.window_policy === "isolated_target"
     && record?.window_ownership === "remote_cdp";
+}
+
+function createdAgentWindowCleanupCandidate(records = []) {
+  const candidates = records.filter((record) => (
+    record?.ownership_origin === "agent_created"
+    && record?.window_ownership === "browser67_agent"
+    && record?.agent_window_created === true
+    && Number.isInteger(record?.window_id)
+    && Number.isInteger(record?.agent_window_anchor_tab_id)
+    && String(record?.agent_window_ownership_token ?? "").trim()
+    && String(record?.browser_instance_id ?? "").trim()
+  ));
+  const identities = new Map();
+  for (const record of candidates) {
+    const key = [
+      record.browser_instance_id,
+      record.window_id,
+      record.agent_window_anchor_tab_id,
+      record.agent_window_ownership_token,
+    ].join(":");
+    if (!identities.has(key)) identities.set(key, record);
+  }
+  if (identities.size !== 1) {
+    return {
+      eligible: false,
+      reason: identities.size === 0
+        ? "no_task_created_agent_window_identity"
+        : "ambiguous_task_created_agent_window_identity",
+      identity_count: identities.size,
+    };
+  }
+  const record = [...identities.values()][0];
+  return {
+    eligible: true,
+    browser_instance_id: record.browser_instance_id,
+    window_id: record.window_id,
+    anchor_tab_id: record.agent_window_anchor_tab_id,
+    ownership_token: record.agent_window_ownership_token,
+  };
+}
+
+async function cleanupCreatedAgentWindow(args, candidate, options = {}) {
+  if (args?.cleanup_created_agent_window !== true) {
+    return { requested: false, status: "not_requested", closed: false };
+  }
+  if (candidate?.eligible !== true) {
+    if (candidate?.reason === "no_task_created_agent_window_identity") {
+      return { requested: true, status: "not_owned", closed: false, ...candidate };
+    }
+    return { requested: true, status: "preserved", closed: false, ...candidate };
+  }
+  const identity = {
+    browser_instance_id: candidate.browser_instance_id,
+    window_id: candidate.window_id,
+    anchor_tab_id: candidate.anchor_tab_id,
+  };
+  if (args?.dry_run === true) {
+    return {
+      requested: true,
+      status: "dry_run",
+      closed: false,
+      would_close_if_empty: true,
+      eligible: true,
+      ...identity,
+    };
+  }
+  const readManagedTabRecords = options.list_managed_tab_records ?? listManagedTabRecords;
+  const remainingInWindow = (await readManagedTabRecords()).filter((record) => (
+    record.browser_instance_id === candidate.browser_instance_id
+    && record.window_id === candidate.window_id
+  ));
+  if (remainingInWindow.length > 0) {
+    return {
+      requested: true,
+      status: "preserved",
+      closed: false,
+      eligible: true,
+      reason: "managed_records_remain_in_agent_window",
+      remaining_managed_count: remainingInWindow.length,
+      ...identity,
+    };
+  }
+  const command = {
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: candidate.window_id,
+    anchorTabId: candidate.anchor_tab_id,
+    ownershipToken: candidate.ownership_token,
+  };
+  let result;
+  if (typeof options.run_agent_window_command === "function") {
+    result = await options.run_agent_window_command(command, candidate);
+  } else {
+    const recordArgs = { ...args, browser_instance_id: candidate.browser_instance_id };
+    const preferred = await resolvePreferredBrowserContext(
+      { ...recordArgs, refresh_sessions: true },
+      options,
+    );
+    if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
+      return {
+        requested: true,
+        status: "preserved",
+        closed: false,
+        eligible: true,
+        reason: "agent_window_cleanup_requires_tmwd_extension_transport",
+        transport: preferred.transport,
+        ...identity,
+      };
+    }
+    result = await executeTmwdCommandWithPreferred(recordArgs, preferred, command, options);
+  }
+  const data = bridgeCommandData(result);
+  return {
+    requested: true,
+    eligible: true,
+    status: String(data.status ?? "unknown"),
+    closed: data.closed === true,
+    close_verified: data.close_verified === true,
+    reason: String(data.reason ?? ""),
+    tab_count: Number.isInteger(data.tab_count) ? data.tab_count : undefined,
+    user_content_preserved: data.user_content_preserved === true,
+    transport: result.transport,
+    transport_attempts: result.transport_attempts,
+    ...identity,
+  };
 }
 
 async function verifyTabClosed(args, preferred, tabId, options = {}) {
@@ -238,6 +364,8 @@ async function closeUnkeptManagedTabs(args, options = {}, resolvedCloseScope = n
 async function finalizeManagedTask(args = {}, options = {}) {
   const closeScope = await resolveBrowserInstanceScope(resolveCloseScope(args));
   const dryRun = args?.dry_run === true;
+  const initialRecords = await scopedManagedRecords(closeScope);
+  const agentWindowCandidate = createdAgentWindowCleanupCandidate(initialRecords);
   const shouldPruneStale = args?.prune_stale !== false;
   let pruneStale;
   if (shouldPruneStale) {
@@ -295,6 +423,17 @@ async function finalizeManagedTask(args = {}, options = {}) {
     }
   }
   const remainingRecords = await scopedManagedRecords(closeScope);
+  let agentWindowCleanup;
+  try {
+    agentWindowCleanup = await cleanupCreatedAgentWindow(args, agentWindowCandidate, options);
+  } catch (error) {
+    agentWindowCleanup = {
+      requested: args?.cleanup_created_agent_window === true,
+      status: "error",
+      closed: false,
+      error: String(error?.message ?? error),
+    };
+  }
   const remaining = summarizeFinalizeRemainder(remainingRecords, args);
   const cleanupSummary = buildFinalizeCleanupSummary({
     scope: closeScope,
@@ -305,8 +444,13 @@ async function finalizeManagedTask(args = {}, options = {}) {
   });
   const pruneOk = !pruneStale || pruneStale.status === "success";
   const closeOk = closeUnkept.status === "success";
+  const agentWindowCleanupOk = agentWindowCleanup.requested !== true
+    || agentWindowCleanup.status === "closed"
+    || agentWindowCleanup.status === "already_closed"
+    || agentWindowCleanup.status === "not_owned"
+    || agentWindowCleanup.status === "dry_run";
   return {
-    status: pruneOk && closeOk ? "success" : "partial",
+    status: pruneOk && closeOk && agentWindowCleanupOk ? "success" : "partial",
     action: "finalize_task",
     dry_run: dryRun,
     finalizer_policy: {
@@ -318,12 +462,15 @@ async function finalizeManagedTask(args = {}, options = {}) {
       ignores_unmanaged_user_tabs: true,
       releases_user_adopted_tabs: true,
       closes_user_adopted_tabs: false,
+      cleans_up_created_agent_window_only_when_requested: true,
+      preserves_nonempty_agent_window: true,
       prunes_stale_registry_records: shouldPruneStale,
     },
     close_scope: closeScope,
     prune_stale: pruneStale,
     close_unkept: closeUnkept,
     release_adopted: releasedAdopted,
+    agent_window_cleanup: agentWindowCleanup,
     remaining,
     cleanup_summary: cleanupSummary,
     delivery_summary: formatFinalizeDeliverySummary(cleanupSummary, {
@@ -439,6 +586,8 @@ async function pruneStaleManagedTabs(args = {}, options = {}) {
 export {
   closeOneManagedTab,
   closeUnkeptManagedTabs,
+  cleanupCreatedAgentWindow,
+  createdAgentWindowCleanupCandidate,
   finalizeManagedTask,
   pruneStaleManagedTabs,
 };

@@ -53,6 +53,10 @@ function buildManagedRecord(input = {}) {
     agent_window_anchor_tab_id: normalizeWindowId(
       input.agent_window_anchor_tab_id ?? input.agentWindowAnchorTabId,
     ),
+    agent_window_created: input.agent_window_created === true,
+    agent_window_ownership_token: String(
+      input.agent_window_ownership_token ?? input.agentWindowOwnershipToken ?? "",
+    ).trim(),
     suspended: input.suspended === true,
     suspension_reason: String(input.suspension_reason ?? ""),
     adopted_document_identity: String(input.adopted_document_identity ?? ""),
@@ -115,6 +119,8 @@ function managedTabPayload(record) {
     window_id: record.window_id,
     window_ownership: record.window_ownership,
     agent_window_anchor_tab_id: record.agent_window_anchor_tab_id,
+    agent_window_created: record.agent_window_created === true,
+    agent_window_ownership_token: record.agent_window_ownership_token || undefined,
     suspended: record.suspended === true,
     suspension_reason: record.suspension_reason || undefined,
     adopted_document_identity: record.adopted_document_identity || undefined,

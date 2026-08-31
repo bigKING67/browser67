@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 import { inspectReusableManagedTabPresentation } from "../src/browser-wrappers/presentation.mjs";
+import {
+  cleanupCreatedAgentWindow,
+  createdAgentWindowCleanupCandidate,
+} from "../src/browser-wrappers/tab-lifecycle-close.mjs";
+import { managedWindowRecordFields } from "../src/tab-workspace/presentation.mjs";
 
 function eventBus() {
   const listeners = [];
@@ -166,6 +171,15 @@ async function run() {
         Object.assign(row, changes);
         return { ...row };
       },
+      async remove(windowId) {
+        const normalized = Number(windowId);
+        if (!windowRows.has(normalized)) throw new Error(`window not found: ${String(windowId)}`);
+        windowRows.delete(normalized);
+        for (const [tabId, tab] of tabRows.entries()) {
+          if (tab.windowId === normalized) tabRows.delete(tabId);
+        }
+        await events.windowRemoved.emit(normalized);
+      },
     },
     runtime: {
       async getPlatformInfo() {
@@ -223,6 +237,8 @@ async function run() {
   const agentWindow = await handle({ cmd: "window", method: "ensure_agent_window" });
   assert.equal(agentWindow.ok, true);
   assert.equal(agentWindow.data.created, true);
+  assert.equal(typeof agentWindow.data.ownership_token, "string");
+  assert.notEqual(agentWindow.data.ownership_token, "");
   assert.equal(agentWindow.data.focused, false);
   assert.equal(agentWindow.data.browser_family, "chrome");
   assert.equal(agentWindow.data.platform_os, "mac");
@@ -503,6 +519,102 @@ async function run() {
   const releasedStatus = await handle({ cmd: "policy", method: "status", tabId: 41 });
   assert.equal(releasedStatus.data.managed, false);
 
+  const mismatchedRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: agentWindow.data.window_id,
+    anchorTabId: agentWindow.data.anchor_tab_id,
+    ownershipToken: "wrong-window-token",
+  });
+  assert.equal(mismatchedRetirement.data.status, "preserved");
+  assert.equal(mismatchedRetirement.data.reason, "agent_window_identity_mismatch");
+  assert.equal(windowRows.has(agentWindow.data.window_id), true);
+
+  tabRows.set(88, {
+    id: 88,
+    windowId: agentWindow.data.window_id,
+    active: false,
+    url: "https://user.fixture.test/preserved",
+  });
+  const nonemptyRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: agentWindow.data.window_id,
+    anchorTabId: agentWindow.data.anchor_tab_id,
+    ownershipToken: agentWindow.data.ownership_token,
+  });
+  assert.equal(nonemptyRetirement.data.status, "preserved");
+  assert.equal(nonemptyRetirement.data.reason, "agent_window_not_empty");
+  assert.equal(nonemptyRetirement.data.user_content_preserved, true);
+  assert.equal(windowRows.has(agentWindow.data.window_id), true);
+  tabRows.delete(88);
+
+  const emptyRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: agentWindow.data.window_id,
+    anchorTabId: agentWindow.data.anchor_tab_id,
+    ownershipToken: agentWindow.data.ownership_token,
+  });
+  assert.equal(emptyRetirement.data.status, "closed");
+  assert.equal(emptyRetirement.data.closed, true);
+  assert.equal(emptyRetirement.data.close_verified, true);
+  assert.equal(windowRows.has(agentWindow.data.window_id), false);
+
+  const managedWindowFields = managedWindowRecordFields(
+    { window_policy: "dedicated", focus_policy: "background_preferred" },
+    agentWindow.data,
+    { window_id: agentWindow.data.window_id },
+  );
+  assert.equal(managedWindowFields.agent_window_created, true);
+  assert.equal(managedWindowFields.agent_window_ownership_token, agentWindow.data.ownership_token);
+  const cleanupCandidate = createdAgentWindowCleanupCandidate([{
+    ownership_origin: "agent_created",
+    window_ownership: "browser67_agent",
+    browser_instance_id: "browser-instance-contract",
+    ...managedWindowFields,
+  }]);
+  assert.equal(cleanupCandidate.eligible, true);
+  assert.equal(cleanupCandidate.window_id, agentWindow.data.window_id);
+  const finalizerCleanup = await cleanupCreatedAgentWindow(
+    { cleanup_created_agent_window: true },
+    cleanupCandidate,
+    {
+      list_managed_tab_records: async () => [],
+      run_agent_window_command: async (command) => ({
+        value: {
+          data: {
+            status: "closed",
+            closed: true,
+            close_verified: true,
+            reason: "empty_created_agent_window_retired",
+          },
+        },
+        transport: "tmwd_ws",
+        transport_attempts: [{ transport: "ws", status: "ok" }],
+        command,
+      }),
+    },
+  );
+  assert.equal(finalizerCleanup.status, "closed");
+  assert.equal(finalizerCleanup.closed, true);
+  assert.equal(finalizerCleanup.close_verified, true);
+  const reusedWindowCandidate = createdAgentWindowCleanupCandidate([{
+    ownership_origin: "agent_created",
+    window_ownership: "browser67_agent",
+    browser_instance_id: "browser-instance-contract",
+    ...managedWindowFields,
+    agent_window_created: false,
+  }]);
+  assert.equal(reusedWindowCandidate.eligible, false);
+  assert.equal(reusedWindowCandidate.reason, "no_task_created_agent_window_identity");
+  const reusedWindowCleanup = await cleanupCreatedAgentWindow(
+    { cleanup_created_agent_window: true },
+    reusedWindowCandidate,
+  );
+  assert.equal(reusedWindowCleanup.status, "not_owned");
+  assert.equal(reusedWindowCleanup.closed, false);
+
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "extension-managed-runtime-contract",
@@ -513,6 +625,8 @@ async function run() {
     managed_navigation_authorization: true,
     out_of_band_navigation_observable: true,
     dedicated_agent_window: true,
+    exact_agent_window_retirement: true,
+    nonempty_agent_window_preserved: true,
     focus_restore: true,
     user_activity_restore_guard: true,
       restart_restore_guard: true,

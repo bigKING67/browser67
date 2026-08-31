@@ -323,6 +323,7 @@ async function run() {
       action: "finalize_task",
       workspace_key: workspaceKey,
       prune_stale: true,
+      cleanup_created_agent_window: true,
     });
 
     process.stdout.write(`${JSON.stringify({
@@ -345,6 +346,7 @@ async function run() {
           action: "finalize_task",
           workspace_key: workspaceKey,
           prune_stale: true,
+          cleanup_created_agent_window: true,
         });
       } catch {
         // Best-effort finalizer. Test assertions above report authoritative cleanup failures.

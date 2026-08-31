@@ -117,11 +117,19 @@ Start the local hub and verify the live route:
 ```bash
 npm run hub:start
 npm run check:live:doctor
+npm run check:live
 ```
 
 A ready TMWD route requires the hub, a connected extension, and a live extension
 identity that matches the current source build. Disk-current extension files
 alone are not live service-worker proof.
+
+The live gate applies a 60-second supervisor deadline to its child contract so
+a stuck native window transition or shutdown cannot wait indefinitely. Override
+it only for a deliberately slower host with
+`npm run check:live -- --live-process-timeout-ms <milliseconds>`; a deadline
+failure is reported as `stage:"live_timeout"` and does not claim fixture
+cleanup succeeded.
 
 Detailed install, reload, launchd, migration, and cleanup procedures are in
 [Runtime operations](docs/runtime-operations.md).
@@ -200,6 +208,13 @@ ordinary maximized window state. browser67 never requests Chrome's immersive
 address-bar UI. The one-time macOS transition targets the exact Agent anchor
 tab and restores the previously focused browser tab or application when it can
 do so safely.
+
+Normal task finalization keeps the reusable Agent window. Automated live and
+release fixtures opt into `cleanup_created_agent_window:true`: cleanup succeeds
+only when the scoped fixture created that exact window and the extension proves
+that its anchor is the sole remaining tab. A reused window, identity mismatch,
+or any additional tab is preserved, so fixture cleanup cannot close a user
+page.
 
 User navigation, extension reconnection, or lease-generation changes suspend an
 adopted tab. Re-inspect and re-adopt rather than mutating a target whose identity

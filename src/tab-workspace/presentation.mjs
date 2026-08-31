@@ -124,6 +124,7 @@ function agentWindowMetadata(result = {}) {
     reused: data.reused === true,
     window_id: windowId,
     anchor_tab_id: anchorTabId,
+    ownership_token: String(data.ownership_token ?? data.ownershipToken ?? "").trim(),
     anchor_url: String(data.anchor_url ?? data.anchorUrl ?? ""),
     browser_family: String(data.browser_family ?? data.browserFamily ?? "unknown"),
     platform_os: String(data.platform_os ?? data.platformOs ?? "unknown"),
@@ -161,6 +162,10 @@ function managedWindowRecordFields(presentation, agentWindow = {}, tab = {}) {
       : (windowPolicy === "isolated_target" ? "remote_cdp" : "current_user_window"),
     agent_window_anchor_tab_id: dedicated
       ? normalizeTabIdNumber(agentWindow.anchor_tab_id)
+      : undefined,
+    agent_window_created: dedicated && agentWindow.created === true,
+    agent_window_ownership_token: dedicated
+      ? String(agentWindow.ownership_token ?? "").trim()
       : undefined,
   };
 }

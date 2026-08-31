@@ -96,6 +96,11 @@ const TAB_LIFECYCLE_TOOL_SCHEMAS = {
         include_disconnected: { type: "boolean", default: false },
         history: { type: "boolean", default: false },
         prune_stale: { type: "boolean", default: false },
+        cleanup_created_agent_window: {
+          type: "boolean",
+          default: false,
+          description: "For finalize_task only: retire the exact Agent window only when this scoped task created it, all managed records are gone, and the extension verifies that only its anchor tab remains. Any user/content tab preserves the window.",
+        },
         summary_only: {
           type: "boolean",
           default: false,

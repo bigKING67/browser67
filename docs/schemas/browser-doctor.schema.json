@@ -113,6 +113,9 @@
             "supports_finalize_task": {
               "type": "boolean"
             },
+            "supports_created_agent_window_cleanup": {
+              "type": "boolean"
+            },
             "supports_finalize_hint": {
               "type": "boolean"
             }

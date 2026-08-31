@@ -421,6 +421,7 @@ async function run() {
       action: "finalize_task",
       workspace_key: workspaceKey,
       prune_stale: false,
+      cleanup_created_agent_window: true,
     });
     assert.equal(
       finalize.close_unkept.closed.some((row) => String(row?.tab_id ?? "") === tabId && row.closed === true),
@@ -477,6 +478,7 @@ async function run() {
         action: "finalize_task",
         workspace_key: workspaceKey,
         prune_stale: false,
+        cleanup_created_agent_window: true,
       });
     } catch {
       // Best effort cleanup only.

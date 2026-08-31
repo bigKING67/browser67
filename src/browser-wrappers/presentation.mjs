@@ -40,6 +40,8 @@ async function ensureAgentWindow(presentation, runCommand, options = {}) {
     ) {
       return {
         ...verifiedWindow,
+        created: agentWindow.created === true,
+        reused: agentWindow.reused === true,
         presentation: {
           ...actualPresentation,
           status: "failed",
@@ -52,6 +54,8 @@ async function ensureAgentWindow(presentation, runCommand, options = {}) {
     }
     return {
       ...verifiedWindow,
+      created: agentWindow.created === true,
+      reused: agentWindow.reused === true,
       presentation: {
         ...actualPresentation,
         ...verifiedWindow.presentation,

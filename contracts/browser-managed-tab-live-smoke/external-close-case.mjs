@@ -77,6 +77,7 @@ async function runExternalCloseCase(context) {
     action: "finalize_task",
     workspace_key: externallyClosedWorkspace,
     prune_stale: false,
+    cleanup_created_agent_window: true,
   });
   assert.equal(externalCleanup.status, "success", "external-close cleanup did not succeed");
   assert.equal(

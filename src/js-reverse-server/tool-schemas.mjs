@@ -135,6 +135,11 @@ const TOOL_SCHEMAS = Object.fromEntries(
           all: { type: "boolean", default: false },
           confirm_all: { type: "boolean", default: false },
           prune_stale: { type: "boolean", default: false },
+          cleanup_created_agent_window: {
+            type: "boolean",
+            default: false,
+            description: "For finalize_task: retire only an exact empty Agent window created by this scoped task; preserve reused or nonempty windows.",
+          },
           summary_only: { type: "boolean", default: false },
           dry_run: { type: "boolean", default: false },
           tmwd_mode: { type: "string", enum: ["tmwd"] },

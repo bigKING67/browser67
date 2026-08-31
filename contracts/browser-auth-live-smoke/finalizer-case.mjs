@@ -17,6 +17,7 @@ async function runFinalizerCase(context, tabIds) {
     action: "finalize_task",
     workspace_key: workspaceKey,
     prune_stale: false,
+    cleanup_created_agent_window: true,
   });
   assert.equal(finalize.status, "success", "auth live finalize_task did not succeed");
   assertClosed(finalize, tabIds.managedTabId, "managed");

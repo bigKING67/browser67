@@ -318,6 +318,12 @@ transport drift.
   the user moved it into another window, browser67 quarantines that registry
   record and creates or reuses a different dedicated tab; it never moves the
   user's tab back into the Agent window.
+  Normal `finalize_task` calls keep the reusable Agent window. Bounded live-test
+  fixtures may pass `cleanup_created_agent_window:true`; the extension closes
+  the window only when the scoped record proves that fixture created it, the
+  exact window/anchor ownership token still matches, all managed records are
+  gone, and the anchor is the only remaining tab. Reused, mismatched, or
+  nonempty windows are preserved.
   If an allowed `tmwd_mode:"auto"` operation actually falls back to controlled
   CDP, its effective policy is `isolated_target`, not `dedicated`; reuse and
   `finalize_task` follow that recorded effective transport so the page is not
@@ -704,6 +710,7 @@ sites to use the generic profile directory above.
 - Use `npm run runtime:cleanup:dry-run` as the repo-external run/screenshot artifact retention audit. It is non-destructive by default; use `npm run runtime:cleanup -- --write` only when intentionally deleting planned old run directories.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime/index.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the browser67 websocket explicitly to avoid successful actions ending with a command timeout.
+- `npm run check:live` supervises the live-contract child with a 60-second total deadline. Use `-- --live-process-timeout-ms <milliseconds>` only for an intentionally slower host. `stage:"live_timeout"` means the child was terminated and its fixture cleanup is unverified; inspect scoped managed-tab state before retrying rather than assuming cleanup completed.
 - Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, run `npm run setup` and `npm run extension:reload-live` before expecting new bridge capabilities in a running Chrome/Edge profile; use the browser extension page only when the existing bridge is not connected.
 - Run `npm run check:tmwd-performance-live` for bounded cold and p50/p95/p99 measurements of the real TMWD `tabs.get`, managed execution, actionable snapshot, and selector-wait paths. It uses an isolated local managed fixture and finalizes its own workspace.
 - Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, CAPTCHA assist dry-run planning, manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.

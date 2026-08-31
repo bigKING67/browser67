@@ -56,6 +56,9 @@ async function createManagedLiveFixture({ rpc, cli, commonArgs }) {
       workspace_key: workspaceKey,
       task_id: taskId,
       created: created?.created === true,
+      agent_window_created: created?.agent_window?.created === true,
+      agent_window_id: created?.agent_window?.window_id,
+      agent_window_anchor_tab_id: created?.agent_window?.anchor_tab_id,
     };
   } catch (error) {
     await fixture.close();
@@ -73,9 +76,19 @@ async function finalizeManagedLiveFixture({ rpc, cli, commonArgs, fixtureContext
       task_id: fixtureContext.task_id,
       prune_stale: false,
       summary_only: true,
+      cleanup_created_agent_window: fixtureContext.agent_window_created === true,
     });
     if (finalized?.status !== "success") {
       throw new Error(`managed live fixture finalization failed: ${JSON.stringify(finalized)}`);
+    }
+    if (
+      fixtureContext.agent_window_created === true
+      && (
+        finalized?.agent_window_cleanup?.closed !== true
+        || finalized?.agent_window_cleanup?.close_verified !== true
+      )
+    ) {
+      throw new Error(`managed live fixture Agent window cleanup was not verified: ${JSON.stringify(finalized?.agent_window_cleanup)}`);
     }
     return finalized;
   } finally {

@@ -151,6 +151,7 @@ async function cleanupManagedSmokeContext({ context, previousRegistryPath, regis
       action: "finalize_task",
       workspace_key: context.workspaceKey,
       prune_stale: false,
+      cleanup_created_agent_window: true,
     });
   } catch {
     // Best effort cleanup only.

@@ -218,6 +218,7 @@ async function runTmwdPerformanceCase(context) {
     action: "finalize_task",
     workspace_key: context.workspaceKey,
     prune_stale: false,
+    cleanup_created_agent_window: true,
   });
   assert.equal(
     finalized.close_unkept?.closed?.some((entry) => String(entry?.tab_id ?? "") === tabId && entry.closed === true),

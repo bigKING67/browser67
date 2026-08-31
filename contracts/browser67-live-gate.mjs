@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { buildLiveArgs } from "./browser67-live-gate/args.mjs";
 import {
+  childProcessTimedOut,
   parseLastJsonLine,
   runNodeScript,
 } from "./browser67-live-gate/child-process.mjs";
@@ -65,7 +66,29 @@ async function run() {
     return;
   }
 
-  const liveResult = runNodeScript(liveContractPath, buildLiveArgs(config));
+  const liveResult = runNodeScript(liveContractPath, buildLiveArgs(config), {
+    timeout_ms: config.live_process_timeout_ms,
+  });
+  if (childProcessTimedOut(liveResult)) {
+    emitAndReturn(config, {
+      ok: false,
+      stage: "live_timeout",
+      doctor: doctorPayload,
+      ensure_tmwd_hub: ensureTmwdHubState,
+      session_wait: sessionReadyWaitState,
+      live_process_timeout_ms: config.live_process_timeout_ms,
+      live_exit_code: liveResult.status,
+      live_signal: String(liveResult.signal ?? ""),
+      live_stdout: String(liveResult.stdout ?? "").trim(),
+      live_stderr: String(liveResult.stderr ?? "").trim(),
+      hints: [
+        "The live contract exceeded its bounded process deadline and was terminated.",
+        "Inspect managed-tab cleanup state before retrying; do not assume the timed-out fixture finalized.",
+        ...doctorHints(config, doctorPayload),
+      ],
+    });
+    return;
+  }
   if (liveResult.error) {
     throw liveResult.error;
   }

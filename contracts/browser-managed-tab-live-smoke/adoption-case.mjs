@@ -227,6 +227,7 @@ async function runAdoptionCase(context) {
     action: "finalize_task",
     workspace_key: context.workspaceKey,
     prune_stale: false,
+    cleanup_created_agent_window: true,
   });
   assert.equal(finalized.status, "success");
   assert.equal(

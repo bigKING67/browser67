@@ -37,6 +37,7 @@ async function createAuthLiveContext(cli) {
           action: "finalize_task",
           workspace_key: workspaceKey,
           prune_stale: false,
+          cleanup_created_agent_window: true,
         });
       } catch {
         // Best effort cleanup only.

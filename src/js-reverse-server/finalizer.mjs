@@ -7,6 +7,10 @@ import {
 } from "../tab-workspace/index.mjs";
 import { bridgeCommand } from "./tmwd-adapter.mjs";
 import { browserTabKey } from "../tab-workspace/identity.mjs";
+import {
+  cleanupCreatedAgentWindow,
+  createdAgentWindowCleanupCandidate,
+} from "../browser-wrappers/tab-lifecycle-close.mjs";
 
 function resolveFinalizeScope(args = {}) {
   const taskId = String(args.task_id ?? args.taskId ?? "").trim();
@@ -199,6 +203,8 @@ async function handleFinalizeTask(args) {
     return scope;
   }
   const dryRun = args?.dry_run === true;
+  const initialRecords = await recordsInScope(scope);
+  const agentWindowCandidate = createdAgentWindowCleanupCandidate(initialRecords);
   let pruneStale;
   if (args?.prune_stale !== false) {
     try {
@@ -212,6 +218,22 @@ async function handleFinalizeTask(args) {
     }
   }
   const closeUnkept = await closeUnkeptScopedRecords(args, scope);
+  let agentWindowCleanup;
+  try {
+    agentWindowCleanup = await cleanupCreatedAgentWindow(args, agentWindowCandidate, {
+      run_agent_window_command: (command, candidate) => bridgeCommand({
+        ...args,
+        browser_instance_id: candidate.browser_instance_id,
+      }, command),
+    });
+  } catch (error) {
+    agentWindowCleanup = {
+      requested: args?.cleanup_created_agent_window === true,
+      status: "error",
+      closed: false,
+      error: String(error?.message ?? error),
+    };
+  }
   const remaining = summarizeRecords(await recordsInScope(scope));
   const cleanupSummary = buildFinalizeCleanupSummary({
     closeUnkept,
@@ -220,7 +242,11 @@ async function handleFinalizeTask(args) {
     remaining,
     scope,
   });
-  const ok = (pruneStale?.ok ?? true) === true && closeUnkept.ok === true;
+  const agentWindowCleanupOk = agentWindowCleanup.requested !== true
+    || ["closed", "already_closed", "not_owned", "dry_run"].includes(agentWindowCleanup.status);
+  const ok = (pruneStale?.ok ?? true) === true
+    && closeUnkept.ok === true
+    && agentWindowCleanupOk;
   return {
     ok,
     action: "finalize_task",
@@ -236,10 +262,13 @@ async function handleFinalizeTask(args) {
       closes_keep_false: true,
       preserves_keep_true: true,
       ignores_unmanaged_user_tabs: true,
+      cleans_up_created_agent_window_only_when_requested: true,
+      preserves_nonempty_agent_window: true,
       prunes_stale_registry_records: args?.prune_stale !== false,
     },
     prune_stale: pruneStale,
     close_unkept: closeUnkept,
+    agent_window_cleanup: agentWindowCleanup,
     remaining,
     cleanup_summary: cleanupSummary,
     delivery_summary: formatFinalizeDeliverySummary(cleanupSummary, {

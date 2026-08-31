@@ -27,6 +27,7 @@ async function runLiveCases(rpc, cli) {
   const fixture = await startHttpFixture();
   const workspaceKey = `js-reverse-live-${String(Date.now())}`;
   let finalized;
+  let agentWindowCreated = false;
   try {
     const created = await callTool(rpc, "new_page", {
       ...commonArgs,
@@ -42,6 +43,7 @@ async function runLiveCases(rpc, cli) {
     assert.equal(created?.presentation?.active, false);
     assert.equal(created?.managed_page?.window_ownership, "browser67_agent");
     assert.equal(created?.managed_page?.management_policy_applied, true);
+    agentWindowCreated = created?.agent_window?.created === true;
 
     const scriptsPayload = await callTool(rpc, "list_scripts", {
       ...commonArgs,
@@ -58,9 +60,14 @@ async function runLiveCases(rpc, cli) {
       ...commonArgs,
       workspace_key: workspaceKey,
       prune_stale: false,
+      cleanup_created_agent_window: true,
     }, cli.timeout_ms);
     assert.equal(finalized?.ok, true);
     assert.equal(finalized?.remaining?.unkept_count, 0);
+    if (agentWindowCreated) {
+      assert.equal(finalized?.agent_window_cleanup?.closed, true);
+      assert.equal(finalized?.agent_window_cleanup?.close_verified, true);
+    }
     return {
       health,
       pages_count: 1,
@@ -81,6 +88,7 @@ async function runLiveCases(rpc, cli) {
         ...commonArgs,
         workspace_key: workspaceKey,
         prune_stale: false,
+        cleanup_created_agent_window: true,
       }, cli.timeout_ms).catch(() => {});
     }
     await fixture.close();
