@@ -195,7 +195,10 @@ waits, and scripts do not replace the user's active tab. This is still the same
 Chrome/Edge Profile and therefore keeps the same approved login/session state;
 it is not a second Profile or incognito context. Use `window_policy:"current"`
 only for compatibility, and `focus_policy:"foreground"` only for an intentional
-visible handoff. CAPTCHA and native input use a bounded focus lease and restore
+visible handoff. On macOS, that explicit foreground handoff also activates the
+exact browser67-owned tab through the native Chromium window bridge so its Full
+Screen Space becomes visible; extension focus alone is not treated as proof of
+Space visibility. CAPTCHA and native input use a bounded focus lease and restore
 the prior browser tab only when browser67 can prove that the user did not change
 focus during the lease. Concurrent leases are rejected. If the user manually
 moves an Agent tab into another window, browser67 excludes it from dedicated
@@ -219,7 +222,14 @@ tab ID. The epoch persists across service-worker and extension reloads, then
 rotates on the next browser Profile startup. The latter state is recovered
 automatically from a bounded ownership tombstone. A reused window,
 identity/epoch mismatch, unowned New Tab window, or any user/content tab is
-preserved, so fixture cleanup cannot close a user page.
+preserved. Retirement removes only the exact internal anchor/New Tab; the
+window closes naturally only when that was still its last tab. A user tab that
+arrives after inspection keeps the window open and has its ownership record
+released, so fixture cleanup cannot close a user page through an inspection-to-
+close race. If Chrome immediately replaces the removed last tab with another
+browser-generated New Tab, browser67 follows that internal successor for a
+bounded number of exact removals. An unresolved replacement keeps its ownership
+tombstone for later recovery instead of becoming an unowned New Tab window.
 
 User navigation, extension reconnection, or lease-generation changes suspend an
 adopted tab. Re-inspect and re-adopt rather than mutating a target whose identity

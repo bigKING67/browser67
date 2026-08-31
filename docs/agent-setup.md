@@ -194,7 +194,12 @@ also recovers the exact same browser-start epoch case where Chrome removes or
 replaces the anchor and leaves a sole internal New Tab page, including
 replacement that keeps the same tab ID. The epoch survives extension reloads
 and rotates on Browser Profile startup. It never applies that recovery to an
-unowned New Tab window or to a window containing user/content tabs.
+unowned New Tab window or to a window containing user/content tabs. Cleanup
+removes only the exact internal tab, so a user tab that arrives concurrently
+keeps the window open and is released from browser67 ownership. If Chrome
+immediately creates another internal New Tab after the last-tab removal,
+browser67 follows that successor for bounded exact cleanup; an unresolved
+successor stays owned for later recovery rather than becoming unowned.
 User-opened unmanaged tabs are read-only by default. Do not navigate, click,
 type into, close, or adopt them unless the user explicitly asks to operate on
 that exact tab. When explicitly requested, use inspect_adoption then

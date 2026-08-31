@@ -312,15 +312,19 @@ transport drift.
   `fullscreen` window state. `window_policy:"current"` is an explicit
   compatibility mode. `focus_policy:"background_only"` rejects operations that
   require real foreground focus, while `focus_policy:"foreground"` intentionally
-  leaves the managed tab visible. The legacy `active:true` flag only activates a
+  leaves the managed tab visible. For a macOS native Full Screen Agent Window,
+  that explicit foreground path activates the exact browser67-owned tab through
+  the host Chromium bridge so the matching Space is selected; extension focus
+  success alone is not accepted as document visibility proof. The legacy
+  `active:true` flag only activates a
   tab inside its selected window and should not be used as a focus contract.
   Before reusing a dedicated managed tab, browser67 checks its live window. If
   the user moved it into another window, browser67 quarantines that registry
   record and creates or reuses a different dedicated tab; it never moves the
   user's tab back into the Agent window.
   Normal `finalize_task` calls keep the reusable Agent window. Bounded live-test
-  fixtures may pass `cleanup_created_agent_window:true`; the extension closes
-  the window only when the scoped record proves that fixture created it, the
+  fixtures may pass `cleanup_created_agent_window:true`; the extension removes
+  only the exact internal anchor/New Tab when the scoped record proves that fixture created it, the
   exact window/anchor ownership token still matches, all managed records are
   gone, and either the anchor is the only remaining tab or the same Profile
   browser-start epoch proves that removal or in-place replacement of that exact
@@ -329,7 +333,13 @@ transport drift.
   startup. The extension keeps a bounded tombstone long enough to
   recover that exact orphan automatically and exposes privacy-safe aggregate
   state through its internal `status_agent_windows` command. Reused,
-  mismatched, cross-epoch, unowned, or user-content windows are preserved.
+  mismatched, cross-epoch, unowned, or user-content windows are preserved. If a
+  user tab arrives after inspection but before retirement, the exact internal
+  tab is removed while that window and user tab remain open and unowned.
+  If Chrome immediately replaces the removed last internal tab with another
+  generated New Tab, cleanup follows that exact successor for a bounded number
+  of attempts. If the replacement still cannot be retired, ownership is kept
+  for later recovery instead of abandoning an unowned New Tab window.
   If an allowed `tmwd_mode:"auto"` operation actually falls back to controlled
   CDP, its effective policy is `isolated_target`, not `dedicated`; reuse and
   `finalize_task` follow that recorded effective transport so the page is not
@@ -717,7 +727,7 @@ sites to use the generic profile directory above.
 - Extension bridge supports `tabs.get` and `tabs.list` with `includeUnscriptable:true` for debugging visible `about:blank` / internal tabs. Default tab lists remain HTTP/HTTPS-only to avoid exposing unrelated browser state.
 - One-shot Node helpers that import `src/tmwd-runtime/index.mjs` directly should call `await disposeTmwdRuntime()` in `finally`; MCP servers are long-lived, but shell helpers should close the browser67 websocket explicitly to avoid successful actions ending with a command timeout.
 - `npm run check:live` supervises the live-contract child with a 60-second total deadline. Use `-- --live-process-timeout-ms <milliseconds>` only for an intentionally slower host. `stage:"live_timeout"` means the child was terminated and its fixture cleanup is unverified; inspect scoped managed-tab state before retrying rather than assuming cleanup completed.
-- Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. After editing extension files, run `npm run setup` and `npm run extension:reload-live` before expecting new bridge capabilities in a running Chrome/Edge profile; use the browser extension page only when the existing bridge is not connected.
+- Run `npm run check:managed-tab-live` for a real-browser open/reuse/close lifecycle smoke. Add `-- --foreground-visibility` only for an explicitly authorized local GUI run: it moves focus to a browser67-owned fixture in the macOS native Full Screen Space, then requires `document.visibilityState="visible"` and advancing `requestAnimationFrame` before scoped cleanup. After editing extension files, run `npm run setup` and `npm run extension:reload-live` before expecting new bridge capabilities in a running Chrome/Edge profile; use the browser extension page only when the existing bridge is not connected.
 - Run `npm run check:tmwd-performance-live` for bounded cold and p50/p95/p99 measurements of the real TMWD `tabs.get`, managed execution, actionable snapshot, and selector-wait paths. It uses an isolated local managed fixture and finalizes its own workspace.
 - Run `npm run check:auth-live` after auth/profile changes. It opens temporary managed tabs, uses an isolated local profile, verifies first-time suggestion/upsert, login submission, already-authenticated no-resubmit, lifecycle sidecar updates, CAPTCHA/MFA/SSO/OAuth-popup manual-required blocking, CAPTCHA assist dry-run planning, manual CAPTCHA/MFA/SSO/OAuth-popup completion resume, unknown-origin blocking, redaction, manual handoff context, and finalizer cleanup.
 - Run `npm run check:captcha-assist-live` after CAPTCHA assist changes. It opens isolated local slider/checkbox fixtures, validates dry-run coordinate transforms, region-only screenshot artifact creation, scroll-adjusted CDP clips, same-origin iframe coordinate conversion, cross-origin iframe degraded/manual handoff, first-pass slider/checkbox vision correction, synthetic slider visual movement, and finalizes the managed tabs. It is planning-only.
