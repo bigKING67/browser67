@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-08-31
+
 - Prevent live/release verification from leaving a browser67-created Agent
   window that Chrome can later surface as an ordinary New Tab window. Scoped
   finalizers may request exact empty-window retirement; the extension now keeps
@@ -17,6 +19,27 @@
   installs its close listener before signaling the child and has a hard settle
   deadline, eliminating an intermittent unbounded wait during cold macOS Agent
   Window presentation or cleanup.
+- Make explicit foreground work activate the exact browser67-owned native macOS
+  Full Screen Space while retaining Chrome/Edge browser chrome, fail closed on
+  process/window identity mismatch, and require live `visibilityState` plus RAF
+  progress evidence without changing ordinary user windows.
+- Scope JS-reverse hook, evidence, and task state by workspace/task with bounded
+  retention and successful-finalize cleanup; close every public tool input
+  schema, keep artifacts in the owning task scope, and add cross-workspace and
+  expiry regressions.
+- Validate layered browser governance through the thin global `AGENTS.md`
+  pointer, detailed browser rule, active Skill, and live Agent doctor; recognize
+  successful browser67 lifecycle receipts with `page:null` only when exact
+  `data.ready=true` evidence is present.
+- Stabilize the indexed-run performance gate with repeated measurements and a
+  same-filesystem control while retaining the absolute and total runtime
+  budgets.
+- Document Agent Window ownership, retirement, macOS Full Screen visibility,
+  JS-reverse state boundaries, and release/upgrade verification as explicit
+  operator contracts.
+- Review `zhaoxuya520/reverse-skill` through `71acc8e`; confirm its seven-commit
+  delta is limited to README star-history/sponsor presentation and one sponsor
+  image, retain `direct_import_allowed=false`, and import no external artifact.
 
 ## 0.8.0 - 2026-08-30
 
