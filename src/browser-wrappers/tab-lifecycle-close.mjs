@@ -176,6 +176,7 @@ async function cleanupCreatedAgentWindow(args, candidate, options = {}) {
     reason: String(data.reason ?? ""),
     tab_count: Number.isInteger(data.tab_count) ? data.tab_count : undefined,
     user_content_preserved: data.user_content_preserved === true,
+    internal_tab_removed: data.internal_tab_removed === true,
     recovered_orphan: data.recovered_orphan === true,
     ownership_record_removed: data.ownership_record_removed === true,
     transport: result.transport,
@@ -449,8 +450,13 @@ async function finalizeManagedTask(args = {}, options = {}) {
   const agentWindowCleanupTerminal = ["closed", "already_closed"].includes(agentWindowCleanup.status)
     && agentWindowCleanup.close_verified === true
     && agentWindowCleanup.ownership_record_removed === true;
+  const agentWindowUserContentPreserved = agentWindowCleanup.status === "preserved"
+    && agentWindowCleanup.user_content_preserved === true
+    && agentWindowCleanup.internal_tab_removed === true
+    && agentWindowCleanup.ownership_record_removed === true;
   const agentWindowCleanupOk = agentWindowCleanup.requested !== true
     || agentWindowCleanupTerminal
+    || agentWindowUserContentPreserved
     || agentWindowCleanup.status === "not_owned"
     || agentWindowCleanup.status === "dry_run";
   return {
@@ -468,6 +474,7 @@ async function finalizeManagedTask(args = {}, options = {}) {
       closes_user_adopted_tabs: false,
       cleans_up_created_agent_window_only_when_requested: true,
       preserves_nonempty_agent_window: true,
+      preserves_concurrent_user_content: true,
       recovers_exact_owned_orphan_new_tab: true,
       agent_window_orphan_recovery_policy: "same_browser_profile_epoch_exact_window_sole_browser_new_tab",
       prunes_stale_registry_records: shouldPruneStale,

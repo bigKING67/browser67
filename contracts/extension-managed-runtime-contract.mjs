@@ -64,6 +64,8 @@ async function run() {
   ]);
   let nextWindowId = 3;
   let nextTabId = 51;
+  let beforeTabRemove = null;
+  let lastTabReplacementCount = 0;
   const events = {
     before: eventBus(),
     completed: eventBus(),
@@ -137,6 +139,33 @@ async function run() {
         }
         Object.assign(row, changes);
         return { ...row };
+      },
+      async remove(tabId) {
+        const normalized = Number(tabId);
+        const row = tabRows.get(normalized);
+        if (!row) throw new Error(`tab not found: ${String(tabId)}`);
+        if (beforeTabRemove) await beforeTabRemove(normalized, { ...row });
+        tabRows.delete(normalized);
+        const hasRemainingTab = [...tabRows.values()]
+          .some((tab) => tab.windowId === row.windowId);
+        if (!hasRemainingTab && lastTabReplacementCount > 0) {
+          lastTabReplacementCount -= 1;
+          const replacementTabId = nextTabId;
+          nextTabId += 1;
+          tabRows.set(replacementTabId, {
+            id: replacementTabId,
+            windowId: row.windowId,
+            active: true,
+            url: "chrome://newtab/",
+          });
+        }
+        const windowClosing = ![...tabRows.values()].some((tab) => tab.windowId === row.windowId);
+        if (windowClosing) windowRows.delete(row.windowId);
+        await events.tabRemoved.emit(normalized, {
+          windowId: row.windowId,
+          isWindowClosing: windowClosing,
+        });
+        if (windowClosing) await events.windowRemoved.emit(row.windowId);
       },
     },
     windows: {
@@ -583,6 +612,106 @@ async function run() {
   assert.equal(emptyRetirement.data.ownership_record_removed, true);
   assert.equal(windowRows.has(agentWindow.data.window_id), false);
 
+  const concurrentUserTabAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  beforeTabRemove = async (_tabId, tab) => {
+    beforeTabRemove = null;
+    tabRows.set(87, {
+      id: 87,
+      windowId: tab.windowId,
+      active: true,
+      url: "https://user.fixture.test/arrived-during-retirement",
+    });
+  };
+  const concurrentUserTabRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: concurrentUserTabAgentWindow.data.window_id,
+    anchorTabId: concurrentUserTabAgentWindow.data.anchor_tab_id,
+    ownershipToken: concurrentUserTabAgentWindow.data.ownership_token,
+  });
+  assert.equal(concurrentUserTabRetirement.data.status, "preserved");
+  assert.equal(concurrentUserTabRetirement.data.closed, false);
+  assert.equal(concurrentUserTabRetirement.data.reason, "concurrent_user_content_preserved");
+  assert.equal(concurrentUserTabRetirement.data.internal_tab_removed, true);
+  assert.equal(concurrentUserTabRetirement.data.user_content_preserved, true);
+  assert.equal(concurrentUserTabRetirement.data.ownership_record_removed, true);
+  assert.equal(windowRows.has(concurrentUserTabAgentWindow.data.window_id), true);
+  assert.equal(tabRows.has(87), true);
+  const concurrentUserTabStatus = await handle({
+    cmd: "window",
+    method: "status_agent_windows",
+  });
+  assert.equal(concurrentUserTabStatus.data.status, "not_owned");
+  assert.equal(concurrentUserTabStatus.data.owned_orphan_count, 0);
+  await chrome.windows.remove(concurrentUserTabAgentWindow.data.window_id);
+
+  const successorNewTabAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  lastTabReplacementCount = 1;
+  const successorNewTabRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: successorNewTabAgentWindow.data.window_id,
+    anchorTabId: successorNewTabAgentWindow.data.anchor_tab_id,
+    ownershipToken: successorNewTabAgentWindow.data.ownership_token,
+  });
+  assert.equal(successorNewTabRetirement.data.status, "closed");
+  assert.equal(successorNewTabRetirement.data.closed, true);
+  assert.equal(successorNewTabRetirement.data.close_verified, true);
+  assert.equal(successorNewTabRetirement.data.internal_tab_removed, true);
+  assert.equal(successorNewTabRetirement.data.ownership_record_removed, true);
+  assert.equal(windowRows.has(successorNewTabAgentWindow.data.window_id), false);
+  assert.equal(
+    [...tabRows.values()].some((tab) => tab.windowId === successorNewTabAgentWindow.data.window_id),
+    false,
+  );
+
+  const boundedReplacementAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  lastTabReplacementCount = 4;
+  const boundedReplacementRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: boundedReplacementAgentWindow.data.window_id,
+    anchorTabId: boundedReplacementAgentWindow.data.anchor_tab_id,
+    ownershipToken: boundedReplacementAgentWindow.data.ownership_token,
+  });
+  assert.equal(boundedReplacementRetirement.data.status, "close_unverified");
+  assert.equal(boundedReplacementRetirement.data.closed, false);
+  assert.equal(boundedReplacementRetirement.data.close_verified, false);
+  assert.equal(
+    boundedReplacementRetirement.data.reason,
+    "agent_window_internal_new_tab_replacement_limit_reached",
+  );
+  assert.equal(boundedReplacementRetirement.data.ownership_record_removed, false);
+  assert.equal(windowRows.has(boundedReplacementAgentWindow.data.window_id), true);
+  const boundedReplacementStatus = await handle({
+    cmd: "window",
+    method: "status_agent_windows",
+  });
+  assert.equal(boundedReplacementStatus.data.status, "not_owned");
+  assert.equal(boundedReplacementStatus.data.owned_orphan_count, 1);
+  assert.equal(boundedReplacementStatus.data.recoverable_owned_orphan_count, 1);
+  lastTabReplacementCount = 0;
+  const boundedReplacementCleanup = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: boundedReplacementAgentWindow.data.window_id,
+    anchorTabId: boundedReplacementAgentWindow.data.anchor_tab_id,
+    ownershipToken: boundedReplacementAgentWindow.data.ownership_token,
+  });
+  assert.equal(boundedReplacementCleanup.data.status, "closed");
+  assert.equal(boundedReplacementCleanup.data.close_verified, true);
+  assert.equal(boundedReplacementCleanup.data.ownership_record_removed, true);
+  assert.equal(windowRows.has(boundedReplacementAgentWindow.data.window_id), false);
+
   const extensionReloadAgentWindow = await handle({
     cmd: "window",
     method: "ensure_agent_window",
@@ -848,6 +977,9 @@ async function run() {
     out_of_band_navigation_observable: true,
     dedicated_agent_window: true,
     exact_agent_window_retirement: true,
+    concurrent_user_tab_retirement_preserved: true,
+    successor_new_tab_retirement: true,
+    bounded_new_tab_replacement_retains_ownership: true,
     extension_reload_epoch_recovery: true,
     cold_browser_start_preserves_prior_epoch_window: true,
     exact_owned_orphan_new_tab_recovery: true,

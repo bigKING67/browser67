@@ -7,6 +7,7 @@ const BROWSER67_FOCUS_LEASE_DEFAULT_TTL_MS = 30_000;
 const BROWSER67_FOCUS_LEASE_MAX_TTL_MS = 120_000;
 const BROWSER67_AGENT_WINDOW_ORPHAN_RECOVERY_DELAY_MS = 500;
 const BROWSER67_AGENT_WINDOW_ORPHAN_LIMIT = 16;
+const BROWSER67_AGENT_WINDOW_RETIRE_TAB_LIMIT = 3;
 
 let browser67AgentWindowFlight = null;
 let browser67AgentWindowSessionToken = "";
@@ -357,6 +358,109 @@ async function browser67InspectOwnedAgentWindow(record) {
   };
 }
 
+async function browser67RemoveInspectedAgentWindowTab(inspection) {
+  const windowId = browser67NumericId(inspection?.record?.window_id);
+  const tabs = Array.isArray(inspection?.window?.tabs) ? inspection.window.tabs : [];
+  let candidateTab = inspection?.status === "active"
+    ? tabs.find((tab) => browser67NumericId(tab?.id) === inspection.record.anchor_tab_id)
+    : inspection?.status === "recoverable_orphan" && tabs.length === 1
+      ? tabs[0]
+      : null;
+  const initialTabId = browser67NumericId(candidateTab?.id);
+  if (windowId === null || initialTabId === null) {
+    return {
+      removed: false,
+      terminal: false,
+      reason: "agent_window_internal_tab_identity_unavailable",
+      window_id: windowId,
+      tab_id: initialTabId,
+      removed_tab_ids: [],
+    };
+  }
+  const removedTabIds = [];
+  let remainingWindow = inspection.window;
+  for (let attempt = 0; attempt < BROWSER67_AGENT_WINDOW_RETIRE_TAB_LIMIT; attempt += 1) {
+    const tabId = browser67NumericId(candidateTab?.id);
+    const latestTab = await browser67GetTab(tabId);
+    const latestMatchesWindow = browser67NumericId(latestTab?.windowId) === windowId;
+    const latestMatchesContent = attempt === 0 && inspection.status === "active"
+      ? latestTab?.url === browser67AnchorUrl()
+      : browser67IsBrowserNewTab(latestTab);
+    if (!latestTab || !latestMatchesWindow || !latestMatchesContent) {
+      return {
+        removed: removedTabIds.length > 0,
+        terminal: false,
+        reason: "agent_window_internal_tab_changed_before_retirement",
+        window_id: windowId,
+        tab_id: initialTabId,
+        removed_tab_ids: removedTabIds,
+      };
+    }
+    await chrome.tabs.remove(tabId);
+    const [remainingTab, latestWindow] = await Promise.all([
+      browser67GetTab(tabId),
+      browser67GetWindow(windowId, true),
+    ]);
+    if (remainingTab) {
+      return {
+        removed: removedTabIds.length > 0,
+        terminal: false,
+        reason: "agent_window_internal_tab_remained_visible",
+        window_id: windowId,
+        tab_id: initialTabId,
+        removed_tab_ids: removedTabIds,
+      };
+    }
+    removedTabIds.push(tabId);
+    remainingWindow = latestWindow;
+    if (!remainingWindow) break;
+    const remainingTabs = Array.isArray(remainingWindow.tabs) ? remainingWindow.tabs : [];
+    if (remainingTabs.length === 1 && browser67IsBrowserNewTab(remainingTabs[0])) {
+      candidateTab = remainingTabs[0];
+      continue;
+    }
+    const userContentPresent = remainingTabs.some((tab) => !browser67IsBrowserNewTab(tab));
+    if (!userContentPresent) {
+      return {
+        removed: true,
+        terminal: false,
+        reason: "agent_window_internal_tab_successor_ambiguous",
+        window_id: windowId,
+        tab_id: initialTabId,
+        removed_tab_ids: removedTabIds,
+        window_closed: false,
+        remaining_window: remainingWindow,
+        remaining_tab_count: remainingTabs.length,
+      };
+    }
+    return {
+      removed: true,
+      terminal: true,
+      reason: "concurrent_user_content_preserved",
+      window_id: windowId,
+      tab_id: initialTabId,
+      removed_tab_ids: removedTabIds,
+      window_closed: false,
+      remaining_window: remainingWindow,
+      remaining_tab_count: remainingTabs.length,
+    };
+  }
+  const windowClosed = remainingWindow === null;
+  return {
+    removed: removedTabIds.length > 0,
+    terminal: windowClosed,
+    reason: windowClosed
+      ? "agent_window_internal_tab_retired"
+      : "agent_window_internal_new_tab_replacement_limit_reached",
+    window_id: windowId,
+    tab_id: initialTabId,
+    removed_tab_ids: removedTabIds,
+    window_closed: windowClosed,
+    remaining_window: remainingWindow,
+    remaining_tab_count: Array.isArray(remainingWindow?.tabs) ? remainingWindow.tabs.length : 0,
+  };
+}
+
 async function browser67ValidateAgentWindow(record) {
   const windowId = browser67NumericId(record?.window_id);
   const anchorTabId = browser67NumericId(record?.anchor_tab_id);
@@ -453,17 +557,22 @@ async function browser67RecoverOwnedAgentWindowOrphans() {
       });
       continue;
     }
-    await chrome.windows.remove(orphan.window_id);
-    const closeVerified = (await browser67GetWindow(orphan.window_id)) === null;
-    if (closeVerified) await browser67RemoveAgentWindowOrphan(orphan);
+    const retirement = await browser67RemoveInspectedAgentWindowTab(inspection);
+    const closeVerified = retirement.terminal === true && retirement.window_closed === true;
+    if (retirement.terminal === true) await browser67RemoveAgentWindowOrphan(orphan);
     results.push({
-      status: closeVerified ? "closed" : "close_unverified",
-      reason: closeVerified
-        ? "orphan_new_tab_agent_window_retired"
-        : "window_remained_visible",
+      status: closeVerified
+        ? "closed"
+        : retirement.terminal === true
+          ? "preserved"
+          : "close_unverified",
+      reason: closeVerified ? "orphan_new_tab_agent_window_retired" : retirement.reason,
       window_id: orphan.window_id,
       closed: closeVerified,
       close_verified: closeVerified,
+      internal_tab_removed: retirement.removed === true,
+      user_content_preserved: retirement.terminal === true && retirement.window_closed !== true,
+      tab_count: retirement.remaining_tab_count,
     });
   }
   return results;
@@ -615,27 +724,35 @@ async function browser67RetireAgentWindow(message = {}) {
       ownership_source: owned.source,
     };
   }
-  await chrome.windows.remove(windowId);
-  const closeVerified = (await browser67GetWindow(windowId)) === null;
-  if (closeVerified) {
+  const retirement = await browser67RemoveInspectedAgentWindowTab(inspection);
+  const closeVerified = retirement.terminal === true && retirement.window_closed === true;
+  if (retirement.terminal === true) {
     await browser67RemoveStoredAgentWindow(owned.record);
     await browser67RemoveAgentWindowOrphan(owned.record);
   }
   const recoveredOrphan = inspection.status === "recoverable_orphan";
   return {
-    status: closeVerified ? "closed" : "close_unverified",
+    status: closeVerified
+      ? "closed"
+      : retirement.terminal === true
+        ? "preserved"
+        : "close_unverified",
     closed: closeVerified,
     close_verified: closeVerified,
     reason: closeVerified
       ? recoveredOrphan
         ? "orphan_new_tab_agent_window_retired"
         : "empty_created_agent_window_retired"
-      : "window_remained_visible",
+      : retirement.reason,
     window_id: windowId,
     anchor_tab_id: anchorTabId,
+    retired_tab_id: retirement.tab_id,
+    internal_tab_removed: retirement.removed === true,
+    tab_count: retirement.remaining_tab_count,
+    user_content_preserved: retirement.terminal === true && retirement.window_closed !== true,
     recovered_orphan: recoveredOrphan,
     orphan_recovery_mode: recoveredOrphan ? inspection.close_mode : "none",
-    ownership_record_removed: closeVerified,
+    ownership_record_removed: retirement.terminal === true,
     ownership_source: owned.source,
   };
 }
