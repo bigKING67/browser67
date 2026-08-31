@@ -24,6 +24,7 @@ function parseArgs(argv) {
     extensionSource: path.resolve(repoRoot, "extension"),
     extensionTarget: null,
     globalAgents: "~/.codex/AGENTS.md",
+    browserRule: "~/.codex/rules/browser.md",
     projectAgents: path.resolve(repoRoot, "AGENTS.md"),
     codexConfig: "~/.codex/config.toml",
   };
@@ -41,7 +42,7 @@ function parseArgs(argv) {
       options.skipLive = true;
       continue;
     }
-    if (["--active-skills-dir", "--extension-source", "--extension-target", "--global-agents", "--project-agents", "--codex-config"].includes(token)) {
+    if (["--active-skills-dir", "--extension-source", "--extension-target", "--global-agents", "--browser-rule", "--project-agents", "--codex-config"].includes(token)) {
       const value = String(argv[index + 1] ?? "").trim();
       if (!value || value.startsWith("--")) throw new Error(`missing ${token} value`);
       const key = {
@@ -49,6 +50,7 @@ function parseArgs(argv) {
         "--extension-source": "extensionSource",
         "--extension-target": "extensionTarget",
         "--global-agents": "globalAgents",
+        "--browser-rule": "browserRule",
         "--project-agents": "projectAgents",
         "--codex-config": "codexConfig",
       }[token];
@@ -62,7 +64,7 @@ function parseArgs(argv) {
     }
     throw new Error(`unknown argument: ${token}`);
   }
-  for (const key of ["activeSkillsDir", "extensionSource", "globalAgents", "projectAgents", "codexConfig"]) {
+  for (const key of ["activeSkillsDir", "extensionSource", "globalAgents", "browserRule", "projectAgents", "codexConfig"]) {
     options[key] = expandHome(options[key]);
   }
   if (options.extensionTarget) options.extensionTarget = expandHome(options.extensionTarget);
@@ -73,7 +75,7 @@ function usage() {
   return [
     "Usage: node scripts/agent-integration-doctor.mjs [--json] [--check] [--skip-live]",
     "       [--active-skills-dir <dir>] [--extension-source <dir>] [--extension-target <dir>]",
-    "       [--global-agents <file>] [--project-agents <file>] [--codex-config <file>]",
+    "       [--global-agents <file>] [--browser-rule <file>] [--project-agents <file>] [--codex-config <file>]",
     "",
     "Audits the installed browser67 Agent usage path without modifying files.",
     "--check exits non-zero unless the requested static or static-and-live audit scope is ready.",
@@ -169,6 +171,14 @@ function instructionAnchors(text) {
       && /AMBIGUOUS_TARGET/.test(text)
       && /BROWSER_INSTANCE_UNAVAILABLE/.test(text)
       && /(fail[ -]?closed|不得猜测|禁止猜测)/i.test(text),
+  };
+}
+
+function globalInstructionAnchors(text) {
+  return {
+    browser67_route: /browser67/i.test(text) && /tmwd_browser/.test(text),
+    browser_rule_pointer: /(?:~\/\.codex\/rules\/browser\.md|rules\/browser\.md)/.test(text),
+    browser_rule_trigger: /(?:执行前必须读|执行前读取|read[^\n]{0,80}before)/i.test(text),
   };
 }
 
@@ -304,12 +314,15 @@ function buildReport(options) {
   const releaseArtifactReady = canonicalMissing.length === 0 && allTrue(canonicalAnchors);
 
   const globalAgentsText = readText(options.globalAgents);
+  const browserRuleText = readText(options.browserRule);
   const projectAgentsText = readText(options.projectAgents);
-  const globalAgentsAnchors = instructionAnchors(globalAgentsText);
+  const globalAgentsAnchors = globalInstructionAnchors(globalAgentsText);
+  const browserRuleAnchors = instructionAnchors(browserRuleText);
   const projectAgentsAnchors = instructionAnchors(projectAgentsText);
   const globalAgentsCurrent = Boolean(globalAgentsText) && allTrue(globalAgentsAnchors);
+  const browserRuleCurrent = Boolean(browserRuleText) && allTrue(browserRuleAnchors);
   const projectAgentsCurrent = Boolean(projectAgentsText) && allTrue(projectAgentsAnchors);
-  const instructionRouteCurrent = globalAgentsCurrent && projectAgentsCurrent;
+  const instructionRouteCurrent = globalAgentsCurrent && browserRuleCurrent && projectAgentsCurrent;
 
   const activeSkills = runNodeScript("scripts/active-skill-sync.mjs", [
     "--target",
@@ -378,7 +391,8 @@ function buildReport(options) {
   if (!releaseArtifactReady) nextSteps.push("Repair canonical browser67 Agent docs/skills/entrypoints before syncing installed copies.");
   if (!activeSkillCurrent) nextSteps.push(`Run npm run skills:active:sync -- --target ${options.activeSkillsDir}, then start a new Agent session.`);
   if (!extensionInstalledCurrent) nextSteps.push("Run npm run setup, then npm run extension:reload-live when the existing bridge is connected, and refresh target tabs.");
-  if (!globalAgentsCurrent) nextSteps.push(`Update ${options.globalAgents} with browser67 route, explicit adoption, scoped finalization, Browser Instance fail-closed routing, and login fail-closed rules.`);
+  if (!globalAgentsCurrent) nextSteps.push(`Update ${options.globalAgents} with the browser67 route and an execution-time pointer to ${options.browserRule}.`);
+  if (!browserRuleCurrent) nextSteps.push(`Update ${options.browserRule} with explicit adoption, scoped finalization, Browser Instance fail-closed routing, and login fail-closed rules.`);
   if (!projectAgentsCurrent) nextSteps.push(`Update ${options.projectAgents} with browser67 route, explicit adoption, scoped finalization, Browser Instance fail-closed routing, and login fail-closed rules.`);
   if (!mcpConfig.ok) nextSteps.push(`Register tmwd_browser and js-reverse canonical MCP entrypoints in ${options.codexConfig}.`);
   if (!runtime.skipped && !runtime.ready) nextSteps.push("Start/repair the browser67 hub and extension, then rerun npm run doctor:agent -- --check --json.");
@@ -401,6 +415,7 @@ function buildReport(options) {
     extension_installed_current: extensionInstalledCurrent,
     active_skill_current: activeSkillCurrent,
     instruction_route_current: instructionRouteCurrent,
+    browser_rule_current: browserRuleCurrent,
     mcp_config_current: mcpConfig.ok,
     effective_agent_usage_ready: effectiveReady,
     skill_discovery_reload_policy: "start_new_agent_session_after_skill_or_AGENTS_sync",
@@ -416,6 +431,12 @@ function buildReport(options) {
         present: Boolean(globalAgentsText),
         current: globalAgentsCurrent,
         anchors: globalAgentsAnchors,
+      },
+      browser_rule: {
+        path: options.browserRule,
+        present: Boolean(browserRuleText),
+        current: browserRuleCurrent,
+        anchors: browserRuleAnchors,
       },
       project_agents: {
         path: options.projectAgents,
@@ -445,6 +466,7 @@ function formatText(report) {
     `extension_installed_current=${report.extension_installed_current}`,
     `active_skill_current=${report.active_skill_current}`,
     `instruction_route_current=${report.instruction_route_current}`,
+    `browser_rule_current=${report.browser_rule_current}`,
     `mcp_config_current=${report.mcp_config_current}`,
     `effective_agent_usage_ready=${report.effective_agent_usage_ready}`,
     "next_steps:",
@@ -474,6 +496,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
 export {
   buildReport,
+  globalInstructionAnchors,
   instructionAnchors,
   mcpConfigStatus,
   parseArgs,

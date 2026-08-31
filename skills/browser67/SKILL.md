@@ -16,6 +16,17 @@ two paired MCP surfaces:
 - `js-reverse`: browser67-backed API discovery, hooks, network/WS sampling, evidence
   export, and local rebuild workflows.
 
+## Host governance
+
+- Before live page work, read any browser governance file named by the active
+  `AGENTS.md`. In the standard user setup this is `~/.codex/rules/browser.md`;
+  it owns cross-tool routing, user-tab/privacy boundaries, readiness, focus,
+  lifecycle completion, and cleanup authorization. This Skill maps that policy
+  to browser67 operations and remains self-contained when no host rule exists.
+- Do not load the full `docs/codex-integration.md` for routine page work. Read it
+  only for MCP setup, exact schemas/fields, implementation changes, specialized
+  auth/CAPTCHA/native-input behavior, or release/readiness maintenance.
+
 ## Naming
 
 - Use `browser67` for the project, package, CLI, docs, and runtime umbrella.
@@ -104,7 +115,10 @@ two paired MCP surfaces:
 9. Treat MCP output as `browser67.tool-outcome.v3`: inspect `ok/status`, then
    read success data from `data` or failure details from `error`. Read the
    top-level `page` for the confirmed tab id/title/URL/managed state; `page:null`
-   means the operation did not resolve one unique page.
+   means the wrapper did not resolve one unique top-level page summary. For
+   `browser_tab_lifecycle` entry actions, an exact `data.managed_tab` plus
+   `data.status:"success"` and `data.ready:true` is a terminal successful entry;
+   do not reopen or keep waiting solely because top-level `page` is null.
    A TMWD page includes `browser_instance_id`, `tab_id`, and `session_key`.
    - All `tmwd_browser` tools accept `output_mode:"compact"|"full"`. Prefer
      compact for routine work and full for transport/session/target diagnosis.

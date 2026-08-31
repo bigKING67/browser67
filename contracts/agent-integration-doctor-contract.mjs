@@ -32,6 +32,14 @@ function writeAgents(filePath) {
   ].join("\n"), "utf8");
 }
 
+function writeGlobalAgents(filePath) {
+  writeFileSync(filePath, [
+    "Use browser67 through tmwd_browser.",
+    "Before live browser work, read ~/.codex/rules/browser.md before execution.",
+    "",
+  ].join("\n"), "utf8");
+}
+
 function writeConfig(filePath) {
   writeFileSync(filePath, [
     "[mcp_servers.tmwd_browser]",
@@ -133,6 +141,7 @@ function main() {
     const extensionSource = path.resolve(tempRoot, "extension-source");
     const extensionTarget = path.resolve(tempRoot, "extension-target");
     const globalAgents = path.resolve(tempRoot, "global-AGENTS.md");
+    const browserRule = path.resolve(tempRoot, "browser.md");
     const projectAgents = path.resolve(tempRoot, "project-AGENTS.md");
     const codexConfig = path.resolve(tempRoot, "config.toml");
 
@@ -142,7 +151,8 @@ function main() {
     }
     writeExtension(extensionSource);
     cpSync(extensionSource, extensionTarget, { recursive: true });
-    writeAgents(globalAgents);
+    writeGlobalAgents(globalAgents);
+    writeAgents(browserRule);
     writeAgents(projectAgents);
     writeConfig(codexConfig);
 
@@ -158,6 +168,8 @@ function main() {
       extensionTarget,
       "--global-agents",
       globalAgents,
+      "--browser-rule",
+      browserRule,
       "--project-agents",
       projectAgents,
       "--codex-config",
@@ -178,6 +190,9 @@ function main() {
     assert.equal(ready.extension_installed_current, true);
     assert.equal(ready.active_skill_current, true);
     assert.equal(ready.instruction_route_current, true);
+    assert.equal(ready.browser_rule_current, true);
+    assert.equal(ready.checks.global_agents.current, true);
+    assert.equal(ready.checks.browser_rule.current, true);
     assert.equal(ready.mcp_config_current, true);
     assert.equal(ready.effective_agent_usage_ready, false);
     assert.match(ready.next_steps.join("\n"), /rerun without --skip-live/);
@@ -190,6 +205,21 @@ function main() {
     assert.match(skillDrift.next_steps.join("\n"), /skills:active:sync/);
 
     cpSync(path.resolve(repoRoot, "skills", "browser67", "SKILL.md"), activeSkillPath, { force: true });
+    writeFileSync(browserRule, "Use browser67 through tmwd_browser but leave lifecycle unspecified.\n", "utf8");
+    const browserRuleDrift = run(baseArgs, 1);
+    assert.equal(browserRuleDrift.instruction_route_current, false);
+    assert.equal(browserRuleDrift.browser_rule_current, false);
+    assert.equal(browserRuleDrift.checks.global_agents.current, true);
+    assert.equal(browserRuleDrift.checks.browser_rule.anchors.explicit_adoption, false);
+    assert.match(browserRuleDrift.next_steps.join("\n"), /browser\.md/);
+
+    writeAgents(browserRule);
+    writeFileSync(globalAgents, "Use browser67 through tmwd_browser without an external browser rule.\n", "utf8");
+    const globalRouteDrift = run(baseArgs, 1);
+    assert.equal(globalRouteDrift.instruction_route_current, false);
+    assert.equal(globalRouteDrift.checks.global_agents.anchors.browser_rule_pointer, false);
+
+    writeGlobalAgents(globalAgents);
     writeFileSync(projectAgents, [
       "Use browser67 through tmwd_browser.",
       "For an exact user tab, run inspect_adoption -> adopt_existing only after an explicit request.",
@@ -311,6 +341,8 @@ function main() {
       scenarios: [
         "static-ready-not-effective",
         "active-skill-drift",
+        "browser-rule-drift",
+        "global-rule-pointer-drift",
         "instruction-route-drift",
         "browser-instance-route-drift",
         "extension-drift",
