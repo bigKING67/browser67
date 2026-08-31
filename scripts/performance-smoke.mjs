@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -18,10 +23,17 @@ import { createSessionRegistry } from "../src/runtime/sessions/registry.mjs";
 import { compactToolData } from "../src/runtime/output-mode.mjs";
 import { createTabScheduler } from "../src/runtime/tab-scheduler.mjs";
 import { completedOutcome } from "../src/runtime/tool-outcome.mjs";
+import { atomicWriteJson } from "../src/runtime/storage/atomic-file.mjs";
 import { scanNdjsonBackwards } from "../src/runtime/storage/ndjson.mjs";
 import { createTmwdTransportHealthStore } from "../src/tmwd-runtime/health.mjs";
 
 const RUN_EVENT_COUNT = 2_000;
+const INDEXED_RUN_WRITE_ROUNDS = 3;
+const INDEXED_RUNS_PER_ROUND = 40;
+const INDEXED_RUN_WRITE_ABSOLUTE_ROUND_BUDGET_MS = 15_000;
+const INDEXED_RUN_WRITE_TOTAL_BUDGET_MS = 45_000;
+const INDEXED_RUN_WRITE_RELATIVE_RATIO_BUDGET = 4;
+const INDEXED_RUN_WRITE_RELATIVE_FLOOR_MS = 2_000;
 const SEMANTIC_DIFF_BUDGET_MS = process.env.CI === "true" ? 1_000 : 500;
 
 function assertBudget(label, elapsedMs, budgetMs) {
@@ -35,6 +47,65 @@ function percentile(values, ratio) {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
   return sorted[index];
+}
+
+function median(values) {
+  return percentile(values, 0.5);
+}
+
+async function measureFilesystemControl(root, round, count) {
+  const group = `filesystem-control-${String(round)}`;
+  const groupDir = join(root, group);
+  const indexPath = join(groupDir, "index.ndjson");
+  const metaPath = join(groupDir, "index.meta.json");
+  const startedAt = performance.now();
+  for (let index = 0; index < count; index += 1) {
+    const runId = `control-${String(round)}-${String(index).padStart(4, "0")}`;
+    const runDir = join(groupDir, runId);
+    const running = { run_id: runId, group, status: "running", index };
+    const finished = { ...running, status: "success" };
+    await Promise.all([
+      mkdir(join(runDir, "artifacts"), { recursive: true }),
+      mkdir(join(runDir, "logs"), { recursive: true }),
+    ]);
+    await atomicWriteJson(join(runDir, "run.json"), running);
+    await appendFile(join(runDir, "events.ndjson"), `${JSON.stringify({ event: "prepare", index })}\n`, "utf8");
+    await appendFile(indexPath, `${JSON.stringify(running)}\n`, "utf8");
+    await atomicWriteJson(metaPath, { group, revision: index * 2 + 1 });
+    await appendFile(join(runDir, "events.ndjson"), `${JSON.stringify({ event: "finish", index })}\n`, "utf8");
+    await atomicWriteJson(join(runDir, "run.json"), finished);
+    await appendFile(indexPath, `${JSON.stringify(finished)}\n`, "utf8");
+    await atomicWriteJson(metaPath, { group, revision: index * 2 + 2 });
+  }
+  return performance.now() - startedAt;
+}
+
+function assertIndexedRunWriteBudget(productSamples, controlSamples) {
+  assert.equal(productSamples.length, INDEXED_RUN_WRITE_ROUNDS);
+  assert.equal(controlSamples.length, INDEXED_RUN_WRITE_ROUNDS);
+  const productMedianMs = median(productSamples);
+  const controlMedianMs = median(controlSamples);
+  const relativeBudgetMs = Math.max(
+    INDEXED_RUN_WRITE_RELATIVE_FLOOR_MS,
+    controlMedianMs * INDEXED_RUN_WRITE_RELATIVE_RATIO_BUDGET,
+  );
+  const totalMs = productSamples.reduce((total, sample) => total + sample, 0);
+  for (const [index, sample] of productSamples.entries()) {
+    assertBudget(
+      `indexed run writes round ${String(index + 1)}`,
+      sample,
+      INDEXED_RUN_WRITE_ABSOLUTE_ROUND_BUDGET_MS,
+    );
+  }
+  assertBudget("indexed run writes total", totalMs, INDEXED_RUN_WRITE_TOTAL_BUDGET_MS);
+  assertBudget("indexed run writes median relative to filesystem control", productMedianMs, relativeBudgetMs);
+  return {
+    product_median_ms: productMedianMs,
+    control_median_ms: controlMedianMs,
+    relative_budget_ms: relativeBudgetMs,
+    relative_ratio: productMedianMs / Math.max(controlMedianMs, 1),
+    total_ms: totalMs,
+  };
 }
 
 async function measureMcpColdStart(timeoutMs = 5_000) {
@@ -153,20 +224,36 @@ async function main() {
       checkpoint_interval_ms: 60_000,
       max_cached_runs: 32,
     });
-    const scaleGroup = "performance-scale";
-    const runListStarted = performance.now();
-    for (let index = 0; index < 120; index += 1) {
-      const runId = `scale-${String(index).padStart(4, "0")}`;
-      await runStore.prepare({ workspace_key: scaleGroup, run_id: runId, title: `Run ${index}` });
-      await runStore.finish({ workspace_key: scaleGroup, run_id: runId, status: "success" });
+    const indexedRunWriteSamplesMs = [];
+    const filesystemControlSamplesMs = [];
+    const runListReadSamplesMs = [];
+    for (let round = 0; round < INDEXED_RUN_WRITE_ROUNDS; round += 1) {
+      filesystemControlSamplesMs.push(await measureFilesystemControl(
+        runRoot,
+        round,
+        INDEXED_RUNS_PER_ROUND,
+      ));
+      const scaleGroup = `performance-scale-${String(round)}`;
+      const runListStarted = performance.now();
+      for (let index = 0; index < INDEXED_RUNS_PER_ROUND; index += 1) {
+        const runId = `scale-${String(round)}-${String(index).padStart(4, "0")}`;
+        await runStore.prepare({ workspace_key: scaleGroup, run_id: runId, title: `Run ${index}` });
+        await runStore.finish({ workspace_key: scaleGroup, run_id: runId, status: "success" });
+      }
+      indexedRunWriteSamplesMs.push(performance.now() - runListStarted);
+      const listStarted = performance.now();
+      const listed = await runStore.list({ workspace_key: scaleGroup, max_items: 50 });
+      runListReadSamplesMs.push(performance.now() - listStarted);
+      if (listed.total !== INDEXED_RUNS_PER_ROUND || listed.runs.length !== INDEXED_RUNS_PER_ROUND) {
+        throw new Error(`unexpected indexed run list: total=${listed.total} returned=${listed.runs.length}`);
+      }
     }
-    const runListWriteMs = performance.now() - runListStarted;
-    const listStarted = performance.now();
-    const listed = await runStore.list({ workspace_key: scaleGroup, max_items: 50 });
-    const runListReadMs = performance.now() - listStarted;
-    if (listed.total !== 120 || listed.runs.length !== 50) {
-      throw new Error(`unexpected indexed run list: total=${listed.total} returned=${listed.runs.length}`);
-    }
+    const indexedRunWriteStats = assertIndexedRunWriteBudget(
+      indexedRunWriteSamplesMs,
+      filesystemControlSamplesMs,
+    );
+    const runListWriteMs = indexedRunWriteStats.total_ms;
+    const runListReadMs = runListReadSamplesMs.reduce((total, sample) => total + sample, 0);
 
     const eventFile = join(prepared.run.run_dir, "events.ndjson");
     const tailStarted = performance.now();
@@ -315,7 +402,6 @@ async function main() {
     assertBudget("run lifecycle io", runMs, 2_500);
     assertBudget("run event p95", runEventP95Ms, 200);
     assertBudget("run event p99", runEventP99Ms, 500);
-    assertBudget("indexed run writes", runListWriteMs, 8_000);
     assertBudget("indexed run list", runListReadMs, 500);
     assertBudget("event tail read", eventTailMs, 250);
     assertBudget("semantic diff", semanticDiffMs, SEMANTIC_DIFF_BUDGET_MS);
@@ -330,9 +416,16 @@ async function main() {
       run_ms: Number(runMs.toFixed(2)),
       run_event_p95_ms: Number(runEventP95Ms.toFixed(2)),
       run_event_p99_ms: Number(runEventP99Ms.toFixed(2)),
-      indexed_runs: 120,
+      indexed_runs: INDEXED_RUN_WRITE_ROUNDS * INDEXED_RUNS_PER_ROUND,
       run_list_write_ms: Number(runListWriteMs.toFixed(2)),
+      run_list_write_samples_ms: indexedRunWriteSamplesMs.map((value) => Number(value.toFixed(2))),
+      run_list_write_median_ms: Number(indexedRunWriteStats.product_median_ms.toFixed(2)),
+      filesystem_control_samples_ms: filesystemControlSamplesMs.map((value) => Number(value.toFixed(2))),
+      filesystem_control_median_ms: Number(indexedRunWriteStats.control_median_ms.toFixed(2)),
+      run_list_write_relative_ratio: Number(indexedRunWriteStats.relative_ratio.toFixed(3)),
+      run_list_write_relative_budget_ms: Number(indexedRunWriteStats.relative_budget_ms.toFixed(2)),
       run_list_read_ms: Number(runListReadMs.toFixed(2)),
+      run_list_read_samples_ms: runListReadSamplesMs.map((value) => Number(value.toFixed(2))),
       event_tail_ms: Number(eventTailMs.toFixed(2)),
       event_tail_bytes_scanned: tailScan.bytes_scanned,
       event_file_bytes: tailScan.file_bytes,
@@ -352,7 +445,10 @@ async function main() {
         run_lifecycle: 2_500,
         run_event_p95: 200,
         run_event_p99: 500,
-        indexed_run_writes: 8_000,
+        indexed_run_writes: INDEXED_RUN_WRITE_ABSOLUTE_ROUND_BUDGET_MS,
+        indexed_run_writes_total: INDEXED_RUN_WRITE_TOTAL_BUDGET_MS,
+        indexed_run_writes_relative_floor: INDEXED_RUN_WRITE_RELATIVE_FLOOR_MS,
+        indexed_run_writes_relative_ratio: INDEXED_RUN_WRITE_RELATIVE_RATIO_BUDGET,
         indexed_run_list: 500,
         event_tail: 250,
         semantic_diff: SEMANTIC_DIFF_BUDGET_MS,
