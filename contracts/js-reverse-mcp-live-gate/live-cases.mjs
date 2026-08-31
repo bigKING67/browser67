@@ -67,6 +67,7 @@ async function runLiveCases(rpc, cli) {
     if (agentWindowCreated) {
       assert.equal(finalized?.agent_window_cleanup?.closed, true);
       assert.equal(finalized?.agent_window_cleanup?.close_verified, true);
+      assert.equal(finalized?.agent_window_cleanup?.ownership_record_removed, true);
     }
     return {
       health,

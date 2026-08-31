@@ -116,6 +116,13 @@
             "supports_created_agent_window_cleanup": {
               "type": "boolean"
             },
+            "supports_exact_agent_window_orphan_recovery": {
+              "type": "boolean"
+            },
+            "agent_window_orphan_recovery_policy": {
+              "type": "string",
+              "enum": ["same_browser_profile_epoch_exact_window_sole_browser_new_tab"]
+            },
             "supports_finalize_hint": {
               "type": "boolean"
             }

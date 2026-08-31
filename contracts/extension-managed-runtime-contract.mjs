@@ -62,6 +62,7 @@ async function run() {
     windowFocusChanged: eventBus(),
     windowRemoved: eventBus(),
     alarm: eventBus(),
+    runtimeStartup: eventBus(),
   };
   const chrome = {
     storage: {
@@ -182,6 +183,7 @@ async function run() {
       },
     },
     runtime: {
+      onStartup: events.runtimeStartup,
       async getPlatformInfo() {
         return { os: platformOs, arch: "arm64" };
       },
@@ -206,6 +208,8 @@ async function run() {
     Map,
     Set,
     Promise,
+    setTimeout,
+    clearTimeout,
     URL,
     navigator: {
       userAgent: "Mozilla/5.0 AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
@@ -404,6 +408,8 @@ async function run() {
     Map,
     Set,
     Promise,
+    setTimeout,
+    clearTimeout,
     URL,
     crypto: context.crypto,
     globalThis: null,
@@ -559,7 +565,202 @@ async function run() {
   assert.equal(emptyRetirement.data.status, "closed");
   assert.equal(emptyRetirement.data.closed, true);
   assert.equal(emptyRetirement.data.close_verified, true);
+  assert.equal(emptyRetirement.data.ownership_record_removed, true);
   assert.equal(windowRows.has(agentWindow.data.window_id), false);
+
+  const extensionReloadAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  const extensionReloadWindowId = extensionReloadAgentWindow.data.window_id;
+  const extensionReloadAnchorTabId = extensionReloadAgentWindow.data.anchor_tab_id;
+  tabRows.get(extensionReloadAnchorTabId).url = "chrome://newtab/";
+  const extensionReloadContext = vm.createContext({
+    chrome,
+    console,
+    Date,
+    Map,
+    Set,
+    Promise,
+    setTimeout,
+    clearTimeout,
+    URL,
+    crypto: context.crypto,
+    globalThis: null,
+  });
+  extensionReloadContext.globalThis = extensionReloadContext;
+  vm.runInContext(windowFocusSource, extensionReloadContext, {
+    filename: "extension/browser67/window-focus-runtime-extension-reload.js",
+  });
+  vm.runInContext(source, extensionReloadContext, {
+    filename: "extension/browser67/runtime-extension-reload.js",
+  });
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 600));
+  assert.equal(windowRows.has(extensionReloadWindowId), false);
+  const extensionReloadStatus = await extensionReloadContext.browser67HandleCommand({
+    cmd: "window",
+    method: "status_agent_windows",
+  });
+  assert.equal(extensionReloadStatus.data.status, "not_owned");
+
+  const coldStartAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  const coldStartWindowId = coldStartAgentWindow.data.window_id;
+  const coldStartAnchorTabId = coldStartAgentWindow.data.anchor_tab_id;
+  tabRows.get(coldStartAnchorTabId).url = "chrome://newtab/";
+  await events.runtimeStartup.emit();
+  const coldStartContext = vm.createContext({
+    chrome,
+    console,
+    Date,
+    Map,
+    Set,
+    Promise,
+    setTimeout,
+    clearTimeout,
+    URL,
+    crypto: context.crypto,
+    globalThis: null,
+  });
+  coldStartContext.globalThis = coldStartContext;
+  vm.runInContext(windowFocusSource, coldStartContext, {
+    filename: "extension/browser67/window-focus-runtime-cold-start.js",
+  });
+  vm.runInContext(source, coldStartContext, {
+    filename: "extension/browser67/runtime-cold-start.js",
+  });
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 600));
+  assert.equal(windowRows.has(coldStartWindowId), true);
+  const coldStartStatus = await coldStartContext.browser67HandleCommand({
+    cmd: "window",
+    method: "status_agent_windows",
+  });
+  assert.equal(coldStartStatus.data.status, "not_owned");
+  await chrome.windows.remove(coldStartWindowId);
+
+  const exactOrphanAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  const exactOrphanWindowId = exactOrphanAgentWindow.data.window_id;
+  const exactOrphanAnchorTabId = exactOrphanAgentWindow.data.anchor_tab_id;
+  tabRows.set(89, {
+    id: 89,
+    windowId: exactOrphanWindowId,
+    active: true,
+    url: "chrome://newtab/",
+  });
+  tabRows.delete(exactOrphanAnchorTabId);
+  await events.tabRemoved.emit(exactOrphanAnchorTabId, {
+    windowId: exactOrphanWindowId,
+    isWindowClosing: false,
+  });
+  const exactOrphanStatus = await handle({
+    cmd: "window",
+    method: "status_agent_windows",
+  });
+  assert.equal(exactOrphanStatus.data.owned_orphan_count, 1);
+  assert.equal(exactOrphanStatus.data.recoverable_owned_orphan_count, 1);
+  assert.equal(exactOrphanStatus.data.privacy.user_tab_urls_returned, false);
+  const exactOrphanRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: exactOrphanWindowId,
+    anchorTabId: exactOrphanAnchorTabId,
+    ownershipToken: exactOrphanAgentWindow.data.ownership_token,
+  });
+  assert.equal(exactOrphanRetirement.data.status, "closed");
+  assert.equal(exactOrphanRetirement.data.recovered_orphan, true);
+  assert.equal(
+    exactOrphanRetirement.data.orphan_recovery_mode,
+    "sole_browser_new_tab_after_anchor_loss",
+  );
+  assert.equal(exactOrphanRetirement.data.ownership_record_removed, true);
+  assert.equal(windowRows.has(exactOrphanWindowId), false);
+
+  const automaticOrphanAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  const automaticOrphanWindowId = automaticOrphanAgentWindow.data.window_id;
+  const automaticOrphanAnchorTabId = automaticOrphanAgentWindow.data.anchor_tab_id;
+  tabRows.get(automaticOrphanAnchorTabId).url = "chrome-search://local-ntp/local-ntp.html";
+  await events.tabUpdated.emit(
+    automaticOrphanAnchorTabId,
+    { url: "chrome-search://local-ntp/local-ntp.html" },
+    { ...tabRows.get(automaticOrphanAnchorTabId) },
+  );
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 600));
+  assert.equal(windowRows.has(automaticOrphanWindowId), false);
+  const automaticOrphanStatus = await handle({
+    cmd: "window",
+    method: "status_agent_windows",
+  });
+  assert.equal(automaticOrphanStatus.data.owned_orphan_count, 0);
+
+  const missedEventAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  const missedEventWindowId = missedEventAgentWindow.data.window_id;
+  const missedEventAnchorTabId = missedEventAgentWindow.data.anchor_tab_id;
+  tabRows.get(missedEventAnchorTabId).url = "chrome://newtab/";
+  const postMissedEventAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  assert.equal(windowRows.has(missedEventWindowId), false);
+  assert.notEqual(postMissedEventAgentWindow.data.window_id, missedEventWindowId);
+  const postMissedEventRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: postMissedEventAgentWindow.data.window_id,
+    anchorTabId: postMissedEventAgentWindow.data.anchor_tab_id,
+    ownershipToken: postMissedEventAgentWindow.data.ownership_token,
+  });
+  assert.equal(postMissedEventRetirement.data.status, "closed");
+
+  const userContentAgentWindow = await handle({
+    cmd: "window",
+    method: "ensure_agent_window",
+  });
+  const userContentWindowId = userContentAgentWindow.data.window_id;
+  const userContentAnchorTabId = userContentAgentWindow.data.anchor_tab_id;
+  tabRows.set(91, {
+    id: 91,
+    windowId: userContentWindowId,
+    active: true,
+    url: "https://user.fixture.test/preserved-after-anchor",
+  });
+  tabRows.delete(userContentAnchorTabId);
+  await events.tabRemoved.emit(userContentAnchorTabId, {
+    windowId: userContentWindowId,
+    isWindowClosing: false,
+  });
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 600));
+  assert.equal(windowRows.has(userContentWindowId), true);
+  const preservedOrphanRetirement = await handle({
+    cmd: "window",
+    method: "retire_agent_window",
+    windowId: userContentWindowId,
+    anchorTabId: userContentAnchorTabId,
+    ownershipToken: userContentAgentWindow.data.ownership_token,
+  });
+  assert.equal(preservedOrphanRetirement.data.status, "preserved");
+  assert.equal(preservedOrphanRetirement.data.reason, "agent_window_orphan_content_preserved");
+  assert.equal(preservedOrphanRetirement.data.user_content_preserved, true);
+  assert.equal(windowRows.has(userContentWindowId), true);
+  await chrome.windows.remove(userContentWindowId);
+
+  const unmanagedNewTabWindow = await chrome.windows.create({
+    url: "chrome://newtab/",
+    focused: false,
+    type: "normal",
+  });
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 600));
+  assert.equal(windowRows.has(unmanagedNewTabWindow.id), true);
 
   const managedWindowFields = managedWindowRecordFields(
     { window_policy: "dedicated", focus_policy: "background_preferred" },
@@ -588,6 +789,7 @@ async function run() {
             closed: true,
             close_verified: true,
             reason: "empty_created_agent_window_retired",
+            ownership_record_removed: true,
           },
         },
         transport: "tmwd_ws",
@@ -599,6 +801,7 @@ async function run() {
   assert.equal(finalizerCleanup.status, "closed");
   assert.equal(finalizerCleanup.closed, true);
   assert.equal(finalizerCleanup.close_verified, true);
+  assert.equal(finalizerCleanup.ownership_record_removed, true);
   const reusedWindowCandidate = createdAgentWindowCleanupCandidate([{
     ownership_origin: "agent_created",
     window_ownership: "browser67_agent",
@@ -626,6 +829,12 @@ async function run() {
     out_of_band_navigation_observable: true,
     dedicated_agent_window: true,
     exact_agent_window_retirement: true,
+    extension_reload_epoch_recovery: true,
+    cold_browser_start_preserves_prior_epoch_window: true,
+    exact_owned_orphan_new_tab_recovery: true,
+    automatic_same_tab_agent_anchor_replacement_recovery: true,
+    missed_event_same_tab_recovery: true,
+    unmanaged_new_tab_window_preserved: true,
     nonempty_agent_window_preserved: true,
     focus_restore: true,
     user_activity_restore_guard: true,

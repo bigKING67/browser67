@@ -1,10 +1,16 @@
 const BROWSER67_AGENT_WINDOW_STORAGE_KEY = "browser67.agent-window.v1";
+const BROWSER67_AGENT_WINDOW_ORPHANS_STORAGE_KEY = "browser67.agent-window-orphans.v1";
+const BROWSER67_AGENT_WINDOW_SESSION_EPOCH_STORAGE_KEY = "browser67.agent-window-session.v1";
 const BROWSER67_FOCUS_LEASE_STORAGE_KEY = "browser67.focus-lease.v1";
 const BROWSER67_FOCUS_LEASE_ALARM = "browser67-focus-lease-expiry";
 const BROWSER67_FOCUS_LEASE_DEFAULT_TTL_MS = 30_000;
 const BROWSER67_FOCUS_LEASE_MAX_TTL_MS = 120_000;
+const BROWSER67_AGENT_WINDOW_ORPHAN_RECOVERY_DELAY_MS = 500;
+const BROWSER67_AGENT_WINDOW_ORPHAN_LIMIT = 16;
 
 let browser67AgentWindowFlight = null;
+let browser67AgentWindowSessionToken = "";
+let browser67AgentWindowSessionTokenFlight = null;
 let browser67ActiveFocusLease = null;
 let browser67FocusLeaseLoaded = false;
 let browser67FocusLeaseLoadFlight = null;
@@ -18,6 +24,89 @@ function browser67NumericId(raw) {
 
 function browser67OwnershipToken(raw) {
   return String(raw ?? "").trim();
+}
+
+function browser67IsoTimestamp(raw, fallback = "") {
+  const timestamp = String(raw ?? "").trim();
+  return Number.isFinite(Date.parse(timestamp)) ? timestamp : fallback;
+}
+
+function browser67AgentWindowIdentity(record) {
+  const windowId = browser67NumericId(record?.window_id);
+  const anchorTabId = browser67NumericId(record?.anchor_tab_id);
+  const ownershipToken = browser67OwnershipToken(record?.ownership_token);
+  if (windowId === null || anchorTabId === null || !ownershipToken) return null;
+  return {
+    schema: "browser67.agent-window.v2",
+    window_id: windowId,
+    anchor_tab_id: anchorTabId,
+    ownership_token: ownershipToken,
+    browser_session_token: browser67OwnershipToken(record?.browser_session_token),
+    browser_session_scope: String(record?.browser_session_scope || "unknown"),
+    anchor_state: String(record?.anchor_state || "active"),
+    anchor_removed_at: browser67IsoTimestamp(record?.anchor_removed_at),
+    anchor_removed_window_id: browser67NumericId(record?.anchor_removed_window_id),
+    created_at: browser67IsoTimestamp(record?.created_at, new Date().toISOString()),
+    updated_at: browser67IsoTimestamp(record?.updated_at, new Date().toISOString()),
+  };
+}
+
+function browser67AgentWindowIdentityMatches(left, right) {
+  const leftIdentity = browser67AgentWindowIdentity(left);
+  const rightIdentity = browser67AgentWindowIdentity(right);
+  return Boolean(
+    leftIdentity
+    && rightIdentity
+    && leftIdentity.window_id === rightIdentity.window_id
+    && leftIdentity.anchor_tab_id === rightIdentity.anchor_tab_id
+    && leftIdentity.ownership_token === rightIdentity.ownership_token
+  );
+}
+
+function browser67IsBrowserNewTab(tab) {
+  const url = String(tab?.pendingUrl || tab?.url || "").trim().toLowerCase();
+  return /^(?:chrome|edge):\/\/(?:newtab|new-tab-page)(?:\/|$)/u.test(url)
+    || /^chrome-search:\/\/local-ntp(?:\/|$)/u.test(url);
+}
+
+async function browser67CurrentAgentWindowSession() {
+  if (browser67AgentWindowSessionToken) {
+    return {
+      token: browser67AgentWindowSessionToken,
+      scope: "browser_profile_epoch",
+    };
+  }
+  if (browser67AgentWindowSessionTokenFlight) return browser67AgentWindowSessionTokenFlight;
+  browser67AgentWindowSessionTokenFlight = (async () => {
+    const stored = await chrome.storage.local.get(BROWSER67_AGENT_WINDOW_SESSION_EPOCH_STORAGE_KEY);
+    const existing = browser67OwnershipToken(stored[BROWSER67_AGENT_WINDOW_SESSION_EPOCH_STORAGE_KEY]);
+    browser67AgentWindowSessionToken = existing || crypto.randomUUID();
+    if (!existing) {
+      await chrome.storage.local.set({
+        [BROWSER67_AGENT_WINDOW_SESSION_EPOCH_STORAGE_KEY]: browser67AgentWindowSessionToken,
+      });
+    }
+    return { token: browser67AgentWindowSessionToken, scope: "browser_profile_epoch" };
+  })();
+  try {
+    return await browser67AgentWindowSessionTokenFlight;
+  } finally {
+    browser67AgentWindowSessionTokenFlight = null;
+  }
+}
+
+async function browser67RotateAgentWindowSession() {
+  if (browser67AgentWindowSessionTokenFlight) {
+    await browser67AgentWindowSessionTokenFlight.catch(() => {});
+  }
+  browser67AgentWindowSessionToken = crypto.randomUUID();
+  await chrome.storage.local.set({
+    [BROWSER67_AGENT_WINDOW_SESSION_EPOCH_STORAGE_KEY]: browser67AgentWindowSessionToken,
+  });
+  return {
+    token: browser67AgentWindowSessionToken,
+    scope: "browser_profile_epoch",
+  };
 }
 
 function browser67AnchorUrl() {
@@ -139,6 +228,135 @@ async function browser67StoredAgentWindow() {
   return stored[BROWSER67_AGENT_WINDOW_STORAGE_KEY] || null;
 }
 
+async function browser67StoredAgentWindowOrphans() {
+  const stored = await chrome.storage.local.get(BROWSER67_AGENT_WINDOW_ORPHANS_STORAGE_KEY);
+  return (Array.isArray(stored[BROWSER67_AGENT_WINDOW_ORPHANS_STORAGE_KEY])
+    ? stored[BROWSER67_AGENT_WINDOW_ORPHANS_STORAGE_KEY]
+    : [])
+    .map(browser67AgentWindowIdentity)
+    .filter(Boolean);
+}
+
+async function browser67PersistAgentWindowOrphans(records) {
+  const normalized = records
+    .map(browser67AgentWindowIdentity)
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
+    .slice(0, BROWSER67_AGENT_WINDOW_ORPHAN_LIMIT);
+  if (normalized.length === 0) {
+    await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_ORPHANS_STORAGE_KEY);
+    return;
+  }
+  await chrome.storage.local.set({ [BROWSER67_AGENT_WINDOW_ORPHANS_STORAGE_KEY]: normalized });
+}
+
+async function browser67RemoveStoredAgentWindow(record) {
+  const current = await browser67StoredAgentWindow();
+  if (browser67AgentWindowIdentityMatches(current, record)) {
+    await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_STORAGE_KEY);
+  }
+}
+
+async function browser67RemoveAgentWindowOrphan(record) {
+  const orphans = await browser67StoredAgentWindowOrphans();
+  await browser67PersistAgentWindowOrphans(
+    orphans.filter((candidate) => !browser67AgentWindowIdentityMatches(candidate, record)),
+  );
+}
+
+async function browser67RememberAgentWindowOrphan(record, changes = {}) {
+  const identity = browser67AgentWindowIdentity({
+    ...record,
+    ...changes,
+    schema: "browser67.agent-window.v2",
+    updated_at: new Date().toISOString(),
+  });
+  if (!identity) return null;
+  const orphans = (await browser67StoredAgentWindowOrphans())
+    .filter((candidate) => !browser67AgentWindowIdentityMatches(candidate, identity));
+  orphans.push(identity);
+  await browser67PersistAgentWindowOrphans(orphans);
+  await browser67RemoveStoredAgentWindow(identity);
+  return identity;
+}
+
+async function browser67FindOwnedAgentWindow(record) {
+  const current = browser67AgentWindowIdentity(await browser67StoredAgentWindow());
+  if (browser67AgentWindowIdentityMatches(current, record)) {
+    return { record: current, source: "current" };
+  }
+  const orphan = (await browser67StoredAgentWindowOrphans())
+    .find((candidate) => browser67AgentWindowIdentityMatches(candidate, record));
+  return orphan ? { record: orphan, source: "orphan" } : null;
+}
+
+async function browser67InspectOwnedAgentWindow(record) {
+  const identity = browser67AgentWindowIdentity(record);
+  if (!identity) return { status: "identity_invalid", close_safe: false };
+  const session = await browser67CurrentAgentWindowSession();
+  const windowRow = await browser67GetWindow(identity.window_id, true);
+  if (!windowRow) {
+    return {
+      status: "window_unavailable",
+      close_safe: false,
+      session_match: identity.browser_session_token === session.token,
+      record: identity,
+      window: null,
+      tab_count: 0,
+    };
+  }
+  const tabs = Array.isArray(windowRow.tabs) ? windowRow.tabs : [];
+  const anchor = tabs.find((tab) => browser67NumericId(tab?.id) === identity.anchor_tab_id);
+  const anchorValid = Boolean(anchor && anchor.url === browser67AnchorUrl());
+  const sessionMatch = Boolean(identity.browser_session_token)
+    && identity.browser_session_token === session.token;
+  const anchorRemoved = ["removed", "replaced", "missing_detected"].includes(identity.anchor_state)
+    && identity.anchor_removed_window_id === identity.window_id;
+  const soleBrowserNewTab = tabs.length === 1 && browser67IsBrowserNewTab(tabs[0]);
+  if (anchorValid) {
+    return {
+      status: "active",
+      close_safe: tabs.length === 1,
+      close_mode: tabs.length === 1 ? "sole_anchor" : "nonempty_agent_window",
+      session_match: sessionMatch,
+      record: identity,
+      window: windowRow,
+      tab_count: tabs.length,
+      anchor_present: true,
+      sole_browser_new_tab: false,
+    };
+  }
+  if (sessionMatch && anchorRemoved && soleBrowserNewTab && windowRow.type === "normal") {
+    return {
+      status: "recoverable_orphan",
+      close_safe: true,
+      close_mode: "sole_browser_new_tab_after_anchor_loss",
+      session_match: true,
+      record: identity,
+      window: windowRow,
+      tab_count: 1,
+      anchor_present: false,
+      sole_browser_new_tab: true,
+    };
+  }
+  let reason = "agent_window_anchor_mismatch";
+  if (!sessionMatch) reason = "agent_window_orphan_session_mismatch";
+  else if (!anchorRemoved) reason = "agent_window_anchor_removal_unproven";
+  else if (tabs.length !== 1) reason = "agent_window_orphan_not_empty";
+  else if (!soleBrowserNewTab) reason = "agent_window_orphan_content_preserved";
+  return {
+    status: "preserved_orphan",
+    reason,
+    close_safe: false,
+    session_match: sessionMatch,
+    record: identity,
+    window: windowRow,
+    tab_count: tabs.length,
+    anchor_present: false,
+    sole_browser_new_tab: soleBrowserNewTab,
+  };
+}
+
 async function browser67ValidateAgentWindow(record) {
   const windowId = browser67NumericId(record?.window_id);
   const anchorTabId = browser67NumericId(record?.anchor_tab_id);
@@ -156,14 +374,99 @@ async function browser67ValidateAgentWindow(record) {
   ) {
     return null;
   }
+  const session = await browser67CurrentAgentWindowSession();
   return {
-    schema: "browser67.agent-window.v1",
+    schema: "browser67.agent-window.v2",
     window_id: windowId,
     anchor_tab_id: anchorTabId,
     ownership_token: browser67OwnershipToken(record?.ownership_token) || crypto.randomUUID(),
+    browser_session_token: session.token,
+    browser_session_scope: session.scope,
+    anchor_state: "active",
+    anchor_removed_at: "",
+    anchor_removed_window_id: null,
     created_at: String(record?.created_at || new Date().toISOString()),
     updated_at: new Date().toISOString(),
   };
+}
+
+async function browser67ReconcileCurrentAgentWindow() {
+  const storedRecord = await browser67StoredAgentWindow();
+  const stored = await browser67ValidateAgentWindow(storedRecord);
+  if (stored) {
+    await browser67PersistAgentWindow(stored);
+    return stored;
+  }
+  const identity = browser67AgentWindowIdentity(storedRecord);
+  if (!identity) return null;
+  const [windowRow, anchorTab, session] = await Promise.all([
+    browser67GetWindow(identity.window_id, true),
+    browser67GetTab(identity.anchor_tab_id),
+    browser67CurrentAgentWindowSession(),
+  ]);
+  if (!windowRow) {
+    await browser67RemoveStoredAgentWindow(identity);
+    return null;
+  }
+  const exactBrowserNewTab = Boolean(
+    anchorTab
+    && browser67NumericId(anchorTab.windowId) === identity.window_id
+    && browser67IsBrowserNewTab(anchorTab),
+  );
+  if (
+    identity.browser_session_token === session.token
+    && (!anchorTab || exactBrowserNewTab)
+  ) {
+    await browser67RememberAgentWindowOrphan(identity, {
+      anchor_state: exactBrowserNewTab ? "replaced" : "missing_detected",
+      anchor_removed_at: new Date().toISOString(),
+      anchor_removed_window_id: identity.window_id,
+    });
+    return null;
+  }
+  await browser67RemoveStoredAgentWindow(identity);
+  return null;
+}
+
+async function browser67RecoverOwnedAgentWindowOrphans() {
+  const session = await browser67CurrentAgentWindowSession();
+  const orphans = await browser67StoredAgentWindowOrphans();
+  const results = [];
+  for (const orphan of orphans) {
+    if (!orphan.browser_session_token || orphan.browser_session_token !== session.token) {
+      await browser67RemoveAgentWindowOrphan(orphan);
+      results.push({ status: "ownership_expired", window_id: orphan.window_id });
+      continue;
+    }
+    const inspection = await browser67InspectOwnedAgentWindow(orphan);
+    if (inspection.status === "window_unavailable") {
+      await browser67RemoveAgentWindowOrphan(orphan);
+      results.push({ status: "already_closed", window_id: orphan.window_id });
+      continue;
+    }
+    if (inspection.status !== "recoverable_orphan") {
+      results.push({
+        status: "preserved",
+        reason: inspection.reason,
+        window_id: orphan.window_id,
+        tab_count: inspection.tab_count,
+      });
+      continue;
+    }
+    await chrome.windows.remove(orphan.window_id);
+    const closeVerified = (await browser67GetWindow(orphan.window_id)) === null;
+    if (closeVerified) await browser67RemoveAgentWindowOrphan(orphan);
+    results.push({
+      status: closeVerified ? "closed" : "close_unverified",
+      reason: closeVerified
+        ? "orphan_new_tab_agent_window_retired"
+        : "window_remained_visible",
+      window_id: orphan.window_id,
+      closed: closeVerified,
+      close_verified: closeVerified,
+    });
+  }
+  return results;
 }
 
 async function browser67DiscoverAgentWindow() {
@@ -186,7 +489,8 @@ async function browser67EnsureAgentWindowInternal() {
     browser67CurrentFocus(),
     browser67PlatformInfo(),
   ]);
-  const stored = await browser67ValidateAgentWindow(await browser67StoredAgentWindow());
+  const stored = await browser67ReconcileCurrentAgentWindow();
+  await browser67RecoverOwnedAgentWindowOrphans();
   const discovered = stored || await browser67DiscoverAgentWindow();
   if (discovered) {
     await browser67PersistAgentWindow(discovered);
@@ -218,11 +522,17 @@ async function browser67EnsureAgentWindowInternal() {
   if (windowId === null || anchorTabId === null) {
     throw new Error("browser67 dedicated window creation did not return window and anchor ids");
   }
+  const session = await browser67CurrentAgentWindowSession();
   const record = {
-    schema: "browser67.agent-window.v1",
+    schema: "browser67.agent-window.v2",
     window_id: windowId,
     anchor_tab_id: anchorTabId,
     ownership_token: crypto.randomUUID(),
+    browser_session_token: session.token,
+    browser_session_scope: session.scope,
+    anchor_state: "active",
+    anchor_removed_at: "",
+    anchor_removed_window_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -253,12 +563,17 @@ async function browser67RetireAgentWindow(message = {}) {
     error.code = "INVALID_ARGUMENT";
     throw error;
   }
-  const stored = await browser67ValidateAgentWindow(await browser67StoredAgentWindow());
+  const requestedIdentity = browser67AgentWindowIdentity({
+    window_id: windowId,
+    anchor_tab_id: anchorTabId,
+    ownership_token: ownershipToken,
+  });
+  const owned = await browser67FindOwnedAgentWindow(requestedIdentity);
   if (
-    !stored
-    || stored.window_id !== windowId
-    || stored.anchor_tab_id !== anchorTabId
-    || stored.ownership_token !== ownershipToken
+    !owned
+    || owned.record.window_id !== windowId
+    || owned.record.anchor_tab_id !== anchorTabId
+    || owned.record.ownership_token !== ownershipToken
   ) {
     return {
       status: "preserved",
@@ -269,9 +584,10 @@ async function browser67RetireAgentWindow(message = {}) {
       anchor_tab_id: anchorTabId,
     };
   }
-  const windowRow = await browser67GetWindow(windowId, true);
-  if (!windowRow) {
-    await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_STORAGE_KEY);
+  const inspection = await browser67InspectOwnedAgentWindow(owned.record);
+  if (inspection.status === "window_unavailable") {
+    await browser67RemoveStoredAgentWindow(owned.record);
+    await browser67RemoveAgentWindowOrphan(owned.record);
     return {
       status: "already_closed",
       closed: false,
@@ -279,46 +595,76 @@ async function browser67RetireAgentWindow(message = {}) {
       reason: "agent_window_unavailable",
       window_id: windowId,
       anchor_tab_id: anchorTabId,
+      ownership_record_removed: true,
     };
   }
-  const tabs = Array.isArray(windowRow.tabs) ? windowRow.tabs : [];
-  const anchor = tabs.find((tab) => browser67NumericId(tab?.id) === anchorTabId);
-  if (
-    windowRow.type !== "normal"
-    || tabs.length !== 1
-    || !anchor
-    || anchor.url !== browser67AnchorUrl()
-  ) {
+  if (inspection.close_safe !== true || inspection.window?.type !== "normal") {
+    const reason = inspection.status === "active"
+      ? "agent_window_not_empty"
+      : String(inspection.reason || "agent_window_anchor_mismatch");
     return {
       status: "preserved",
       closed: false,
       close_verified: false,
-      reason: tabs.length !== 1 ? "agent_window_not_empty" : "agent_window_anchor_mismatch",
+      reason,
       window_id: windowId,
       anchor_tab_id: anchorTabId,
-      tab_count: tabs.length,
+      tab_count: inspection.tab_count,
       user_content_preserved: true,
+      orphan_recovery_eligible: false,
+      ownership_source: owned.source,
     };
   }
   await chrome.windows.remove(windowId);
   const closeVerified = (await browser67GetWindow(windowId)) === null;
   if (closeVerified) {
-    const current = await browser67StoredAgentWindow();
-    if (
-      browser67NumericId(current?.window_id) === windowId
-      && browser67NumericId(current?.anchor_tab_id) === anchorTabId
-      && browser67OwnershipToken(current?.ownership_token) === ownershipToken
-    ) {
-      await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_STORAGE_KEY);
-    }
+    await browser67RemoveStoredAgentWindow(owned.record);
+    await browser67RemoveAgentWindowOrphan(owned.record);
   }
+  const recoveredOrphan = inspection.status === "recoverable_orphan";
   return {
     status: closeVerified ? "closed" : "close_unverified",
     closed: closeVerified,
     close_verified: closeVerified,
-    reason: closeVerified ? "empty_created_agent_window_retired" : "window_remained_visible",
+    reason: closeVerified
+      ? recoveredOrphan
+        ? "orphan_new_tab_agent_window_retired"
+        : "empty_created_agent_window_retired"
+      : "window_remained_visible",
     window_id: windowId,
     anchor_tab_id: anchorTabId,
+    recovered_orphan: recoveredOrphan,
+    orphan_recovery_mode: recoveredOrphan ? inspection.close_mode : "none",
+    ownership_record_removed: closeVerified,
+    ownership_source: owned.source,
+  };
+}
+
+async function browser67AgentWindowStatus() {
+  const currentRecord = browser67AgentWindowIdentity(await browser67StoredAgentWindow());
+  const current = currentRecord ? await browser67InspectOwnedAgentWindow(currentRecord) : null;
+  const orphanRecords = await browser67StoredAgentWindowOrphans();
+  const orphanRows = await Promise.all(orphanRecords.map(browser67InspectOwnedAgentWindow));
+  return {
+    status: current?.status || "not_owned",
+    current_window_id: currentRecord?.window_id ?? null,
+    current_anchor_tab_id: currentRecord?.anchor_tab_id ?? null,
+    current_anchor_present: current?.anchor_present === true,
+    owned_orphan_count: orphanRows.length,
+    recoverable_owned_orphan_count: orphanRows.filter((row) => row.status === "recoverable_orphan").length,
+    preserved_owned_orphan_count: orphanRows.filter((row) => row.status === "preserved_orphan").length,
+    orphan_windows: orphanRows.map((row) => ({
+      window_id: row.record?.window_id ?? null,
+      status: row.status,
+      reason: String(row.reason || ""),
+      tab_count: row.tab_count,
+      sole_browser_new_tab: row.sole_browser_new_tab === true,
+      session_match: row.session_match === true,
+    })),
+    privacy: {
+      user_tab_urls_returned: false,
+      user_tab_titles_returned: false,
+    },
   };
 }
 
@@ -565,6 +911,7 @@ async function browser67HandleWindowFocusCommand(message) {
     const method = String(message.method || "");
     if (method === "ensure_agent_window") return browser67EnsureAgentWindow();
     if (method === "retire_agent_window") return browser67RetireAgentWindow(message);
+    if (method === "status_agent_windows") return browser67AgentWindowStatus();
     throw new Error(`unsupported window method: ${method}`);
   }
   if (message?.cmd === "focus") {
@@ -592,18 +939,63 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   browser67MarkFocusActivity("window", windowId).catch(() => {});
 });
 
-chrome.windows.onRemoved.addListener(async (windowId) => {
-  const stored = await browser67StoredAgentWindow();
-  if (browser67NumericId(stored?.window_id) === browser67NumericId(windowId)) {
-    await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_STORAGE_KEY);
-  }
+chrome.runtime.onStartup.addListener(() => {
+  browser67RotateAgentWindowSession().catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener(async (tabId) => {
-  const stored = await browser67StoredAgentWindow();
-  if (browser67NumericId(stored?.anchor_tab_id) === browser67NumericId(tabId)) {
-    await chrome.storage.local.remove(BROWSER67_AGENT_WINDOW_STORAGE_KEY);
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const normalizedWindowId = browser67NumericId(windowId);
+  const current = browser67AgentWindowIdentity(await browser67StoredAgentWindow());
+  if (current?.window_id === normalizedWindowId) {
+    await browser67RemoveStoredAgentWindow(current);
   }
+  const orphans = await browser67StoredAgentWindowOrphans();
+  await browser67PersistAgentWindowOrphans(
+    orphans.filter((candidate) => candidate.window_id !== normalizedWindowId),
+  );
+});
+
+chrome.tabs.onRemoved.addListener(async (tabId, removeInfo = {}) => {
+  const current = browser67AgentWindowIdentity(await browser67StoredAgentWindow());
+  if (!current || current.anchor_tab_id !== browser67NumericId(tabId)) return;
+  if (removeInfo.isWindowClosing === true) {
+    await browser67RemoveStoredAgentWindow(current);
+    return;
+  }
+  const removedWindowId = browser67NumericId(removeInfo.windowId);
+  if (removedWindowId !== null && removedWindowId !== current.window_id) {
+    await browser67RemoveStoredAgentWindow(current);
+    return;
+  }
+  await browser67RememberAgentWindowOrphan(current, {
+    anchor_state: "removed",
+    anchor_removed_at: new Date().toISOString(),
+    anchor_removed_window_id: current.window_id,
+  });
+  setTimeout(() => {
+    browser67RecoverOwnedAgentWindowOrphans().catch(() => {});
+  }, BROWSER67_AGENT_WINDOW_ORPHAN_RECOVERY_DELAY_MS);
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo = {}, tab = {}) => {
+  if (!changeInfo.url || changeInfo.url === browser67AnchorUrl()) return;
+  const current = browser67AgentWindowIdentity(await browser67StoredAgentWindow());
+  if (!current || current.anchor_tab_id !== browser67NumericId(tabId)) return;
+  if (
+    browser67NumericId(tab.windowId) === current.window_id
+    && browser67IsBrowserNewTab({ ...tab, url: changeInfo.url })
+  ) {
+    await browser67RememberAgentWindowOrphan(current, {
+      anchor_state: "replaced",
+      anchor_removed_at: new Date().toISOString(),
+      anchor_removed_window_id: current.window_id,
+    });
+    setTimeout(() => {
+      browser67RecoverOwnedAgentWindowOrphans().catch(() => {});
+    }, BROWSER67_AGENT_WINDOW_ORPHAN_RECOVERY_DELAY_MS);
+    return;
+  }
+  await browser67RemoveStoredAgentWindow(current);
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -627,3 +1019,9 @@ browser67RunFocusCommand(async () => {
   }
   chrome.alarms.create(BROWSER67_FOCUS_LEASE_ALARM, { when: expiresAt });
 }).catch(() => {});
+
+setTimeout(() => {
+  browser67ReconcileCurrentAgentWindow()
+    .then(() => browser67RecoverOwnedAgentWindowOrphans())
+    .catch(() => {});
+}, BROWSER67_AGENT_WINDOW_ORPHAN_RECOVERY_DELAY_MS);

@@ -86,6 +86,7 @@ async function finalizeManagedLiveFixture({ rpc, cli, commonArgs, fixtureContext
       && (
         finalized?.agent_window_cleanup?.closed !== true
         || finalized?.agent_window_cleanup?.close_verified !== true
+        || finalized?.agent_window_cleanup?.ownership_record_removed !== true
       )
     ) {
       throw new Error(`managed live fixture Agent window cleanup was not verified: ${JSON.stringify(finalized?.agent_window_cleanup)}`);

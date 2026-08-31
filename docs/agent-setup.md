@@ -189,6 +189,12 @@ Chrome/Edge tab and address UI; it never uses immersive browser fullscreen for
 this presentation. Use `window_policy=current` only as an explicit
 compatibility choice and `focus_policy=foreground` only for a deliberate visible
 handoff.
+When a bounded fixture asks to clean up the Agent window it created, browser67
+also recovers the exact same browser-start epoch case where Chrome removes or
+replaces the anchor and leaves a sole internal New Tab page, including
+replacement that keeps the same tab ID. The epoch survives extension reloads
+and rotates on Browser Profile startup. It never applies that recovery to an
+unowned New Tab window or to a window containing user/content tabs.
 User-opened unmanaged tabs are read-only by default. Do not navigate, click,
 type into, close, or adopt them unless the user explicitly asks to operate on
 that exact tab. When explicitly requested, use inspect_adoption then

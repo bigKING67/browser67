@@ -628,8 +628,8 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   const tabListManagedPayload = firstJsonContent(tabListManagedCall.result);
   assert.equal(tabListManagedPayload?.status, "success");
   assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
-  assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v6");
-  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 5);
+  assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v7");
+  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 6);
   assert.equal(tabListManagedPayload?.capabilities?.supports_dedicated_agent_window, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_focus_policy, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_focus_lease, true);
@@ -643,6 +643,14 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabListManagedPayload?.capabilities?.supports_protocol_solver_apply, false);
   assert.equal(tabListManagedPayload?.capabilities?.supports_finalize_hint, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_created_agent_window_cleanup, true);
+  assert.equal(
+    tabListManagedPayload?.capabilities?.supports_exact_agent_window_orphan_recovery,
+    true,
+  );
+  assert.equal(
+    tabListManagedPayload?.capabilities?.agent_window_orphan_recovery_policy,
+    "same_browser_profile_epoch_exact_window_sole_browser_new_tab",
+  );
   assert.equal(tabListManagedPayload?.capabilities?.supports_close_verification, true);
   assert.equal(Array.isArray(tabListManagedPayload?.live_sessions), true);
   assert.equal(Array.isArray(tabListManagedPayload?.sessions), true);

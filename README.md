@@ -212,9 +212,14 @@ do so safely.
 Normal task finalization keeps the reusable Agent window. Automated live and
 release fixtures opt into `cleanup_created_agent_window:true`: cleanup succeeds
 only when the scoped fixture created that exact window and the extension proves
-that its anchor is the sole remaining tab. A reused window, identity mismatch,
-or any additional tab is preserved, so fixture cleanup cannot close a user
-page.
+that either its anchor is the sole remaining tab, or that the same Profile
+browser-start epoch removed or replaced that exact anchor and Chrome left one
+internal New Tab page, including an in-place URL replacement that keeps the same
+tab ID. The epoch persists across service-worker and extension reloads, then
+rotates on the next browser Profile startup. The latter state is recovered
+automatically from a bounded ownership tombstone. A reused window,
+identity/epoch mismatch, unowned New Tab window, or any user/content tab is
+preserved, so fixture cleanup cannot close a user page.
 
 User navigation, extension reconnection, or lease-generation changes suspend an
 adopted tab. Re-inspect and re-adopt rather than mutating a target whose identity

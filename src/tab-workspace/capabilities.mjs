@@ -1,6 +1,6 @@
 const CAPABILITIES = Object.freeze({
-  schema_revision: 5,
-  server_revision: "managed-tabs-v6",
+  schema_revision: 6,
+  server_revision: "managed-tabs-v7",
   supports_select_or_create: true,
   supports_dedicated_agent_window: true,
   supports_focus_policy: true,
@@ -15,6 +15,8 @@ const CAPABILITIES = Object.freeze({
   supports_prune_stale: true,
   supports_finalize_task: true,
   supports_created_agent_window_cleanup: true,
+  supports_exact_agent_window_orphan_recovery: true,
+  agent_window_orphan_recovery_policy: "same_browser_profile_epoch_exact_window_sole_browser_new_tab",
   supports_finalize_hint: true,
   supports_close_verification: true,
   supports_screenshot_viewport_override: true,

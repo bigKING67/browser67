@@ -242,8 +242,12 @@ async function handleFinalizeTask(args) {
     remaining,
     scope,
   });
+  const agentWindowCleanupTerminal = ["closed", "already_closed"].includes(agentWindowCleanup.status)
+    && agentWindowCleanup.close_verified === true
+    && agentWindowCleanup.ownership_record_removed === true;
   const agentWindowCleanupOk = agentWindowCleanup.requested !== true
-    || ["closed", "already_closed", "not_owned", "dry_run"].includes(agentWindowCleanup.status);
+    || agentWindowCleanupTerminal
+    || ["not_owned", "dry_run"].includes(agentWindowCleanup.status);
   const ok = (pruneStale?.ok ?? true) === true
     && closeUnkept.ok === true
     && agentWindowCleanupOk;
@@ -264,6 +268,8 @@ async function handleFinalizeTask(args) {
       ignores_unmanaged_user_tabs: true,
       cleans_up_created_agent_window_only_when_requested: true,
       preserves_nonempty_agent_window: true,
+      recovers_exact_owned_orphan_new_tab: true,
+      agent_window_orphan_recovery_policy: "same_browser_profile_epoch_exact_window_sole_browser_new_tab",
       prunes_stale_registry_records: args?.prune_stale !== false,
     },
     prune_stale: pruneStale,

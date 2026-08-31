@@ -322,8 +322,14 @@ transport drift.
   fixtures may pass `cleanup_created_agent_window:true`; the extension closes
   the window only when the scoped record proves that fixture created it, the
   exact window/anchor ownership token still matches, all managed records are
-  gone, and the anchor is the only remaining tab. Reused, mismatched, or
-  nonempty windows are preserved.
+  gone, and either the anchor is the only remaining tab or the same Profile
+  browser-start epoch proves that removal or in-place replacement of that exact
+  anchor left one browser-generated internal New Tab page. The epoch survives
+  service-worker and extension reloads but rotates on the next Browser Profile
+  startup. The extension keeps a bounded tombstone long enough to
+  recover that exact orphan automatically and exposes privacy-safe aggregate
+  state through its internal `status_agent_windows` command. Reused,
+  mismatched, cross-epoch, unowned, or user-content windows are preserved.
   If an allowed `tmwd_mode:"auto"` operation actually falls back to controlled
   CDP, its effective policy is `isolated_target`, not `dedicated`; reuse and
   `finalize_task` follow that recorded effective transport so the page is not

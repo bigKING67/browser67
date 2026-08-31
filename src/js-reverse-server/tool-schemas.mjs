@@ -138,7 +138,7 @@ const TOOL_SCHEMAS = Object.fromEntries(
           cleanup_created_agent_window: {
             type: "boolean",
             default: false,
-            description: "For finalize_task: retire only an exact empty Agent window created by this scoped task; preserve reused or nonempty windows.",
+            description: "For finalize_task: retire only an exact Agent window created by this scoped task when it contains the sole anchor or a same browser-start epoch sole browser-generated New Tab after exact anchor removal or replacement; preserve reused, user-content, and unowned windows.",
           },
           summary_only: { type: "boolean", default: false },
           dry_run: { type: "boolean", default: false },
