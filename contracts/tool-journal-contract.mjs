@@ -11,6 +11,7 @@ import {
 } from "../src/runtime/tool-journal.mjs";
 
 const root = await mkdtemp(path.join(tmpdir(), "browser67-tool-journal-"));
+const posixModeSupported = process.platform !== "win32";
 try {
   const journalPath = path.join(root, "events.ndjson");
   const journal = createToolJournal({
@@ -44,7 +45,9 @@ try {
   });
   await journal.dispose();
   const raw = await readFile(journalPath, "utf8");
-  assert.equal((await stat(journalPath)).mode & 0o777, 0o600);
+  if (posixModeSupported) {
+    assert.equal((await stat(journalPath)).mode & 0o777, 0o600);
+  }
   const event = JSON.parse(raw.trim());
   assert.equal(event.schema_version, TOOL_JOURNAL_SCHEMA_VERSION);
   assert.equal(event.tool, "browser_execute_js");
@@ -67,7 +70,9 @@ try {
   await rotatingJournal.record({ tool: "second", status: "success" });
   const rotationStats = await rotatingJournal.dispose();
   assert.equal(rotationStats.rotation_count, 1);
-  assert.equal((await stat(`${rotatingPath}.1`)).mode & 0o777, 0o600);
+  if (posixModeSupported) {
+    assert.equal((await stat(`${rotatingPath}.1`)).mode & 0o777, 0o600);
+  }
   assert.match(await readFile(`${rotatingPath}.1`, "utf8"), /"tool":"first"/);
   assert.match(await readFile(rotatingPath, "utf8"), /"tool":"second"/);
   process.stdout.write(`${JSON.stringify({
@@ -76,6 +81,7 @@ try {
     schema_version: event.schema_version,
     privacy_fields_excluded: true,
     bounded_rotation: true,
+    posix_mode_verified: posixModeSupported,
   })}\n`);
 } finally {
   await rm(root, { recursive: true, force: true });
