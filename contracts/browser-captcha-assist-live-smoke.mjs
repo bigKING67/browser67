@@ -100,6 +100,7 @@ async function run() {
       workspace_key: workspaceKey,
       fresh: true,
       active: true,
+      confirm_managed_tab_overflow: true,
       wait_until: "listed",
       wait_timeout_ms: 5_000,
       wait_poll_ms: 100,
