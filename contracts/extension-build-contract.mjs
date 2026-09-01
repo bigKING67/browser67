@@ -88,11 +88,18 @@ async function run() {
     assert.equal(background.includes(extensionBatchReferenceSource()), true);
     assert.match(debuggerRuntime, /browser67ResolveBatchReferences/);
     assert.match(debuggerRuntime, /Emulation\.clearDeviceMetricsOverride/);
+    assert.match(debuggerRuntime, /browser67HandleConsoleObservation/);
+    assert.match(debuggerRuntime, /Runtime\.consoleAPICalled/);
+    assert.match(debuggerRuntime, /Runtime\.exceptionThrown/);
+    assert.match(debuggerRuntime, /Log\.entryAdded/);
+    assert.match(debuggerRuntime, /onEvent\.removeListener/);
     assert.doesNotMatch(background, /JSON\.parse\(JSON\.stringify\(params/);
     assert.doesNotMatch(background, /const resolve\$N/);
     assert.doesNotMatch(background, /id: 9999, priority: 1/);
     assert.match(runtime, /condition:\s*\{[\s\S]*tabIds:\s*\[tabId\]/);
     assert.match(runtime, /message\?\.cmd === "network"/);
+    assert.match(runtime, /method === "observe_console"/);
+    assert.match(runtime, /console observation requires a browser67-managed tab/);
     assert.match(runtime, /message\?\.cmd !== "policy"/);
     assert.match(runtime, /authorize_navigation/);
     assert.match(runtime, /last_navigation_actor/);
@@ -175,6 +182,7 @@ async function run() {
       tab_scoped_csp: true,
       managed_dialog_badge_marker: true,
       managed_network_observer: true,
+      bounded_console_observer: true,
       managed_navigation_observer: true,
       batch_reference_runtime_parity: true,
       page_execution_runtime_parity: true,

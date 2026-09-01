@@ -18,12 +18,26 @@ function createRuntime(debuggerApi) {
     Map,
     Promise,
     Set,
+    clearTimeout,
+    setTimeout,
     structuredClone,
   });
   context.globalThis = context;
   context.browser67ResolveBatchReferences = (value) => structuredClone(value);
   vm.runInContext(source, context, { filename: "extension/browser67/debugger-runtime.js" });
   return context;
+}
+
+function createEventHook() {
+  const listeners = new Set();
+  return {
+    addListener(listener) { listeners.add(listener); },
+    removeListener(listener) { listeners.delete(listener); },
+    emit(...args) {
+      for (const listener of [...listeners]) listener(...args);
+    },
+    listenerCount() { return listeners.size; },
+  };
 }
 
 async function assertSameTabSerialization() {
@@ -114,16 +128,208 @@ async function assertBatchFailureClearsViewport() {
   assert.equal(result.errorDetails.cleanup[0].cleared, true);
 }
 
+async function assertConsoleObservationIsBoundedAndReleased() {
+  const onEvent = createEventHook();
+  const onDetach = createEventHook();
+  const methods = [];
+  let detachCount = 0;
+  const debuggerApi = {
+    onEvent,
+    onDetach,
+    async attach() {},
+    async sendCommand(target, method) {
+      methods.push(method);
+      if (method === "Runtime.enable") {
+        onEvent.emit(target, "Runtime.consoleAPICalled", {
+          type: "log",
+          args: [{ type: "string", value: "console-contract-log" }],
+          timestamp: Date.now() / 1_000,
+        });
+        onEvent.emit(target, "Runtime.exceptionThrown", {
+          exceptionDetails: {
+            text: "Uncaught",
+            exception: { description: "Error: console-contract-exception" },
+            timestamp: Date.now() / 1_000,
+          },
+        });
+      }
+      return {};
+    },
+    async detach() { detachCount += 1; },
+  };
+  const runtime = createRuntime(debuggerApi);
+  const result = await runtime.browser67HandleConsoleObservation({
+    tabId: 10,
+    durationMs: 5_000,
+    maxEntries: 2,
+    maxTotalChars: 10_000,
+    includeLogEntries: true,
+  }, {}, { normalizeNumericTabId: (value) => Number(value) });
+  const payload = JSON.parse(JSON.stringify(result.data));
+  assert.equal(result.ok, true);
+  assert.equal(payload.schema, "browser67.console-observation.v1");
+  assert.equal(payload.stop_reason, "max_entries");
+  assert.equal(payload.entry_count, 2);
+  assert.deepEqual(payload.source_counts, {
+    runtime_console: 1,
+    runtime_exception: 1,
+  });
+  assert.equal(payload.persistent_debugger, false);
+  assert.equal(payload.cleanup.listeners_removed, true);
+  assert.equal(payload.cleanup.debugger_released, true);
+  assert.equal(payload.cleanup.debugger_detach.detached, true);
+  assert.equal(detachCount, 1);
+  assert.equal(onEvent.listenerCount(), 0);
+  assert.equal(onDetach.listenerCount(), 0);
+  assert.deepEqual(methods, [
+    "Runtime.enable",
+    "Log.enable",
+    "Log.disable",
+    "Runtime.disable",
+  ]);
+}
+
+async function assertConsoleObservationCharacterBudget() {
+  const onEvent = createEventHook();
+  const onDetach = createEventHook();
+  const runtime = createRuntime({
+    onEvent,
+    onDetach,
+    async attach() {},
+    async sendCommand(target, method) {
+      if (method === "Runtime.enable") {
+        for (let index = 0; index < 3; index += 1) {
+          onEvent.emit(target, "Runtime.consoleAPICalled", {
+            type: "log",
+            args: [{ type: "string", value: `budget-${String(index)}-${"x".repeat(4_000)}` }],
+            timestamp: Date.now() / 1_000,
+          });
+        }
+      }
+      return {};
+    },
+    async detach() {},
+  });
+  const result = await runtime.browser67HandleConsoleObservation({
+    tabId: 11,
+    durationMs: 5_000,
+    maxEntries: 100,
+    maxTotalChars: 1_000,
+    includeLogEntries: false,
+  }, {}, { normalizeNumericTabId: (value) => Number(value) });
+  assert.equal(result.ok, true);
+  assert.equal(result.data.stop_reason, "max_total_chars");
+  assert.ok(result.data.total_chars <= 1_000);
+  assert.ok(result.data.entry_count >= 1);
+  assert.equal(result.data.entries[0].truncated, true);
+  assert.equal(onEvent.listenerCount(), 0);
+  assert.equal(onDetach.listenerCount(), 0);
+}
+
+async function assertConsoleLogDomainObservation() {
+  const onEvent = createEventHook();
+  const onDetach = createEventHook();
+  const runtime = createRuntime({
+    onEvent,
+    onDetach,
+    async attach() {},
+    async sendCommand(target, method) {
+      if (method === "Log.enable") {
+        onEvent.emit(target, "Log.entryAdded", {
+          entry: {
+            source: "javascript",
+            level: "warning",
+            text: "console-contract-log-domain",
+            timestamp: Date.now() / 1_000,
+          },
+        });
+      }
+      return {};
+    },
+    async detach() {},
+  });
+  const result = await runtime.browser67HandleConsoleObservation({
+    tabId: 13,
+    durationMs: 50,
+    maxEntries: 10,
+    maxTotalChars: 10_000,
+    includeLogEntries: true,
+  }, {}, { normalizeNumericTabId: (value) => Number(value) });
+  assert.equal(result.ok, true);
+  assert.equal(result.data.stop_reason, "duration_elapsed");
+  assert.equal(result.data.entry_count, 1);
+  assert.equal(result.data.entries[0].source, "log_javascript");
+  assert.equal(result.data.entries[0].text, "console-contract-log-domain");
+  assert.equal(result.data.coverage.log_entries, "Log.enable_may_include_buffered_entries");
+  assert.equal(onEvent.listenerCount(), 0);
+  assert.equal(onDetach.listenerCount(), 0);
+}
+
+async function assertConsoleExternalOwnerFailsWithoutDetach() {
+  const onEvent = createEventHook();
+  const onDetach = createEventHook();
+  let detachCount = 0;
+  const runtime = createRuntime({
+    onEvent,
+    onDetach,
+    async attach() { throw new Error("Another debugger is already attached to the tab"); },
+    async sendCommand() { throw new Error("send should not run"); },
+    async detach() { detachCount += 1; },
+  });
+  const result = await runtime.browser67HandleConsoleObservation({
+    tabId: 12,
+    durationMs: 50,
+  }, {}, { normalizeNumericTabId: (value) => Number(value) });
+  assert.equal(result.ok, false);
+  assert.equal(result.errorCode, "DEBUGGER_BUSY");
+  assert.equal(detachCount, 0);
+  assert.equal(onEvent.listenerCount(), 0);
+  assert.equal(onDetach.listenerCount(), 0);
+}
+
+async function assertConsoleUnverifiedReleaseFailsClosed() {
+  const onEvent = createEventHook();
+  const onDetach = createEventHook();
+  const runtime = createRuntime({
+    onEvent,
+    onDetach,
+    async attach() {},
+    async sendCommand() { return {}; },
+    async detach() { throw new Error("detach receipt unavailable"); },
+  });
+  const result = await runtime.browser67HandleConsoleObservation({
+    tabId: 14,
+    durationMs: 50,
+    includeLogEntries: false,
+  }, {}, { normalizeNumericTabId: (value) => Number(value) });
+  assert.equal(result.ok, false);
+  assert.equal(result.errorCode, "DEBUGGER_RELEASE_UNVERIFIED");
+  assert.equal(result.errorDetails.listeners_removed, true);
+  assert.equal(result.errorDetails.debugger_released, false);
+  assert.equal(onEvent.listenerCount(), 0);
+  assert.equal(onDetach.listenerCount(), 0);
+}
+
 async function run() {
   await assertSameTabSerialization();
   await assertExternalOwnerFailsWithoutDetach();
   await assertBatchFailureClearsViewport();
+  await assertConsoleObservationIsBoundedAndReleased();
+  await assertConsoleObservationCharacterBudget();
+  await assertConsoleLogDomainObservation();
+  await assertConsoleExternalOwnerFailsWithoutDetach();
+  await assertConsoleUnverifiedReleaseFailsClosed();
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "extension-debugger-runtime-contract",
     serialized: true,
     external_owner_fail_closed: true,
     viewport_cleanup_on_error: true,
+    console_observation_bounded: true,
+    console_character_budget: true,
+    console_log_domain: true,
+    console_listener_cleanup: true,
+    console_unverified_release_fails_closed: true,
   })}\n`);
 }
 

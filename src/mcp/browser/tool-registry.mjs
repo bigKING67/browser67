@@ -3,6 +3,7 @@ import Ajv from "ajv";
 import { handleBrowserAuthOps } from "../../auth/index.mjs";
 import {
   handleBrowserClipboardOps,
+  handleBrowserConsoleOps,
   handleBrowserDownloadOps,
   handleBrowserFileOps,
   handleBrowserInstanceOps,
@@ -59,6 +60,7 @@ const HANDLERS = {
   browser_tab_lifecycle: handleBrowserTabLifecycle,
   browser_auth_ops: handleBrowserAuthOps,
   browser_clipboard_ops: handleBrowserClipboardOps,
+  browser_console_ops: handleBrowserConsoleOps,
   browser_instance_ops: handleBrowserInstanceOps,
 };
 

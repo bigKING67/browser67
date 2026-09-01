@@ -8,7 +8,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   const names = tools
     .map((entry) => (typeof entry?.name === "string" ? entry.name : ""))
     .filter((name) => name.length > 0);
-  assert.equal(tools.length, 18);
+  assert.equal(tools.length, 19);
   for (const tool of tools) {
     assert.deepEqual(
       tool?.inputSchema?.properties?.output_mode?.enum,
@@ -38,6 +38,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(names.includes("browser_tab_lifecycle"), true);
   assert.equal(names.includes("browser_auth_ops"), true);
   assert.equal(names.includes("browser_clipboard_ops"), true);
+  assert.equal(names.includes("browser_console_ops"), true);
 
   const browserInstanceTool = tools.find((entry) => entry?.name === "browser_instance_ops");
   assert.deepEqual(
@@ -47,6 +48,15 @@ async function assertToolSurface({ rpc, timeoutMs }) {
 
   const executeJsTool = tools.find((entry) => entry?.name === "browser_execute_js");
   const nativeInputTool = tools.find((entry) => entry?.name === "browser_native_input");
+  const consoleOpsTool = tools.find((entry) => entry?.name === "browser_console_ops");
+  assert.deepEqual(consoleOpsTool?.inputSchema?.properties?.action?.enum, ["observe"]);
+  assert.equal(consoleOpsTool?.inputSchema?.properties?.duration_ms?.maximum, 30_000);
+  assert.equal(consoleOpsTool?.inputSchema?.properties?.max_entries?.maximum, 500);
+  assert.equal(consoleOpsTool?.inputSchema?.properties?.max_total_chars?.maximum, 300_000);
+  assert.deepEqual(consoleOpsTool?.inputSchema?.properties?.tmwd_mode?.enum, ["auto", "tmwd"]);
+  assert.equal(consoleOpsTool?.inputSchema?.properties?.include_log_entries?.default, true);
+  assert.equal(consoleOpsTool?.inputSchema?.properties?.include_stack_trace?.default, false);
+  assert.equal(consoleOpsTool?.description?.includes("non-persistent"), true);
   assert.equal(executeJsTool?.inputSchema?.properties?.output_mode?.enum?.includes("compact"), true);
   assert.equal(executeJsTool?.inputSchema?.properties?.max_return_chars?.maximum, 300_000);
   assert.equal(executeJsTool?.inputSchema?.properties?.new_tab_wait_ms?.minimum, 0);

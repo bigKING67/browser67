@@ -1,5 +1,5 @@
 const CAPABILITIES = Object.freeze({
-  schema_revision: 7,
+  schema_revision: 8,
   server_revision: "managed-tabs-v8",
   supports_select_or_create: true,
   supports_dedicated_agent_window: true,
@@ -29,6 +29,7 @@ const CAPABILITIES = Object.freeze({
   supports_job_restart_recovery: true,
   supports_job_abort: false,
   supports_persistent_debugger: false,
+  supports_bounded_console_observation: true,
   debugger_commands_serialized_per_tab: true,
   debugger_ui_scope: "browser_profile",
   debugger_profile_isolation_requires_separate_browser_instance: true,

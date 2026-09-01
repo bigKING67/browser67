@@ -64,6 +64,9 @@ approval_mode = "approve"
 [mcp_servers.tmwd_browser.tools.browser_file_ops]
 approval_mode = "approve"
 
+[mcp_servers.tmwd_browser.tools.browser_console_ops]
+approval_mode = "approve"
+
 [mcp_servers.tmwd_browser.tools.browser_download_ops]
 approval_mode = "approve"
 
@@ -292,7 +295,8 @@ transport drift.
   `finalize_summary`, and `run` when available. It writes `screenshots.json`
   only when `write:true`, `confirm_write:true`, and `output_path` ends with
   `screenshots.json`.
-- `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. Prefer `set_input_files` for real local files; use DataTransfer only for small in-memory files; native chooser action returns a plan and should not silently upload files.
+- `browser_file_ops`: `inspect_inputs`, `set_input_files`, `upload_via_data_transfer`, `native_file_chooser_plan`. `set_input_files` accepts an ordered array of real local files and preserves the browser's single `input` / `change` event pair; use DataTransfer only for small in-memory files. The native chooser action returns a plan and should not silently upload files.
+- `browser_console_ops`: `observe` captures console API calls, uncaught runtime exceptions, and optional Log-domain entries only on an exact managed/adopted TMWD tab. It is non-persistent, defaults to 1 second / 100 entries / 100,000 serialized console-entry characters, caps requests at 30 seconds / 500 entries / 300,000 entry characters, and verifies both listener removal and debugger-lease release before success. `Log.enable` may report buffered Log-domain entries; the result labels that coverage explicitly. Use a separate Browser Instance/Profile when Chrome's Profile-scoped debugger indicator must not appear alongside ordinary windows.
 - `browser_download_ops`: `allow_automatic_downloads`, `prepare`, `wait`, `list_recent`. It tracks only the prepared per-run token / directory window and ignores partial files such as `.crdownload`.
 - `browser_tab_lifecycle`: `select_or_create`, `create_managed`,
   `inspect_adoption`, `adopt_existing`, `release_adopted`,
@@ -766,7 +770,8 @@ The bundled `js-reverse` MCP focuses on observe-first, hook-preferred workflows:
 - supported: page health, tab selection, page API/interface discovery, request
   initiator tracing, scripts, DOM snapshot, performance resources,
   fetch/xhr/websocket/eval/timer/cookie/function hooks, evidence recording,
-  report export, and minimal Node rebuild bundle export.
+  bounded non-persistent console observation, report export, and minimal Node
+  rebuild bundle export.
 - intentionally not full debugger yet: persistent `Debugger.pause`, callframe
   stepping, and breakpoint state currently return `not_supported` with hook-based
   fallbacks plus `persistent_debugger_supported:false` and
@@ -774,6 +779,8 @@ The bundled `js-reverse` MCP focuses on observe-first, hook-preferred workflows:
   when callframe-level debugging is required.
 - Extension debugger commands are serialized per tab and detach only leases
   they acquired; conflicts with an external debugger fail as `DEBUGGER_BUSY`.
+  `browser_console_ops.observe` uses that same queue and never leaves a
+  persistent listener or debugger attachment after the bounded call returns.
   Chrome's debugger indicator is Browser-Profile-scoped, so a dedicated Agent
   window in the same Profile cannot isolate that UI from ordinary user windows.
   Use a separate Browser Instance/Profile when debugger-UI isolation matters.

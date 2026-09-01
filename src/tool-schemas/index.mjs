@@ -1,6 +1,7 @@
 import { AUTH_TOOL_SCHEMAS } from "./auth.mjs";
 import { BROWSER_CORE_TOOL_SCHEMAS } from "./browser-core.mjs";
 import { BROWSER_INSTANCE_TOOL_SCHEMAS } from "./browser-instance-ops.mjs";
+import { CONSOLE_TOOL_SCHEMAS } from "./console-ops.mjs";
 import { IO_TOOL_SCHEMAS } from "./io-ops.mjs";
 import { NATIVE_INPUT_TOOL_SCHEMAS } from "./native-input.mjs";
 import { SCREENSHOT_TOOL_SCHEMAS } from "./screenshot-ops.mjs";
@@ -9,6 +10,7 @@ import { TAB_LIFECYCLE_TOOL_SCHEMAS } from "./tab-lifecycle.mjs";
 const TOOL_SCHEMAS = {
   ...BROWSER_CORE_TOOL_SCHEMAS,
   ...BROWSER_INSTANCE_TOOL_SCHEMAS,
+  ...CONSOLE_TOOL_SCHEMAS,
   ...SCREENSHOT_TOOL_SCHEMAS,
   ...NATIVE_INPUT_TOOL_SCHEMAS,
   ...IO_TOOL_SCHEMAS,

@@ -8,11 +8,14 @@ const SAFE_RESULT_COUNT_KEYS = [
   "candidate_count",
   "closed_count",
   "created_count",
+  "dropped_entries",
+  "entry_count",
   "finished_count",
   "managed_count",
   "pruned_count",
   "returned_count",
   "stale_count",
+  "total_chars",
 ];
 
 function boundedText(value, maxLength = 160) {

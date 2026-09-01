@@ -128,6 +128,8 @@ npm run check:live
 npm run check:managed-tab-live
 npm run check:tmwd-performance-live
 npm run check:screenshot-live
+npm run check:file-ops-live
+npm run check:console-live
 npm run check:auth-live
 npm run check:js-reverse-live
 ```

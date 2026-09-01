@@ -819,7 +819,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabListManagedPayload?.status, "success");
   assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
   assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v8");
-  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 7);
+  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 8);
   assert.equal(tabListManagedPayload?.capabilities?.list_managed_summary_only_default, true);
   assert.equal(tabListManagedPayload?.capabilities?.managed_tab_scope_limit_default, 8);
   assert.equal(tabListManagedPayload?.capabilities?.supports_dedicated_agent_window, true);
@@ -832,6 +832,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabListManagedPayload?.capabilities?.supports_job_restart_recovery, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_job_abort, false);
   assert.equal(tabListManagedPayload?.capabilities?.supports_persistent_debugger, false);
+  assert.equal(tabListManagedPayload?.capabilities?.supports_bounded_console_observation, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_protocol_solver_apply, false);
   assert.equal(tabListManagedPayload?.capabilities?.supports_finalize_hint, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_created_agent_window_cleanup, true);

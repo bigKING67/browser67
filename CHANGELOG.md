@@ -8,6 +8,17 @@
   writing an artifact, return predicted and actual bitmap metrics, and fail
   closed with `INVALID_ARGUMENT` instead of silently emitting an oversized
   HiDPI image.
+- Fix real local-file upload through the TMWD debugger batch by resolving the
+  actual `DOM.getDocument` / `DOM.querySelector` result shape. Rely on
+  `DOM.setFileInputFiles` for the native `input` / `change` events instead of
+  dispatching duplicates, and add a real-browser gate for ordered multi-file
+  input, ordinary single-file input, exact event counts, and temporary cleanup.
+- Add `browser_console_ops.observe` for non-persistent observation of console
+  API calls, uncaught runtime exceptions, and optional Log-domain entries on
+  an exact browser67-managed tab. Duration, entry count, and serialized
+  console-entry characters are hard-bounded; external debugger ownership and
+  unverified debugger release fail closed, and listeners plus the acquired
+  debugger lease are released before success.
 
 ## 0.9.0 - 2026-08-31
 

@@ -22,6 +22,7 @@ import { assertPhysicalLiveGateContract } from "./browser67-browser-mcp-contract
 import { assertFileDownloadClipboardOpsContract } from "./browser67-browser-mcp-contract/file-download-clipboard-ops.mjs";
 import { assertTabLifecycleOpsContract } from "./browser67-browser-mcp-contract/tab-lifecycle-ops.mjs";
 import { assertAuthOpsContract } from "./browser67-browser-mcp-contract/auth-ops.mjs";
+import { assertConsoleOpsContract } from "./browser67-browser-mcp-contract/console-ops.mjs";
 import { assertToolSurface } from "./browser67-browser-mcp-contract/tool-surface.mjs";
 import { assertReadinessLjqCtrlProbeContract } from "./browser67-browser-mcp-contract/readiness-audit.mjs";
 import { assertManagedTabCleanupBaselineContract } from "./browser67-browser-mcp-contract/managed-tab-cleanup.mjs";
@@ -197,6 +198,11 @@ async function run() {
       timeoutMs: cli.timeout_ms,
     }));
 
+    const consoleOpsSummary = await runContractCase("console-ops", () => assertConsoleOpsContract({
+      rpc,
+      timeoutMs: cli.timeout_ms,
+    }));
+
     const tabLifecycleSummary = await runContractCase("tab-lifecycle-ops", () => assertTabLifecycleOpsContract({
       registryPath: tmpTabRegistryPath,
       rpc,
@@ -267,6 +273,7 @@ async function run() {
         wrapper_tab_lifecycle_unmanaged_ignored: tabLifecycleSummary.tabCloseUnmanagedPayload?.unmanaged_tabs_ignored,
         wrapper_auth_ops_ok: true,
         wrapper_clipboard_ops_ok: ioOpsSummary.clipboardDryRunPayload?.status === "success",
+        wrapper_console_ops_ok: consoleOpsSummary.missing_action_error_code === "INVALID_ARGUMENTS",
         wrapper_run_ops_ok: Boolean(runWaitHealthSummary.run_id),
         wrapper_screenshot_ops_ok: screenshotSummary.missing_clip_error_code === "INVALID_ARGUMENT",
         wrapper_evidence_bundle_ops_ok: evidenceBundleSummary.schema === "design-craft.l4-screenshots.v1",

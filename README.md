@@ -10,7 +10,8 @@ lifecycle, transport identity, and fallback policy explicit.
 The project exposes two MCP surfaces:
 
 - `tmwd_browser` for real-browser automation, managed tabs, auth-aware flows,
-  screenshots, downloads, native-input fallback, and durable run evidence.
+  screenshots, downloads, bounded console observation, native-input fallback,
+  and durable run evidence.
 - `js-reverse` for script discovery, request tracing, hooks, frame-aware
   analysis, evidence recording, and rebuild bundles on the same browser runtime.
 
@@ -52,6 +53,7 @@ browser67 instead provides:
 | Lifecycle | Managed-tab creation/reuse, explicit user-tab adoption, lease suspension, scoped finalization, and guarded close |
 | Auth-aware flows | Login-profile metadata, manual-required CAPTCHA/MFA/SSO/OAuth states, resume, and redacted outcomes |
 | Network and files | Request observation, downloads, upload/file-chooser planning, clipboard wrappers, screenshots, and evidence bundles |
+| Diagnostics | Non-persistent managed-tab console/API/exception observation with hard duration, entry-count, and character budgets |
 | Durable work | Run directories, append-only events, checkpointed jobs, restart recovery, cancellation metadata, and cleanup budgets |
 | JS reverse | Script/frame discovery, request initiators, hooks, network/WS sampling, evidence records, and rebuild bundles |
 | Native fallback | Explicit platform diagnostics and guarded last-mile pointer/keyboard execution when browser-side automation is insufficient |

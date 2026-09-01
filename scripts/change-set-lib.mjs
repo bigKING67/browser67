@@ -122,6 +122,7 @@ const GROUPS = [
       /^src\/errors\.mjs$/,
       /^contracts\/browser-screenshot-live-smoke\.mjs$/,
       /^contracts\/browser-file-ops-live-smoke\.mjs$/,
+      /^contracts\/browser-console-live-smoke\.mjs$/,
       /^contracts\/browser67-browser-mcp-contract(?:\.mjs|\/)/,
       /^contracts\/browser-job-persistence-contract\.mjs$/,
       /^contracts\/run-store-contract\.mjs$/,

@@ -180,6 +180,18 @@ const MATRIX = [
     covers: ["viewport-artifact", "responsive-override", "selector-fallback", "full-page-bounds"],
   },
   {
+    id: "file-ops-live",
+    command: "npm run check:file-ops-live",
+    tier: "live",
+    covers: ["multiple-local-files", "single-file-input", "input-change-events", "temporary-input-cleanup"],
+  },
+  {
+    id: "console-live",
+    command: "npm run check:console-live",
+    tier: "live",
+    covers: ["runtime-console", "runtime-exception", "entry-bound", "character-bound", "debugger-release"],
+  },
+  {
     id: "remote-cdp",
     command: "npm run check:remote-cdp",
     tier: "platform",

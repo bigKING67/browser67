@@ -401,8 +401,26 @@ async function handleNetworkCommand(message) {
 
 async function browser67HandleCommand(message) {
   try {
-    if (message?.cmd === "debugger" && String(message.method || "status") === "status") {
-      return { ok: true, data: globalThis.browser67DebuggerStatus?.() ?? { serialized: false } };
+    if (message?.cmd === "debugger") {
+      const method = String(message.method || "status");
+      if (method === "status") {
+        return { ok: true, data: globalThis.browser67DebuggerStatus?.() ?? { serialized: false } };
+      }
+      if (method === "observe_console") {
+        await loadManagedPolicies();
+        const tabId = normalizeBrowser67TabId(message.tabId);
+        if (tabId === null || !managedPolicies.has(tabId)) {
+          throw Object.assign(new Error("console observation requires a browser67-managed tab"), {
+            code: "MANAGED_TAB_REQUIRED",
+          });
+        }
+        return await globalThis.browser67HandleConsoleObservation(message, {}, {
+          normalizeNumericTabId: normalizeBrowser67TabId,
+        });
+      }
+      throw Object.assign(new Error(`unsupported debugger method: ${method}`), {
+        code: "INVALID_ARGUMENT",
+      });
     }
     if (message?.cmd === "window") {
       return { ok: true, data: await globalThis.browser67HandleWindowFocusCommand(message) };

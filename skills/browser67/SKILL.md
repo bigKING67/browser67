@@ -113,6 +113,12 @@ two paired MCP surfaces:
      Agent window isolates tabs/focus, not Chrome's debugger indicator. Use a
      separate Browser Instance/Profile when that indicator must be isolated
      from the user's ordinary windows.
+   - Use `browser_console_ops` with `action:"observe"` for bounded console API,
+     runtime-exception, and optional Log-domain observation on the exact
+     managed/adopted tab. It is non-persistent (maximum 30 seconds, 500 entries,
+     and 300,000 serialized console-entry characters), shares the per-tab debugger
+     queue, fails closed on external debugger ownership, and must report listener
+     removal plus debugger-lease release before success.
 5. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
    `js-reverse new_page`.
 6. Windows GUI portability proof remains in the default external acceptance

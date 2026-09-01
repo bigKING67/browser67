@@ -107,6 +107,7 @@ const entries = [
   npmEntry("tmwd-performance-live", "check:tmwd-performance-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("screenshot-live", "check:screenshot-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("file-ops-live", "check:file-ops-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
+  npmEntry("console-live", "check:console-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("auth-live", "check:auth-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("captcha-assist-live", "check:captcha-assist-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("native-pointer", "check:native-pointer", { requirements: ["node", "native_capability_probe"] }),
@@ -164,7 +165,7 @@ const tiers = {
       "managed-baseline-start", "extension-upstream-check", "upstream-lock-check", "upstream-audit", "upstream-audit-latest",
       "upstream-review-refresh", "js-reverse-upstream-audit", "skills-active-diff", "skills-roots-audit", "skills-check", "@check",
       "captcha-router", "captcha-provider-jfbym", "captcha-provider-jfbym-setup", "captcha-provider-jfbym-coordinate", "change-set",
-      "readiness", "live-doctor", "browser-live", "js-reverse-live", "managed-tab-live", "tmwd-performance-live", "screenshot-live", "file-ops-live", "auth-live", "captcha-assist-live",
+      "readiness", "live-doctor", "browser-live", "js-reverse-live", "managed-tab-live", "tmwd-performance-live", "screenshot-live", "file-ops-live", "console-live", "auth-live", "captcha-assist-live",
       "native-pointer", "native-live", "ljqctrl", "optional-live-proofs", "optional-live-plan", "optional-live-status",
       "managed-baseline-end", "npm-audit",
     ],
@@ -175,7 +176,7 @@ const tiers = {
   },
   live: {
     purpose: "Real-browser TMWD behavior without deterministic repository checks.",
-    steps: ["live-doctor", "browser-live", "js-reverse-live", "managed-tab-live", "tmwd-performance-live", "auth-live", "captcha-assist-live", "screenshot-live", "file-ops-live"],
+    steps: ["live-doctor", "browser-live", "js-reverse-live", "managed-tab-live", "tmwd-performance-live", "auth-live", "captcha-assist-live", "screenshot-live", "file-ops-live", "console-live"],
   },
   platform: {
     purpose: "Explicit remote-CDP and native/platform capability gates.",
