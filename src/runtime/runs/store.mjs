@@ -5,7 +5,7 @@ import path from "node:path";
 import { normalizeEvidenceRecord } from "../evidence/schema.mjs";
 import { atomicWriteJson } from "../storage/atomic-file.mjs";
 import { readNdjsonTail } from "../storage/ndjson.mjs";
-import { createRunIndex } from "./index.mjs";
+import { createRunIndex, isTerminalRunStatus } from "./index.mjs";
 import {
   DEFAULT_RUN_ROOT,
   RUN_INDEX_META_SCHEMA_VERSION,
@@ -246,6 +246,16 @@ class RunStore {
     return this.withLock(`run:${runDir}`, async () => {
       const run = await this.readRun(runDir);
       if (!run) return { ok: false, action: "finish", error: "run not found", run_dir: runDir };
+      if (args.only_if_nonterminal === true && isTerminalRunStatus(String(run.status ?? ""))) {
+        return {
+          ok: true,
+          action: "finish",
+          skipped: true,
+          reason: "already_terminal",
+          run,
+          checkpoint_written: false,
+        };
+      }
       const now = this.clock().toISOString();
       const finalStatus = String(args.status ?? "success");
       const event = this.eventPayload({ ...args, status: finalStatus }, "finish");
@@ -261,6 +271,77 @@ class RunStore {
       const checkpoint = await this.writeCheckpoint(runDir, updated);
       return { ok: true, action: "finish", run: checkpoint, event, checkpoint_written: true };
     });
+  }
+
+  async finishScope(args = {}) {
+    this.assertActive();
+    const workspaceKey = String(args.workspace_key ?? "").trim();
+    const taskId = String(args.task_id ?? "").trim();
+    if (!workspaceKey && !taskId) {
+      throw new Error("finishScope requires workspace_key or task_id");
+    }
+    const group = resolveRunGroup({ workspace_key: workspaceKey, task_id: taskId });
+    const maxItems = Math.max(1, Math.min(10_000, Number(args.max_items ?? 5_000)));
+    const meta = await this.index.ensure(group);
+    const records = await this.index.latestRecords(group, maxItems);
+    const candidates = [];
+    for (const record of records) {
+      const runDir = String(record.run_dir ?? "").trim();
+      if (!runDir || isTerminalRunStatus(String(record.status ?? ""))) continue;
+      const run = await this.readRun(runDir);
+      if (!run || isTerminalRunStatus(String(run.status ?? ""))) continue;
+      if (workspaceKey && String(run.workspace_key ?? "") !== workspaceKey) continue;
+      if (taskId && String(run.task_id ?? "") !== taskId) continue;
+      candidates.push(run);
+    }
+    const summaryOnly = args.summary_only !== false;
+    if (args.dry_run === true) {
+      return {
+        ok: true,
+        action: "finish_scope",
+        dry_run: true,
+        group,
+        workspace_key: workspaceKey || undefined,
+        task_id: taskId || undefined,
+        would_finish_count: candidates.length,
+        finished_count: 0,
+        runs: summaryOnly ? [] : candidates.map((run) => ({
+          run_id: run.run_id,
+          previous_status: run.status,
+          next_status: "interrupted",
+        })),
+        scan_truncated: Number(meta.unique_count ?? 0) > records.length,
+      };
+    }
+    const results = await Promise.all(candidates.map((run) => this.finish({
+      group,
+      run_id: run.run_id,
+      status: String(args.status ?? "interrupted"),
+      only_if_nonterminal: true,
+      data: {
+        terminalized_by: String(args.terminalized_by ?? "scope_finalizer"),
+        reason: String(args.reason ?? "task_scope_finalized"),
+      },
+    })));
+    const finished = results.filter((result) => result.ok === true && result.skipped !== true);
+    const skipped = results.filter((result) => result.skipped === true);
+    return {
+      ok: results.every((result) => result.ok === true),
+      action: "finish_scope",
+      dry_run: false,
+      group,
+      workspace_key: workspaceKey || undefined,
+      task_id: taskId || undefined,
+      candidate_count: candidates.length,
+      finished_count: finished.length,
+      skipped_terminal_count: skipped.length,
+      runs: summaryOnly ? [] : results.map((result) => ({
+        run_id: result.run?.run_id,
+        status: result.run?.status,
+        skipped: result.skipped === true,
+      })),
+      scan_truncated: Number(meta.unique_count ?? 0) > records.length,
+    };
   }
 
   async list(args = {}) {

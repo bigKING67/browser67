@@ -252,12 +252,19 @@ transport drift.
   receives a terminal status plus `finished_at`; an explicit `run_id` remains
   caller-owned, is not terminalized by one job, and reports
   `run_requires_finish:true`.
+- browser67 appends a repo-external, privacy-bounded tool journal at
+  `~/.browser67/runtime/tool-events.ndjson`. Entries contain only tool/action
+  identity, managed scope identifiers, status/error code, duration, transport,
+  and bounded counts. URLs, scripts, inputs, page content, cookies, and
+  credentials are never written to this journal. The active file rotates at
+  8 MiB and keeps one `tool-events.ndjson.1` backup; both are mode `0600`.
 - `browser_screenshot_ops`: first-class PNG screenshot capture for real browser
   visual QA. Use after `browser_tab_lifecycle.select_or_create` and
   `browser_wait`; supported targets are `viewport`, `selector`, `clip`, and
   bounded `full_page`. It writes artifacts outside the repo under the browser
   run root by default and returns only compact metadata (`path`, `sha256`,
-  dimensions, clip, page/run info), never screenshot base64. Prefer `viewport`
+  dimensions, clip, page/run info) plus context-budget guidance, never
+  screenshot base64. Prefer `viewport`
   first, `selector` / `clip` for focused component evidence, and `full_page`
   only on bounded pages with an explicit `max_pixels`. For responsive evidence,
   pass `viewport:{width,height,dpr,is_mobile}`; the wrapper applies temporary
@@ -301,6 +308,12 @@ transport drift.
   reconnects, or the ownership/lease generation changes, the record is
   suspended and mutations return `ADOPTED_TAB_SUSPENDED`; run a fresh
   `inspect_adoption -> adopt_existing` flow to resume from the new document.
+  `list_managed` defaults to `summary_only:true`; it reports only managed
+  ownership counts and does not return unrelated live-session metadata unless
+  expanded scoped rows are explicitly requested. Each scope defaults to eight
+  open `keep:false` managed tabs. `MANAGED_TAB_LIMIT_REACHED` requires scoped
+  finalization/pruning; `confirm_managed_tab_overflow:true` is an explicit
+  reviewed override.
 
   New agent-created tabs default to `window_policy:"dedicated"`,
   `focus_policy:"background_preferred"`, and `active:false`. The extension
@@ -309,10 +322,12 @@ transport drift.
   is not the user's working window. On macOS that exact Agent window uses a
   native Full Screen Space (Chrome tabs/address/bookmarks remain available); on
   Windows it uses ordinary maximized state. It does not use Chrome's immersive
-  `fullscreen` window state. `window_policy:"current"` is an explicit
-  compatibility mode. `focus_policy:"background_only"` rejects operations that
-  require real foreground focus, while `focus_policy:"foreground"` intentionally
-  leaves the managed tab visible. For a macOS native Full Screen Agent Window,
+  `fullscreen` window state. `window_policy:"current"` fails closed for
+  agent-created work; exact user-window operation requires
+  `inspect_adoption -> adopt_existing`. `focus_policy:"background_only"`
+  rejects operations that require real foreground focus, while
+  `focus_policy:"foreground"` requires `confirm_foreground:true` and
+  intentionally leaves the managed tab visible. For a macOS native Full Screen Agent Window,
   that explicit foreground path activates the exact browser67-owned tab through
   the host Chromium bridge so the matching Space is selected; extension focus
   success alone is not accepted as document visibility proof. The legacy
@@ -321,7 +336,11 @@ transport drift.
   Before reusing a dedicated managed tab, browser67 checks its live window. If
   the user moved it into another window, browser67 quarantines that registry
   record and creates or reuses a different dedicated tab; it never moves the
-  user's tab back into the Agent window.
+  user's tab back into the Agent window. Reuse navigation is issued to the
+  exact managed `tab_id` through a tab-targeted browser command and then waits
+  for that same `(browser_instance_id, tab_id)` to become routable. A missing or
+  mismatched target fails with `NO_SESSION`; it never falls back to the
+  active/default session or navigates an unmanaged user tab.
   Normal `finalize_task` calls keep the reusable Agent window. Bounded live-test
   fixtures may pass `cleanup_created_agent_window:true`; the extension removes
   only the exact internal anchor/New Tab when the scoped record proves that fixture created it, the
@@ -701,7 +720,7 @@ sites to use the generic profile directory above.
   app is treated as user activity. `background_only` fails such actions with
   `FOREGROUND_REQUIRED`; `foreground` deliberately keeps the target foreground.
 - Managed tab registry is stored outside the repo under the active browser67 home, canonically `~/.browser67/tab-workspace/managed-tabs.json`. Override with `BROWSER_STRUCTURED_TAB_REGISTRY_PATH` for tests or isolated runs.
-- `list_managed` returns live sessions by default and limits large arrays. Use `summary_only:true`, `max_items`, or `max_stale_items` for bounded diagnostics; summary mode returns counts and suppresses unrelated live-session rows. Pass `include_disconnected:true` or `history:true` only when you need historical disconnected sessions.
+- `list_managed` defaults to `summary_only:true`, limits large arrays, and never returns unrelated live-session rows. Pass `summary_only:false` only for expanded managed-scope diagnosis; `include_disconnected:true` or `history:true` remains explicit.
 - `create_managed` / `select_or_create` wait for the created tab to be visible by default (`wait_until:"listed"`, `wait_timeout_ms:3000`). Use `wait_until:"none"` only for fire-and-forget workflows.
 - Default active-work entry:
 
@@ -718,7 +737,7 @@ sites to use the generic profile directory above.
 - Use `fresh:true` or `reuse:false` only when a new browser67-owned tab is required, such as OAuth/popup flows, before/after comparisons, or clean lifecycle checks.
 - Use `keep:true` for a warm workspace tab that should survive `close_unkept`; otherwise task cleanup may close it.
 - Use `prune_stale` or `list_managed` with `prune_stale:true` to remove registry records for managed tabs that no longer exist. This never closes unmanaged user tabs.
-- End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` and the same `browser_instance_id` unless the user asked to keep the page open. The finalizer verifies closed managed tabs disappear from that live Browser Instance before reporting success. If the selected workspace/task spans multiple instances, omission fails with `AMBIGUOUS_TARGET`; deliberate cross-instance cleanup requires `confirm_all_browser_instances:true`. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
+- End active browser tasks with `finalize_task` for the current `workspace_key` or `task_id` and the same `browser_instance_id` unless the user asked to keep the page open. The finalizer verifies closed managed tabs disappear from that live Browser Instance and terminalizes nonterminal structured runs in the exact task scope as `interrupted` before reporting success. If the selected workspace/task spans multiple instances, omission fails with `AMBIGUOUS_TARGET`; deliberate cross-instance cleanup requires `confirm_all_browser_instances:true`. Use stable workspace keys such as `<project>-<surface>` (`datahub-special-report`, not `datahub-special-report-footnotes`) so reuse and cleanup stay scoped and predictable.
 - `finalize_task` returns `cleanup_summary` and a one-line `delivery_summary` containing its Browser Instance scope; include that line in final responses or handoffs so missed close errors, kept tabs, stale prunes, and remaining unkept tabs are visible.
 - `create_managed` / `select_or_create` / `js-reverse new_page` responses include `finalize_hint`. Treat `finalize_hint.required:true` as a visible reminder to run the suggested `finalize_task` call before final response or handoff.
 - `close_unkept` requires `workspace_key` or `task_id` by default. To intentionally clean every managed workspace, pass `scope:"all"` or `all:true` / `confirm_all:true`; unmanaged user tabs are still ignored.
@@ -753,6 +772,11 @@ The bundled `js-reverse` MCP focuses on observe-first, hook-preferred workflows:
   fallbacks plus `persistent_debugger_supported:false` and
   `required_mode:"remote_cdp"`. Use a dedicated remote CDP debug browser only
   when callframe-level debugging is required.
+- Extension debugger commands are serialized per tab and detach only leases
+  they acquired; conflicts with an external debugger fail as `DEBUGGER_BUSY`.
+  Chrome's debugger indicator is Browser-Profile-scoped, so a dedicated Agent
+  window in the same Profile cannot isolate that UI from ordinary user windows.
+  Use a separate Browser Instance/Profile when debugger-UI isolation matters.
 
 ## Failure policy
 

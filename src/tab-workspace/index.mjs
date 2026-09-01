@@ -1,4 +1,11 @@
 export {
+  DEFAULT_MANAGED_TAB_SCOPE_LIMIT,
+  MAX_MANAGED_TAB_SCOPE_LIMIT,
+  assertManagedTabCapacity,
+  evaluateManagedTabCapacity,
+  managedTabScopeLimit,
+} from "./capacity.mjs";
+export {
   browserInstanceIdFrom,
   browserTabIdFrom,
   browserTabKey,

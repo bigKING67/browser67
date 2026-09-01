@@ -569,6 +569,41 @@ async function run() {
   const releasedStatus = await handle({ cmd: "policy", method: "status", tabId: 41 });
   assert.equal(releasedStatus.data.managed, false);
 
+  storage["browser67.managed-tab-policies.v1"] = [{
+    tab_id: 42,
+    ownership_generation: "expired-ownership",
+    lease_id: "expired-lease",
+    lease_expires_at: "2026-01-01T00:00:00.000Z",
+    policy: { csp_override: "off", dialog: "native", badge: "managed", marker: "managed" },
+  }];
+  const expiredPolicyListenerSnapshot = snapshotEventListeners(events);
+  const expiredPolicyContext = vm.createContext({
+    chrome,
+    console,
+    Date,
+    Map,
+    Set,
+    Promise,
+    setTimeout,
+    clearTimeout,
+    URL,
+    crypto: context.crypto,
+    globalThis: null,
+  });
+  expiredPolicyContext.globalThis = expiredPolicyContext;
+  vm.runInContext(windowFocusSource, expiredPolicyContext, {
+    filename: "extension/browser67/window-focus-runtime-expired-policy.js",
+  });
+  vm.runInContext(source, expiredPolicyContext, {
+    filename: "extension/browser67/runtime-expired-policy.js",
+  });
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+  assert.equal(
+    storage["browser67.managed-tab-policies.v1"].some((record) => record.tab_id === 42),
+    false,
+  );
+  restoreEventListeners(events, expiredPolicyListenerSnapshot);
+
   const mismatchedRetirement = await handle({
     cmd: "window",
     method: "retire_agent_window",

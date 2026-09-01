@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import {
+  DEFAULT_MANAGED_TAB_SCOPE_LIMIT,
+  evaluateManagedTabCapacity,
+} from "../../src/tab-workspace/capacity.mjs";
+import {
+  navigateReusableManagedTab,
+} from "../../src/browser-wrappers/tab-lifecycle-navigation.mjs";
+import {
   assertTextJsonContent,
   firstJsonContent,
   firstOutcomeContent,
@@ -39,6 +46,7 @@ async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
       arguments: {
         action: "list_managed",
         include_disconnected: true,
+        summary_only: false,
       },
     },
     timeoutMs,
@@ -78,7 +86,7 @@ async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
     "tools/call",
     {
       name: "browser_tab_lifecycle",
-      arguments: { action: "list_managed", include_disconnected: true },
+      arguments: { action: "list_managed", include_disconnected: true, summary_only: false },
     },
     timeoutMs,
   );
@@ -211,6 +219,7 @@ async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
       arguments: {
         action: "list_managed",
         include_disconnected: true,
+        summary_only: false,
       },
     },
     timeoutMs,
@@ -221,6 +230,104 @@ async function assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs }) {
 }
 
 export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeoutMs }) {
+  const navigationCommands = [];
+  const navigated = await navigateReusableManagedTab(
+    { workspace_key: "navigation-contract", task_id: "exact-target" },
+    { transport: "tmwd_ws", context: { target: { id: "bridge-host" } } },
+    {
+      tab_id: "managed-tab",
+      browser_instance_id: "managed-browser",
+      ownership_origin: "agent_created",
+      observed_url: "about:blank",
+      url: "about:blank",
+      title: "about:blank",
+    },
+    "http://example.test/exact",
+    async (command) => {
+      navigationCommands.push(command);
+      return {
+        transport: "tmwd_ws",
+        transport_attempts: [{ transport: "tmwd_ws", status: "ok" }],
+      };
+    },
+    {
+      wait_for_managed_tab_visible: async () => ({
+        ready: true,
+        ready_source: "runtime_session",
+        ready_after_ms: 12,
+        tab: {
+          id: "managed-tab",
+          tab_id: "managed-tab",
+          browser_instance_id: "managed-browser",
+          url: "http://example.test/exact",
+          title: "Exact managed target",
+        },
+      }),
+    },
+  );
+  assert.deepEqual(navigationCommands, [{
+    cmd: "cdp",
+    method: "Page.navigate",
+    tabId: "managed-tab",
+    params: { url: "http://example.test/exact" },
+  }]);
+  assert.equal(navigated.navigation.result.url, "http://example.test/exact");
+  assert.equal(navigated.navigation.result.title, "Exact managed target");
+  assert.equal(navigated.navigation.ready, true);
+
+  let mismatchCommandCount = 0;
+  await assert.rejects(
+    navigateReusableManagedTab(
+      { workspace_key: "navigation-contract", task_id: "adopted-exact-target" },
+      { transport: "tmwd_ws", context: { target: { id: "bridge-host" } } },
+      {
+        tab_id: "adopted-tab",
+        browser_instance_id: "managed-browser",
+        ownership_origin: "user_adopted",
+        observed_url: "http://example.test/old",
+        url: "http://example.test/old",
+        title: "Adopted target",
+      },
+      "http://example.test/new",
+      async () => {
+        mismatchCommandCount += 1;
+        return { transport: "tmwd_ws" };
+      },
+      {
+        resolve_preferred_browser_context: async () => ({
+          transport: "tmwd_ws",
+          context: {
+            target: {
+              id: "unmanaged-default-tab",
+              browser_instance_id: "managed-browser",
+            },
+          },
+        }),
+      },
+    ),
+    (error) => error?.errorCode === "NO_SESSION",
+  );
+  assert.equal(mismatchCommandCount, 0);
+
+  const capacityRows = Array.from({ length: DEFAULT_MANAGED_TAB_SCOPE_LIMIT }, (_item, index) => ({
+    tab_id: `capacity-${String(index)}`,
+    browser_instance_id: "capacity-browser",
+    workspace_key: "capacity-workspace",
+    task_id: "capacity-task",
+    keep: false,
+    status: "open",
+  }));
+  const capacityOwnership = {
+    browser_instance_id: "capacity-browser",
+    workspace_key: "capacity-workspace",
+    task_id: "capacity-task",
+  };
+  assert.equal(evaluateManagedTabCapacity(capacityRows, capacityOwnership).allowed, false);
+  assert.equal(evaluateManagedTabCapacity(
+    capacityRows,
+    capacityOwnership,
+    { confirm_overflow: true },
+  ).allowed, true);
   const tabCreateDryRunCall = await rpc.call(
     "tools/call",
     {
@@ -326,7 +433,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabSelectOrCreateReuseDryRunPayload?.reused, false);
   assert.equal(tabSelectOrCreateReuseDryRunPayload?.would_create, true);
 
-  const foregroundDryRunCall = await rpc.call(
+  const currentWindowDryRunCall = await rpc.call(
     "tools/call",
     {
       name: "browser_tab_lifecycle",
@@ -335,6 +442,40 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
         url: "about:blank",
         focus_policy: "foreground",
         window_policy: "current",
+        confirm_foreground: true,
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(currentWindowDryRunCall?.result?.isError, true);
+  assert.equal(firstOutcomeContent(currentWindowDryRunCall.result)?.error?.code, "CURRENT_WINDOW_REQUIRES_ADOPTION");
+
+  const unconfirmedForegroundCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "create_managed",
+        url: "about:blank",
+        focus_policy: "foreground",
+        dry_run: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(unconfirmedForegroundCall?.result?.isError, true);
+  assert.equal(firstOutcomeContent(unconfirmedForegroundCall.result)?.error?.code, "FOREGROUND_NOT_CONFIRMED");
+
+  const foregroundDryRunCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "create_managed",
+        url: "about:blank",
+        focus_policy: "foreground",
+        confirm_foreground: true,
         dry_run: true,
       },
     },
@@ -343,7 +484,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(foregroundDryRunCall?.result?.isError, undefined);
   const foregroundDryRunPayload = firstJsonContent(foregroundDryRunCall.result);
   assert.equal(foregroundDryRunPayload?.presentation?.focus_policy, "foreground");
-  assert.equal(foregroundDryRunPayload?.presentation?.window_policy, "current");
+  assert.equal(foregroundDryRunPayload?.presentation?.window_policy, "dedicated");
   assert.equal(foregroundDryRunPayload?.presentation?.active, true);
 
   const conflictingFocusCall = await rpc.call(
@@ -445,6 +586,22 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabCloseUnmanagedPayload?.status, "success");
   assert.deepEqual(tabCloseUnmanagedPayload?.unmanaged_tabs_ignored, ["user-tab-not-managed"]);
 
+  const finalizeScopeRunId = "finalize-scope-contract-run";
+  const finalizeScopePrepareCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_run_ops",
+      arguments: {
+        action: "prepare",
+        workspace_key: "contract-workspace",
+        task_id: "contract-task",
+        run_id: finalizeScopeRunId,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(finalizeScopePrepareCall?.result?.isError, undefined);
+
   const tabFinalizeDryRunCall = await rpc.call(
     "tools/call",
     {
@@ -452,6 +609,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
       arguments: {
         action: "finalize_task",
         workspace_key: "contract-workspace",
+        task_id: "contract-task",
         prune_stale: false,
         dry_run: true,
       },
@@ -469,7 +627,39 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabFinalizeDryRunPayload?.remaining?.unkept_count, 0);
   assert.equal(tabFinalizeDryRunPayload?.cleanup_summary?.workspace_key, "contract-workspace");
   assert.equal(tabFinalizeDryRunPayload?.cleanup_summary?.remaining_unkept_count, 0);
+  assert.equal(tabFinalizeDryRunPayload?.run_finalize?.would_finish_count, 1);
   assert.match(tabFinalizeDryRunPayload?.delivery_summary ?? "", /browser67 cleanup: finalize_task workspace_key=contract-workspace/);
+
+  const tabFinalizeCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_tab_lifecycle",
+      arguments: {
+        action: "finalize_task",
+        workspace_key: "contract-workspace",
+        task_id: "contract-task",
+        prune_stale: false,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(tabFinalizeCall?.result?.isError, undefined);
+  const tabFinalizePayload = firstJsonContent(tabFinalizeCall.result);
+  assert.equal(tabFinalizePayload?.run_finalize?.finished_count, 1);
+  const finalizeScopeStatusCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_run_ops",
+      arguments: {
+        action: "status",
+        workspace_key: "contract-workspace",
+        run_id: finalizeScopeRunId,
+        summary_only: true,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(firstJsonContent(finalizeScopeStatusCall.result)?.run?.status, "interrupted");
 
   const adoptionNow = new Date().toISOString();
   const adoptedRecord = {
@@ -628,8 +818,10 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   const tabListManagedPayload = firstJsonContent(tabListManagedCall.result);
   assert.equal(tabListManagedPayload?.status, "success");
   assert.equal(tabListManagedPayload?.capabilities?.supports_tabs_get, true);
-  assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v7");
-  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 6);
+  assert.equal(tabListManagedPayload?.capabilities?.server_revision, "managed-tabs-v8");
+  assert.equal(tabListManagedPayload?.capabilities?.schema_revision, 7);
+  assert.equal(tabListManagedPayload?.capabilities?.list_managed_summary_only_default, true);
+  assert.equal(tabListManagedPayload?.capabilities?.managed_tab_scope_limit_default, 8);
   assert.equal(tabListManagedPayload?.capabilities?.supports_dedicated_agent_window, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_focus_policy, true);
   assert.equal(tabListManagedPayload?.capabilities?.supports_focus_lease, true);
@@ -652,8 +844,14 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
     "same_browser_profile_epoch_exact_window_sole_browser_new_tab",
   );
   assert.equal(tabListManagedPayload?.capabilities?.supports_close_verification, true);
+  assert.equal(tabListManagedPayload?.summary?.summary_only, true);
   assert.equal(Array.isArray(tabListManagedPayload?.live_sessions), true);
+  assert.equal(tabListManagedPayload.live_sessions.length, 0);
   assert.equal(Array.isArray(tabListManagedPayload?.sessions), true);
+  assert.equal(tabListManagedPayload.sessions.length, 0);
+  assert.equal(tabListManagedPayload?.active_session_id, null);
+  assert.equal(tabListManagedPayload?.default_session_id, null);
+  assert.equal(tabListManagedPayload?.latest_session_id, null);
   assert.equal(typeof tabListManagedPayload?.summary?.managed_total_count, "number");
   assert.equal(tabListManagedPayload?.result_limits?.max_items, 50);
 
@@ -663,7 +861,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
       name: "browser_tab_lifecycle",
       arguments: {
         action: "list_managed",
-        summary_only: true,
+        summary_only: false,
       },
     },
     timeoutMs,
@@ -671,12 +869,17 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
   assert.equal(tabListManagedSummaryCall?.result?.isError, undefined);
   const tabListManagedSummaryPayload = firstJsonContent(tabListManagedSummaryCall.result);
   assert.equal(tabListManagedSummaryPayload?.status, "success");
-  assert.equal(tabListManagedSummaryPayload?.summary?.summary_only, true);
+  assert.equal(tabListManagedSummaryPayload?.summary?.summary_only, false);
   assert.equal(Array.isArray(tabListManagedSummaryPayload?.live_sessions), true);
-  assert.equal(tabListManagedSummaryPayload.live_sessions.length, 0);
   assert.equal(Array.isArray(tabListManagedSummaryPayload?.sessions), true);
-  assert.equal(tabListManagedSummaryPayload.sessions.length, 0);
-  assert.equal(tabListManagedSummaryPayload?.summary?.live_session_returned_count, 0);
+  const managedKeys = new Set(
+    (tabListManagedSummaryPayload?.managed_tabs ?? []).map((row) => row.session_key),
+  );
+  assert.equal(
+    tabListManagedSummaryPayload.sessions.every((row) => managedKeys.has(row.id)),
+    true,
+    "expanded list_managed must never return unmanaged ordinary user sessions",
+  );
 
   await assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs });
 

@@ -5,6 +5,7 @@ import { waitFor } from "./helpers.mjs";
 async function runManagedLifecycleCase(context) {
   const beforeTabs = await context.listTabs();
   const previouslyActiveTabIds = beforeTabs.filter((tab) => tab.active).map((tab) => tab.id);
+  const preexistingTabUrls = new Map(beforeTabs.map((tab) => [tab.id, tab.url]));
   const managedPath = `/tmwd-managed-lifecycle-smoke-${String(Date.now())}`;
   const managedUrl = `${context.fixture.origin}${managedPath}`;
   const managedArgs = {
@@ -72,6 +73,57 @@ async function runManagedLifecycleCase(context) {
   assert.equal(String(secondManaged?.managed_tab?.tab_id ?? ""), managedTabId, "managed lifecycle reused a different tab");
   assert.equal(secondManaged.finalize_hint?.required, true, "reused managed tab should still carry a required finalize hint");
 
+  const unscriptableReuseKey = `about-blank-reuse-${String(Date.now())}`;
+  const unscriptableManaged = await context.callTool("browser_tab_lifecycle", {
+    ...context.baseArgs,
+    action: "select_or_create",
+    url: "about:blank",
+    workspace_key: context.workspaceKey,
+    reuse_key: unscriptableReuseKey,
+    reuse_scope: "exact",
+    wait_until: "listed",
+    wait_timeout_ms: 250,
+    wait_poll_ms: 50,
+  });
+  const unscriptableTabId = String(unscriptableManaged?.managed_tab?.tab_id ?? "");
+  assert.ok(unscriptableTabId, "about:blank managed create did not return tab id");
+  context.openedTabIds.add(unscriptableTabId);
+  assert.equal(unscriptableManaged.created, true, "about:blank fixture should create a managed tab");
+  assert.equal(unscriptableManaged.ready, false, "about:blank should not claim runtime-session readiness");
+
+  const exactReusePath = `/tmwd-managed-exact-reuse-${String(Date.now())}`;
+  const exactReuseUrl = `${context.fixture.origin}${exactReusePath}`;
+  const exactReuse = await context.callTool("browser_tab_lifecycle", {
+    ...context.baseArgs,
+    action: "select_or_create",
+    url: exactReuseUrl,
+    workspace_key: context.workspaceKey,
+    reuse_key: unscriptableReuseKey,
+    reuse_scope: "exact",
+    navigate_reused: true,
+    wait_until: "listed",
+    wait_timeout_ms: 5_000,
+    wait_poll_ms: 100,
+  });
+  assert.equal(exactReuse.reused, true, "about:blank fixture should be reused for exact navigation");
+  assert.equal(String(exactReuse?.managed_tab?.tab_id ?? ""), unscriptableTabId);
+  assert.equal(exactReuse.navigation?.ready, true, "exact reuse navigation did not become routable");
+  assert.equal(exactReuse.navigation?.result?.url, exactReuseUrl);
+  const exactReusedTab = await context.bridgeCommand({
+    cmd: "tabs",
+    method: "get",
+    tabId: unscriptableTabId,
+  });
+  assert.equal(exactReusedTab?.url, exactReuseUrl, "exact managed tab did not receive reuse navigation");
+  const afterExactReuseTabs = await context.listTabs();
+  for (const [tabId, previousUrl] of preexistingTabUrls.entries()) {
+    assert.equal(
+      afterExactReuseTabs.find((tab) => tab.id === tabId)?.url,
+      previousUrl,
+      `reuse navigation changed a pre-existing tab: ${tabId}`,
+    );
+  }
+
   const managedFinalize = await context.callTool("browser_tab_lifecycle", {
     ...context.baseArgs,
     action: "finalize_task",
@@ -91,6 +143,7 @@ async function runManagedLifecycleCase(context) {
     "managed finalize_task did not verify the managed tab closure",
   );
   context.openedTabIds.delete(managedTabId);
+  context.openedTabIds.delete(unscriptableTabId);
 
   const managedGone = await waitFor(async () => {
     const tabs = await context.listTabs();
@@ -104,6 +157,7 @@ async function runManagedLifecycleCase(context) {
   const managedList = await context.callTool("browser_tab_lifecycle", {
     ...context.baseArgs,
     action: "list_managed",
+    summary_only: false,
   });
   assert.equal(Array.isArray(managedList.managed_tabs), true);
   assert.equal(managedList.managed_tabs.length, 0, "isolated managed registry should be empty after close");
@@ -117,6 +171,8 @@ async function runManagedLifecycleCase(context) {
     background_default: createdTab?.active === false,
     preexisting_active_tabs_preserved: true,
     second_reused: secondManaged.reused === true,
+    unscriptable_reuse_exact_target: exactReusedTab?.url === exactReuseUrl,
+    preexisting_tab_urls_preserved: true,
     tab_id: managedTabId,
     closed_count: managedFinalize.close_unkept.closed.length,
   };

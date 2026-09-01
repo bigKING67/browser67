@@ -64,7 +64,6 @@ async function detectDarwinCapabilities(actions) {
     "drag",
     "click",
     "double_click",
-    "scroll",
   ];
   const supported = new Set();
   if (hasOsaScript) {
@@ -84,7 +83,7 @@ async function detectDarwinCapabilities(actions) {
     requirements.push("macOS requires `osascript` for keyboard/window actions.");
   }
   if (!hasCliclick) {
-    requirements.push("Install `cliclick` for pointer actions (`move/drag/click/double_click/scroll`).");
+    requirements.push("Install `cliclick` for pointer actions (`move/drag/click/double_click`).");
   }
   if (hasCliclick && !cliclickPointerReady) {
     requirements.push("Grant Accessibility permission to the current terminal/Codex host so `cliclick` pointer actions can affect Chrome.");
@@ -98,12 +97,14 @@ async function detectDarwinCapabilities(actions) {
       cliclick: hasCliclick,
       cliclick_accessibility: cliclickAccessibility.ok === true,
       cliclick_accessibility_warning: cliclickAccessibility.warning === true,
+      native_scroll_supported: false,
     },
     supported_actions: supportedActions,
     unsupported_actions: unsupportedActions,
     requirements,
     permission_notes: [
       "Grant Accessibility and Automation permissions to the terminal process.",
+      "Native macOS scroll is fail-closed until browser67 has a verified wheel-event driver; use managed-page DOM/CDP scrolling when appropriate.",
     ],
   };
 }

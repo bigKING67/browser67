@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   buildCliclickClickCommands,
   buildCliclickDragCommands,
+  scrollPointer,
 } from "../../src/native-macos/pointer.mjs";
+import { chromiumWindowLookupOptions } from "../../src/native-macos/keyboard-window.mjs";
 
 import {
   assertTextJsonContent,
@@ -11,6 +13,18 @@ import {
 } from "./rpc-content.mjs";
 
 async function assertNativeInputOpsContract({ rpc, timeoutMs }) {
+  assert.equal(chromiumWindowLookupOptions({
+    window_tab_id: 42,
+    window_url: "https://example.invalid/",
+  }, 1_000, true).activate, true);
+  assert.equal(chromiumWindowLookupOptions({
+    window_tab_id: 42,
+    window_url: "https://example.invalid/",
+  }, 1_000, false).activate, false);
+  await assert.rejects(
+    () => scrollPointer({ delta_y: 100 }, 1_000),
+    (error) => error?.errorCode === "ACTION_NOT_SUPPORTED" && /wait command/.test(error.message),
+  );
   const macosDragPlan = buildCliclickDragCommands({
     durationMs: 700,
     fromX: 120,

@@ -345,7 +345,13 @@ async function waitForManagedTabVisible(args, preferred, tabId, fallback = {}, r
     if (tab) {
       if (String(tab.url ?? "").trim().length > 0) {
         const routableTab = await readRoutableBrowserTabById(args, tabId, runtimeOptions);
-        if (routableTab) {
+        const expectedUrl = String(fallback.expected_url ?? "").trim();
+        const previousUrl = String(fallback.previous_url ?? "").trim();
+        const routedUrl = String(routableTab?.url ?? "").trim();
+        const navigationObserved = !expectedUrl
+          || routedUrl === expectedUrl
+          || (previousUrl && routedUrl && routedUrl !== previousUrl);
+        if (routableTab && navigationObserved) {
           return {
             ...waitOptions,
             ready: true,

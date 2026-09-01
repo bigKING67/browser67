@@ -9,17 +9,21 @@ import {
 } from "./apple-script.mjs";
 import { findChromiumTabWindow } from "./chromium-window.mjs";
 
+function chromiumWindowLookupOptions(args, timeoutMs, activate) {
+  return {
+    activate,
+    preferredApplication: args?.window_application,
+    timeoutMs,
+    windowTabId: args?.window_tab_id,
+    windowUrl: String(args?.window_url ?? "").trim(),
+  };
+}
+
 async function activateWindow(args, timeoutMs) {
   const windowUrl = String(args?.window_url ?? "").trim();
   const windowTabId = args?.window_tab_id;
   if (windowUrl || windowTabId !== undefined) {
-    return findChromiumTabWindow({
-      activate: true,
-      preferredApplication: args?.window_application,
-      timeoutMs,
-      windowTabId,
-      windowUrl,
-    });
+    return findChromiumTabWindow(chromiumWindowLookupOptions(args, timeoutMs, true));
   }
   const selector = parseWindowSelector(args);
   if (!selector.title && !selector.pid) {
@@ -86,13 +90,7 @@ async function getWindowRect(args, timeoutMs) {
   const windowUrl = String(args?.window_url ?? "").trim();
   const windowTabId = args?.window_tab_id;
   if (windowUrl || windowTabId !== undefined) {
-    return findChromiumTabWindow({
-      activate: true,
-      preferredApplication: args?.window_application,
-      timeoutMs,
-      windowTabId,
-      windowUrl,
-    });
+    return findChromiumTabWindow(chromiumWindowLookupOptions(args, timeoutMs, false));
   }
   const lines = [
     "tell application \"System Events\"",
@@ -130,6 +128,7 @@ async function getWindowRect(args, timeoutMs) {
 
 export {
   activateWindow,
+  chromiumWindowLookupOptions,
   getWindowRect,
   pasteText,
   pressKey,

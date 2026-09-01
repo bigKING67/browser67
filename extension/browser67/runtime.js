@@ -401,6 +401,9 @@ async function handleNetworkCommand(message) {
 
 async function browser67HandleCommand(message) {
   try {
+    if (message?.cmd === "debugger" && String(message.method || "status") === "status") {
+      return { ok: true, data: globalThis.browser67DebuggerStatus?.() ?? { serialized: false } };
+    }
     if (message?.cmd === "window") {
       return { ok: true, data: await globalThis.browser67HandleWindowFocusCommand(message) };
     }
@@ -495,9 +498,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 (async () => {
   await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [9999] });
   await loadManagedPolicies();
-  for (const record of managedPolicies.values()) {
-    if (!record.lease_expires_at || Date.parse(record.lease_expires_at) > Date.now()) {
-      await updateTabScopedCspRule(record.tab_id, record.policy);
+  const now = Date.now();
+  for (const record of [...managedPolicies.values()]) {
+    if (record.lease_expires_at && Date.parse(record.lease_expires_at) <= now) {
+      await releaseManagedPolicy(record.tab_id);
+      continue;
     }
+    await updateTabScopedCspRule(record.tab_id, record.policy);
   }
 })();

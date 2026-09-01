@@ -85,6 +85,38 @@ async function main() {
     assert.ok(indexRows.length <= 3);
     assert.ok(indexRows.every((row) => row.schema_version === RUN_INDEX_SCHEMA_VERSION));
 
+    await store.prepare({
+      workspace_key: "run-store-contract",
+      task_id: "scope-finalize",
+      run_id: "scope-running-a",
+    });
+    await store.prepare({
+      workspace_key: "run-store-contract",
+      task_id: "other-task",
+      run_id: "scope-running-b",
+    });
+    const finishScopeDryRun = await store.finishScope({
+      workspace_key: "run-store-contract",
+      task_id: "scope-finalize",
+      dry_run: true,
+      summary_only: false,
+    });
+    assert.equal(finishScopeDryRun.would_finish_count, 1);
+    assert.equal(finishScopeDryRun.finished_count, 0);
+    const finishScope = await store.finishScope({
+      workspace_key: "run-store-contract",
+      task_id: "scope-finalize",
+      summary_only: false,
+      terminalized_by: "contract",
+    });
+    assert.equal(finishScope.finished_count, 1);
+    assert.equal(finishScope.runs[0].status, "interrupted");
+    assert.equal((await store.status({
+      workspace_key: "run-store-contract",
+      run_id: "scope-running-b",
+      summary_only: true,
+    })).run.status, "running");
+
     const legacyDir = path.join(root, "legacy", "legacy-run");
     await mkdir(legacyDir, { recursive: true });
     await writeFile(path.join(legacyDir, "run.json"), `${JSON.stringify({
@@ -101,12 +133,14 @@ async function main() {
     await writeFile(path.join(untrackedRunDir, "evidence.bin"), Buffer.alloc(32, "u"));
     const inspection = await store.inspect();
     assert.equal(inspection.legacy_run_count, 1);
-    assert.equal(inspection.run_count, 2);
+    assert.equal(inspection.run_count, 4);
     assert.equal(inspection.status_counts.success, 2);
-    assert.equal(inspection.terminal_run_count, 2);
-    assert.equal(inspection.running_run_count, 0);
+    assert.equal(inspection.status_counts.interrupted, 1);
+    assert.equal(inspection.status_counts.running, 1);
+    assert.equal(inspection.terminal_run_count, 3);
+    assert.equal(inspection.running_run_count, 1);
     assert.equal(inspection.group_count, 3);
-    assert.equal(inspection.runtime_directory_count, 3);
+    assert.equal(inspection.runtime_directory_count, 5);
     assert.equal(inspection.untracked_run_directory_count, 1);
     const inspectionSummary = await store.inspect({
       summary_only: true,

@@ -61,6 +61,11 @@ const NATIVE_INPUT_TOOL_SCHEMAS = {
           enum: ["background_only", "background_preferred", "foreground"],
           default: "background_preferred",
         },
+        confirm_foreground: {
+          type: "boolean",
+          default: false,
+          description: "Explicitly confirm that focus_policy=foreground may leave the exact managed Agent tab visible after native input.",
+        },
         focus_lease_timeout_ms: { type: "number", minimum: 1_000, maximum: 120_000 },
         tmwd_mode: { type: "string", enum: ["auto", "tmwd"], default: "tmwd" },
         tmwd_transport: { type: "string", enum: ["auto", "ws", "link"], default: "auto" },

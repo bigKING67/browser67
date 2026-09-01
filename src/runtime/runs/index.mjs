@@ -415,4 +415,4 @@ function createRunIndex(options = {}) {
   return new RunIndex(options);
 }
 
-export { RunIndex, createRunIndex };
+export { RunIndex, createRunIndex, isTerminalRunStatus };

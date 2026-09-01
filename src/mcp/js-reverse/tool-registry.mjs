@@ -60,8 +60,17 @@ function listJsReverseTools() {
 async function dispatchJsReverseTool(name, args = {}) {
   const startedAt = performance.now();
   const requestId = randomId("js_reverse_tool");
+  const journal = async (entry = {}) => JS_REVERSE_RUNTIME.toolJournal?.record?.({
+    runtime_id: JS_REVERSE_RUNTIME.runtime_id,
+    request_id: requestId,
+    surface: "js-reverse",
+    tool: String(name),
+    args,
+    ...entry,
+  });
   const tool = JS_REVERSE_TOOL_REGISTRY[name];
   if (!tool) {
+    await journal({ status: "error", error_code: "TOOL_NOT_FOUND", retryable: false });
     return formatMcpOutcome(failedOutcome(new Error(`unknown tool: ${String(name)}`), {
       code: "TOOL_NOT_FOUND",
       retryable: false,
@@ -70,6 +79,7 @@ async function dispatchJsReverseTool(name, args = {}) {
     }));
   }
   if (!tool.validate(args)) {
+    await journal({ status: "error", error_code: "INVALID_ARGUMENTS", retryable: false });
     return formatMcpOutcome(failedOutcome(new Error("tool arguments failed validation"), {
       code: "INVALID_ARGUMENTS",
       retryable: false,
@@ -80,17 +90,26 @@ async function dispatchJsReverseTool(name, args = {}) {
   }
   try {
     const data = await JS_REVERSE_RUNTIME.runForTab(tool.concurrencyKey(args), () => tool.handler(args));
+    const durationMs = Number((performance.now() - startedAt).toFixed(2));
+    await journal({ status: "success", duration_ms: durationMs, result: data });
     return formatMcpOutcome(completedOutcome(data, {
       request_id: requestId,
-      duration_ms: Number((performance.now() - startedAt).toFixed(2)),
+      duration_ms: durationMs,
       meta: { tool: name, surface: "js-reverse" },
     }));
   } catch (error) {
+    const durationMs = Number((performance.now() - startedAt).toFixed(2));
+    await journal({
+      status: "error",
+      error_code: error?.errorCode || "EXECUTION_ERROR",
+      retryable: error?.retryable === true,
+      duration_ms: durationMs,
+    });
     return formatMcpOutcome(failedOutcome(error, {
       code: error?.errorCode || "EXECUTION_ERROR",
       retryable: error?.retryable === true,
       request_id: requestId,
-      duration_ms: Number((performance.now() - startedAt).toFixed(2)),
+      duration_ms: durationMs,
       details: error?.details,
       meta: { tool: name, surface: "js-reverse" },
     }));

@@ -117,6 +117,20 @@ async function handleBrowserNativeInput(args, options = {}) {
       at: nowIso(),
     };
   }
+  if (String(args?.focus_policy ?? "background_preferred") === "foreground"
+    && args?.confirm_foreground !== true) {
+    throw createToolError(
+      "FOREGROUND_NOT_CONFIRMED",
+      "focus_policy=foreground requires confirm_foreground=true before native input can leave the Agent tab visible",
+      {
+        retryable: false,
+        details: {
+          action,
+          required_confirmation: "confirm_foreground",
+        },
+      },
+    );
+  }
   const validatedArgs = validateNativeInputArguments(action, args ?? {});
   const effectiveArgs = {
     ...(args ?? {}),

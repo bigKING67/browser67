@@ -190,6 +190,30 @@ function patchSharedExecutionRuntime(source) {
     .replace(errorAnchor, "return { ok: false, error: e.message, errorCode: e.code, errorDetails: e.details, results: R };");
 }
 
+function patchDebuggerSerialization(source) {
+  const batchStart = source.indexOf("async function handleBatch(msg, sender) {");
+  const cdpStart = source.indexOf("async function handleCDP(msg, sender) {", batchStart);
+  const cdpEnd = source.indexOf("// Filter out chrome://", cdpStart);
+  if (batchStart < 0 || cdpStart < 0 || cdpEnd < 0) {
+    throw new Error("upstream debugger handler anchors changed; review browser67 debugger serialization");
+  }
+  const wrappers = [
+    "async function handleBatch(msg, sender) {",
+    "  return globalThis.browser67HandleDebuggerBatch(msg, sender, {",
+    "    handleCookies,",
+    "    handleTabs,",
+    "    normalizeNumericTabId,",
+    "  });",
+    "}",
+    "",
+    "async function handleCDP(msg, sender) {",
+    "  return globalThis.browser67HandleDebuggerCommand(msg, sender, { normalizeNumericTabId });",
+    "}",
+    "",
+  ].join("\n");
+  return `${source.slice(0, batchStart)}${wrappers}${source.slice(cdpEnd)}`;
+}
+
 function patchTabsUpdateSerialization(source) {
   const anchor = [
     "async function sendTabsUpdate() {",
@@ -234,7 +258,7 @@ function buildBackground(source) {
   }
   const withoutGlobalCsp = [
     normalizedSource.slice(0, installStart),
-    "importScripts('browser67/build-identity.js', 'browser67/window-focus-runtime.js', 'browser67/runtime.js');\n\n",
+    "importScripts('browser67/build-identity.js', 'browser67/debugger-runtime.js', 'browser67/window-focus-runtime.js', 'browser67/runtime.js');\n\n",
     normalizedSource.slice(handlerStart),
   ].join("");
   const handlerAnchor = "async function handleExtMessage(msg, sender) {\n";
@@ -251,7 +275,7 @@ function buildBackground(source) {
     patchExtensionIdentityHandshake(
       patchBrowserInstanceResponseIdentity(
         patchBrowserInstanceIdentity(
-          patchWsNewTabMonitoring(patchSharedExecutionRuntime(routed)),
+          patchWsNewTabMonitoring(patchDebuggerSerialization(patchSharedExecutionRuntime(routed))),
         ),
       ),
     ),
@@ -279,6 +303,7 @@ function buildExtension(options = {}) {
     "background.js",
     "manifest.json",
     "browser67/runtime.js",
+    "browser67/debugger-runtime.js",
     "browser67/window-focus-runtime.js",
     "browser67/window-anchor.html",
     "browser67/managed-content.js",
@@ -389,6 +414,7 @@ export {
   buildBackground,
   buildExtension,
   buildManifest,
+  patchDebuggerSerialization,
   patchExtensionIdentityHandshake,
   patchSharedExecutionRuntime,
   patchWsNewTabMonitoring,

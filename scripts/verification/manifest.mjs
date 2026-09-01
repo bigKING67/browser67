@@ -43,6 +43,7 @@ const entries = [
   }),
   npmEntry("mcp", "check:mcp"),
   npmEntry("browser-runtime", "check:browser-runtime"),
+  npmEntry("tool-journal", "check:tool-journal"),
   npmEntry("browser-content-core", "check:browser-content-core"),
   npmEntry("run-store", "check:run-store"),
   npmEntry("job-persistence", "check:job-persistence"),
@@ -63,6 +64,7 @@ const entries = [
   npmEntry("setup-extension", "check:setup-extension", { changed_paths: ["extension/**", "src/extension/**", "scripts/setup-extension.mjs", "scripts/build-extension.mjs", "contracts/setup-extension-contract.mjs"] }),
   npmEntry("extension-build", "check:extension-build", { changed_paths: ["extension/**", "src/extension/**", "scripts/build-extension.mjs", "contracts/extension-build-contract.mjs"] }),
   npmEntry("extension-managed-runtime", "check:extension-managed-runtime", { changed_paths: ["extension/**", "contracts/extension-managed-runtime-contract.mjs"] }),
+  npmEntry("extension-debugger-runtime", "check:extension-debugger-runtime", { changed_paths: ["extension/**", "scripts/build-extension.mjs", "contracts/extension-debugger-runtime-contract.mjs"] }),
   npmEntry("extension-install-doctor", "check:extension-install-doctor", { changed_paths: ["extension/**", "src/extension/**", "scripts/build-extension.mjs", "scripts/extension-install-doctor.mjs", "contracts/extension-install-doctor-contract.mjs"] }),
   npmEntry("extension-reload-live-contract", "check:extension-reload-live", { changed_paths: ["scripts/reload-extension-live.mjs", "contracts/extension-reload-live-contract.mjs"] }),
   npmEntry("agent-integration-doctor", "check:agent-integration-doctor", { changed_paths: ["AGENTS.md", "docs/agent-setup.md", "docs/global-prompt-snippet.md", "skills/**", "scripts/agent-integration-doctor.mjs", "contracts/agent-integration-doctor-contract.mjs", "package.json"] }),
@@ -136,15 +138,15 @@ const entries = [
 const tiers = {
   fast: {
     purpose: "Fast static and core runtime feedback for local edits.",
-    steps: ["lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "browser-content-core", "run-store", "job-persistence"],
+    steps: ["lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "tool-journal", "browser-content-core", "run-store", "job-persistence"],
   },
   check: {
     purpose: "Deterministic repository contracts without requiring a real browser profile.",
     steps: [
-      "lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "browser-content-core", "run-store", "job-persistence",
+      "lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "tool-journal", "browser-content-core", "run-store", "job-persistence",
       "hub-control", "hub-relay", "doctor-schema", "js-reverse-mcp", "js-reverse-upstream", "js-reverse-upstream-audit-contract",
       "js-reverse-absorption", "active-skill-sync-contract", "skills-roots-audit-contract", "browser67-naming", "readme", "runtime-home",
-      "project-structure", "change-set-contract", "setup-extension", "extension-build", "extension-managed-runtime", "extension-install-doctor", "performance-smoke",
+      "project-structure", "change-set-contract", "setup-extension", "extension-build", "extension-managed-runtime", "extension-debugger-runtime", "extension-install-doctor", "performance-smoke",
       "extension-reload-live-contract", "agent-integration-doctor",
       "runtime-cleanup", "task-templates", "regression-matrix", "verification-manifest", "verification-runner", "upstream-audit-contract", "upstream-lock-contract", "extension-upstream-sync-contract", "upstream-review-contract",
       "upstream-review-refresh-contract", "tmwd-runtime-dispose", "tmwd-transport-health", "extension-bridge",

@@ -117,12 +117,15 @@ const PROPERTY_DEFINITIONS = {
     type: "string",
     enum: ["background_only", "background_preferred", "foreground"],
     default: "background_preferred",
-    description: "foreground intentionally leaves the browser67-owned tab visible and activates its exact native Full Screen Space on macOS; background modes preserve the user's current workspace unless a bounded operation explicitly requires focus.",
+    description: "foreground requires confirm_foreground=true and intentionally leaves the browser67-owned tab visible; background modes preserve the user's current workspace unless a bounded operation explicitly requires focus.",
   },
+  confirm_foreground: { type: "boolean", default: false },
+  confirm_managed_tab_overflow: { type: "boolean", default: false },
   window_policy: {
     type: "string",
     enum: ["dedicated", "current"],
     default: "dedicated",
+    description: "current is schema-compatible but fails closed; exact user tabs require the browser_tab_lifecycle adoption flow.",
   },
   focus_lease_timeout_ms: { type: "number", minimum: 1000, maximum: 120000 },
   keep: { type: "boolean", default: false },
@@ -182,9 +185,9 @@ const TOOL_ARGUMENTS = {
   check_browser_health: argumentNames(PAGE_TARGET_ARGUMENTS, ["summary_only"]),
   navigate_page: argumentNames(PAGE_TARGET_ARGUMENTS, ["url"]),
   new_page: argumentNames(PAGE_TARGET_ARGUMENTS, SERVER_SCOPE_ARGUMENTS, [
-    "url", "active", "focus_policy", "window_policy", "focus_lease_timeout_ms", "keep",
+    "url", "active", "focus_policy", "confirm_foreground", "window_policy", "focus_lease_timeout_ms", "keep",
     "fresh", "reuse", "ownership_policy", "reuse_scope", "reuse_key", "navigate_reused",
-    "dry_run", "wait_timeout_ms", "wait_poll_ms",
+    "confirm_managed_tab_overflow", "dry_run", "wait_timeout_ms", "wait_poll_ms",
   ]),
   finalize_task: argumentNames(PAGE_TARGET_ARGUMENTS, FINALIZE_SCOPE_ARGUMENTS, [
     "prune_stale", "cleanup_created_agent_window", "dry_run",

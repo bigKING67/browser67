@@ -31,13 +31,23 @@ const TAB_LIFECYCLE_TOOL_SCHEMAS = {
           type: "string",
           enum: ["background_only", "background_preferred", "foreground"],
           default: "background_preferred",
-          description: "Foreground contract. background_only rejects required focus; background_preferred uses temporary focus leases only when needed; foreground intentionally leaves the managed tab visible and activates the exact browser67-owned native Full Screen Space on macOS.",
+          description: "Foreground contract. background_only rejects required focus; background_preferred uses temporary focus leases only when needed; foreground requires confirm_foreground=true and intentionally leaves the managed tab visible.",
+        },
+        confirm_foreground: {
+          type: "boolean",
+          default: false,
+          description: "Explicitly confirm a visible foreground handoff that will not restore the prior user workspace automatically.",
+        },
+        confirm_managed_tab_overflow: {
+          type: "boolean",
+          default: false,
+          description: "Explicitly permit creating beyond the per-scope managed-tab safety limit after reviewing the exact task scope.",
         },
         window_policy: {
           type: "string",
           enum: ["dedicated", "current"],
           default: "dedicated",
-          description: "Create/reuse agent-owned tabs in the browser67 dedicated non-focused window by default. current is an explicit compatibility path for the current user window.",
+          description: "Create/reuse agent-owned tabs in the browser67 dedicated non-focused window. current is retained only for schema compatibility and fails closed; exact user tabs require inspect_adoption -> adopt_existing.",
         },
         focus_lease_timeout_ms: {
           type: "number",
@@ -103,8 +113,8 @@ const TAB_LIFECYCLE_TOOL_SCHEMAS = {
         },
         summary_only: {
           type: "boolean",
-          default: false,
-          description: "Return counts and metadata without expanding managed tab, group, stale, pruned, or kept arrays.",
+          default: true,
+          description: "Return counts and metadata without expanding managed tab, group, stale, pruned, or kept arrays. Expanded output remains ownership-filtered and never returns unmanaged user tabs.",
         },
         max_items: {
           type: "number",

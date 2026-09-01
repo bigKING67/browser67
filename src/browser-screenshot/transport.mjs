@@ -43,6 +43,11 @@ function isTmwdTransport(preferred) {
   return preferred?.transport === "tmwd_ws" || preferred?.transport === "tmwd_link";
 }
 
+function selectedRawTabId(preferred) {
+  const target = preferred?.context?.target ?? {};
+  return String(target.tab_id ?? target.tabId ?? target.id ?? "").trim();
+}
+
 function runtimeEvaluateCommand(script) {
   return {
     cmd: "cdp",
@@ -256,7 +261,7 @@ async function evaluatePageScript(args, preferred, script, runtimeOptions = {}) 
   }
   const executed = await cdpEvaluateScript({
     ...args,
-    switch_tab_id: preferred.context.target.id,
+    switch_tab_id: selectedRawTabId(preferred),
   }, script, runtimeOptions);
   return {
     value: unwrapJsValue(executed.result.value),
@@ -284,7 +289,7 @@ async function runCdpScreenshot(args, preferred, params, runtimeOptions = {}) {
   }
   const command = await cdpRunCommand({
     ...args,
-    switch_tab_id: preferred.context.target.id,
+    switch_tab_id: selectedRawTabId(preferred),
   }, "Page.captureScreenshot", params, runtimeOptions);
   return {
     base64: command.result.response?.data,
@@ -312,7 +317,7 @@ async function runCdpBrowserCommand(args, preferred, method, params = {}, runtim
   }
   const command = await cdpRunCommand({
     ...args,
-    switch_tab_id: preferred.context.target.id,
+    switch_tab_id: selectedRawTabId(preferred),
   }, method, params, runtimeOptions);
   return {
     value: command.result.response,

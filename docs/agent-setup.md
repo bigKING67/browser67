@@ -186,9 +186,10 @@ Profile, so it retains the same approved login/session state without replacing
 the user's active working tab. The exact dedicated window enters a native macOS
 Full Screen Space or an ordinary maximized Windows window while preserving the
 Chrome/Edge tab and address UI; it never uses immersive browser fullscreen for
-this presentation. Use `window_policy=current` only as an explicit
-compatibility choice and `focus_policy=foreground` only for a deliberate visible
-handoff.
+this presentation. `window_policy=current` fails closed for new agent-created
+work; operating on an exact user tab requires `inspect_adoption` followed by
+`adopt_existing`. `focus_policy=foreground` requires
+`confirm_foreground=true` and is only for a deliberate visible handoff.
 When a bounded fixture asks to clean up the Agent window it created, browser67
 also recovers the exact same browser-start epoch case where Chrome removes or
 replaces the anchor and leaves a sole internal New Tab page, including
@@ -210,7 +211,14 @@ require a fresh inspection/adoption flow. End other active browser tasks with
 browser_tab_lifecycle action=finalize_task for the current workspace_key or
 task_id unless the user asked to keep the page open; it closes only keep=false
 agent-created managed tabs, preserves keep=true, prunes stale registry records,
-and ignores unmanaged user tabs.
+ignores unmanaged user tabs, and terminalizes nonterminal structured runs in
+that exact scope. `list_managed` is privacy-summary-only by default. A scope is
+limited to eight open keep=false managed tabs unless the caller explicitly
+confirms an overflow after reviewing the scope.
+Chrome debugger attachment indicators are Browser-Profile-scoped. The Agent
+window isolates tabs and focus but cannot hide that Chrome UI from other windows
+in the same Profile; use a separate Browser Instance/Profile when debugger-UI
+isolation is required.
 Each Chrome/Edge Profile is a separate Browser Instance. With multiple active
 instances, call browser_instance_ops list and pass browser_instance_id;
 AMBIGUOUS_TARGET and BROWSER_INSTANCE_UNAVAILABLE fail closed. Scope
@@ -305,6 +313,9 @@ prior browser tab only when no user focus/tab activity was observed, the managed
 target is still foreground, the original target still exists, and the extension
 service worker did not restart. `background_only` refuses focus-required input;
 `foreground` intentionally keeps the target visible.
+macOS native scrolling is currently fail-closed: `cliclick w:` is a wait command,
+not a wheel event. Use page DOM/CDP scrolling only when the managed-page action
+is semantically appropriate.
 physical_input_provider=auto currently executes through native-os
 unless the guarded ljq-ctrl bridge is explicitly enabled and reports the
 requested action. Run `npm run check:ljqctrl` to diagnose local Python ljqCtrl

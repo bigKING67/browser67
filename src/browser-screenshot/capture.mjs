@@ -106,6 +106,9 @@ function shouldUseAtomicTmwdViewportCapture(request, state) {
 }
 
 function selectorFailureResponse(request, state, selectorClip) {
+  const target = state.preferred.context?.target ?? {};
+  const tabId = String(target.tab_id ?? target.tabId ?? target.id ?? "").trim();
+  const sessionId = String(target.session_key ?? target.sessionKey ?? target.id ?? tabId).trim();
   return {
     ok: false,
     status: selectorFailureStatus(selectorClip.reason),
@@ -124,8 +127,9 @@ function selectorFailureResponse(request, state, selectorClip) {
       reason: "layout_metrics_unavailable_or_invalid",
     },
     transport: state.preferred.transport,
-    tab_id: state.preferred.context?.target?.id,
-    session_id: state.preferred.context?.target?.id,
+    browser_instance_id: target.browser_instance_id || undefined,
+    tab_id: tabId,
+    session_id: sessionId,
     transport_attempts: state.transportAttempts,
   };
 }
@@ -243,7 +247,6 @@ async function captureArtifact(args, request, state) {
 }
 
 async function captureAtomicTmwdViewport(args, request, state) {
-  state.viewportOverrideCleanupHandled = true;
   const batch = absorbTransportResult(state, await runTmwdViewportScreenshotBatch(
     args,
     state.preferred,
@@ -258,6 +261,7 @@ async function captureAtomicTmwdViewport(args, request, state) {
     },
     state.runtimeOptions,
   ));
+  state.viewportOverrideCleanupHandled = batch.cleanup?.cleared === true;
   state.viewportOverrideResult = {
     applied: true,
     requested: request.viewportOverride.requested,
@@ -291,6 +295,10 @@ async function captureAtomicTmwdViewport(args, request, state) {
 }
 
 function successResponse(args, request, state, artifact) {
+  const target = state.preferred.context?.target ?? {};
+  const tabId = String(target.tab_id ?? target.tabId ?? target.id ?? "").trim();
+  const sessionId = String(target.session_key ?? target.sessionKey ?? target.id ?? tabId).trim();
+  const pixelCount = Number(artifact.artifact?.width ?? 0) * Number(artifact.artifact?.height ?? 0);
   return {
     ok: true,
     status: "success",
@@ -298,8 +306,9 @@ function successResponse(args, request, state, artifact) {
     action: "capture",
     target: request.target,
     transport: state.preferred.transport,
-    tab_id: state.preferred.context?.target?.id,
-    session_id: state.preferred.context?.target?.id,
+    browser_instance_id: target.browser_instance_id || undefined,
+    tab_id: tabId,
+    session_id: sessionId,
     selection: state.preferred.context?.selection,
     selection_source: state.preferred.context?.selection?.selected_by ?? null,
     page: args.include_page_metadata === false ? undefined : state.page,
@@ -325,6 +334,13 @@ function successResponse(args, request, state, artifact) {
       returns_base64: false,
     },
     artifact: artifact.artifact,
+    context_budget: {
+      inline_image_data: false,
+      artifact_reference_only: true,
+      pixel_count: Number.isFinite(pixelCount) ? pixelCount : undefined,
+      prefer_selector_or_clip: Number.isFinite(pixelCount) && pixelCount > 4_000_000,
+      guidance: "Pass the artifact path to an image viewer only when visual inspection is required; prefer selector or clip captures for narrow evidence.",
+    },
     run: {
       run_id: artifact.run.run_id,
       group: artifact.run.group,
@@ -333,6 +349,10 @@ function successResponse(args, request, state, artifact) {
       run_dir: artifact.run.run_dir,
       artifacts_dir: artifact.run.artifacts_dir,
       prepared: artifact.run_prepared,
+      terminalized: artifact.run_terminalized,
+      run_requires_finish: artifact.run_requires_finish,
+      status: artifact.run.status,
+      finished_at: artifact.run.finished_at,
     },
     transport_attempts: state.transportAttempts,
   };

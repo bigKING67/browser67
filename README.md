@@ -193,9 +193,11 @@ New browser67-owned tabs default to `window_policy:"dedicated"` and
 Agent window created with `focused:false`, so ordinary navigation, extraction,
 waits, and scripts do not replace the user's active tab. This is still the same
 Chrome/Edge Profile and therefore keeps the same approved login/session state;
-it is not a second Profile or incognito context. Use `window_policy:"current"`
-only for compatibility, and `focus_policy:"foreground"` only for an intentional
-visible handoff. On macOS, that explicit foreground handoff also activates the
+it is not a second Profile or incognito context. `window_policy:"current"`
+fails closed for new agent-created work; exact user tabs require the explicit
+adoption flow. `focus_policy:"foreground"` requires
+`confirm_foreground:true` and is only for an intentional visible handoff. On
+macOS, that explicit foreground handoff also activates the
 exact browser67-owned tab through the native Chromium window bridge so its Full
 Screen Space becomes visible; extension focus alone is not treated as proof of
 Space visibility. CAPTCHA and native input use a bounded focus lease and restore
@@ -203,6 +205,13 @@ the prior browser tab only when browser67 can prove that the user did not change
 focus during the lease. Concurrent leases are rejected. If the user manually
 moves an Agent tab into another window, browser67 excludes it from dedicated
 reuse and never moves it back.
+
+Managed listings return a privacy-safe summary by default, and each task scope
+is capped at eight open `keep:false` tabs to stop runaway tab accumulation.
+`finalize_task` closes/release only the exact managed scope and also terminalizes
+its unfinished structured runs. Chrome debugger indicators remain scoped to the
+whole Browser Profile; a separate Browser Instance/Profile is required to keep
+that Chrome UI out of ordinary user windows.
 
 The dedicated window uses a platform-native, toolbar-preserving presentation:
 on macOS it enters its own native Full Screen Space, while Windows uses the
@@ -241,6 +250,11 @@ Runtime state lives outside the repository under `~/.browser67/` by default.
 Treat browser profile data, auth metadata, screenshots, network evidence, and
 reverse artifacts as sensitive local state. Do not commit `extension/config.js`,
 cookies, tokens, HAR/PCAP files, or runtime directories.
+The runtime tool journal stores only operation identity, status/error code,
+duration, transport, and bounded counts under
+`~/.browser67/runtime/tool-events.ndjson`; it excludes URLs, scripts, form
+inputs, page content, cookies, and credentials. It is mode `0600`, rotates at
+8 MiB, and retains one bounded backup.
 
 ## Documentation
 

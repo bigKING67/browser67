@@ -6,6 +6,7 @@ import { createJobRuntimeState } from "./jobs/state.mjs";
 import { createNetworkObservationStore } from "./network/observation-store.mjs";
 import { createRunStore } from "./runs/store.mjs";
 import { createTabScheduler } from "./tab-scheduler.mjs";
+import { createToolJournal } from "./tool-journal.mjs";
 import { createSnapshotStore } from "../browser/content/snapshot-store.mjs";
 import { createTmwdTransportHealthStore } from "../tmwd-runtime/health.mjs";
 import { createTmwdWsRuntime } from "../tmwd-runtime/ws.mjs";
@@ -17,6 +18,10 @@ function createBrowserRuntime(options = {}) {
   const snapshotStore = options.snapshotStore ?? createSnapshotStore(options.snapshots);
   const downloadStore = options.downloadStore ?? createDownloadSessionStore(options.downloads);
   const runStore = options.runStore ?? createRunStore(options.runs);
+  const toolJournal = options.toolJournal ?? createToolJournal({
+    ...options.tool_journal,
+    run_root: runStore.root,
+  });
   const jobState = options.jobState ?? createJobRuntimeState();
   const networkObservations = options.networkObservations
     ?? createNetworkObservationStore(options.network_observations);
@@ -43,6 +48,7 @@ function createBrowserRuntime(options = {}) {
     transportHealth,
     tmwdWsRuntime,
     options.transportRouter,
+    toolJournal,
     runStore,
   ].filter((item) => item && typeof item.dispose === "function");
   let disposed = false;
@@ -71,6 +77,7 @@ function createBrowserRuntime(options = {}) {
       jobs: jobState.stats(),
       network_observations: networkObservations.stats(),
       run_store: runStore.stats(),
+      tool_journal: toolJournal.stats(),
       transport_health: transportHealth.stats(),
       tmwd_ws: tmwdWsRuntime.stats(),
       disposable_count: disposables.length,
@@ -107,6 +114,7 @@ function createBrowserRuntime(options = {}) {
     sessionStore,
     snapshotStore,
     runStore,
+    toolJournal,
     tmwdWsRuntime,
     transportHealth,
     stats,

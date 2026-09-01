@@ -16,6 +16,7 @@ async function runForegroundVisibilityCase(context) {
     workspace_key: context.workspaceKey,
     task_id: "foreground-visibility-live",
     focus_policy: "foreground",
+    confirm_foreground: true,
     window_policy: "dedicated",
     reuse: false,
     fresh: true,

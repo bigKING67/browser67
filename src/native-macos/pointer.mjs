@@ -172,17 +172,13 @@ async function clickPointer(action, args, timeoutMs) {
 }
 
 async function scrollPointer(args, timeoutMs) {
-  const deltaXRaw = Number(args?.delta_x ?? 0);
-  const deltaYRaw = Number(args?.delta_y ?? 0);
-  const deltaX = Number.isFinite(deltaXRaw) ? Math.max(-1_000, Math.min(1_000, Math.round(deltaXRaw))) : 0;
-  const deltaY = Number.isFinite(deltaYRaw) ? Math.max(-1_000, Math.min(1_000, Math.round(deltaYRaw))) : 0;
-  const result = await runNativeCommand("cliclick", [`w:${String(deltaX)},${String(deltaY)}`], { timeoutMs });
-  ensureNativeCommandOk(result, "cliclick scroll");
-  return {
-    driver: "macos-cliclick",
-    delta_x: deltaX,
-    delta_y: deltaY,
-  };
+  void args;
+  void timeoutMs;
+  throw createToolError(
+    "ACTION_NOT_SUPPORTED",
+    "action not supported: native macOS scroll has no verified wheel-event driver; cliclick w: is a wait command",
+    { retryable: false },
+  );
 }
 
 export {

@@ -46,6 +46,10 @@ async function run() {
     const manifest = JSON.parse(readFileSync(resolve(targetDir, "manifest.json"), "utf8"));
     const background = readFileSync(resolve(targetDir, "background.js"), "utf8");
     const runtime = readFileSync(resolve(targetDir, "browser67/runtime.js"), "utf8");
+    const debuggerRuntime = readFileSync(
+      resolve(targetDir, "browser67/debugger-runtime.js"),
+      "utf8",
+    );
     const windowFocusRuntime = readFileSync(
       resolve(targetDir, "browser67/window-focus-runtime.js"),
       "utf8",
@@ -61,9 +65,11 @@ async function run() {
     assert.equal(manifest.permissions.includes("storage"), true);
     assert.match(
       background,
-      /importScripts\('browser67\/build-identity\.js', 'browser67\/window-focus-runtime\.js', 'browser67\/runtime\.js'\)/,
+      /importScripts\('browser67\/build-identity\.js', 'browser67\/debugger-runtime\.js', 'browser67\/window-focus-runtime\.js', 'browser67\/runtime\.js'\)/,
     );
     assert.match(background, /browser67HandleCommand/);
+    assert.match(background, /browser67HandleDebuggerBatch/);
+    assert.match(background, /browser67HandleDebuggerCommand/);
     assert.match(background, /extension_identity: globalThis\.__browser67BuildIdentity \?\? null/);
     assert.match(background, /browser67\.browser_instance_id\.v1/);
     assert.match(background, /errorCode: res\.errorCode, details: res\.errorDetails/);
@@ -80,7 +86,8 @@ async function run() {
     assert.match(background, /browser67TabsUpdateFlight\.catch\(\(\) => \{\}\)\.then/);
     assert.equal(background.includes(extensionPageExecutionSource()), true);
     assert.equal(background.includes(extensionBatchReferenceSource()), true);
-    assert.match(background, /browser67ResolveBatchReferences\(rawCommand, R/);
+    assert.match(debuggerRuntime, /browser67ResolveBatchReferences/);
+    assert.match(debuggerRuntime, /Emulation\.clearDeviceMetricsOverride/);
     assert.doesNotMatch(background, /JSON\.parse\(JSON\.stringify\(params/);
     assert.doesNotMatch(background, /const resolve\$N/);
     assert.doesNotMatch(background, /id: 9999, priority: 1/);

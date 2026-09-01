@@ -63,8 +63,11 @@ two paired MCP surfaces:
      `focus_policy:"background_preferred"`, and `active:false`. This uses a
      non-focused browser67 Agent window in the same Browser Profile, preserving
      approved login/session state without replacing the user's active tab.
-   - Use `window_policy:"current"` only for explicit compatibility and
-     `focus_policy:"foreground"` only for an intentional visible handoff.
+   - `window_policy:"current"` fails closed for agent-created work. To operate
+     an exact user tab, use `inspect_adoption -> adopt_existing`; do not create
+     or navigate a tab in the user's current window as a shortcut.
+     `focus_policy:"foreground"` requires `confirm_foreground:true` and is only
+     for an intentional visible handoff.
      `background_only` must fail closed when an operation requires foreground.
    - Native/CAPTCHA operations may use a bounded managed-tab focus lease. A
      Browser Profile permits only one active lease, including concurrent
@@ -75,6 +78,10 @@ two paired MCP surfaces:
    - Before reusing a dedicated managed tab, verify its live `window_id`. If the
      user moved it out of the Agent window, quarantine that registry record and
      select/create another dedicated tab; never move the user's tab back.
+   - Reuse navigation is bound to the exact managed `(browser_instance_id,
+     tab_id)` and uses an explicit tab-targeted browser command. If that exact
+     tab does not become routable, fail with `NO_SESSION`; never execute the
+     navigation through the active/default session or another user tab.
    - Treat effective transport as lifecycle authority. If an explicitly allowed
      `tmwd_mode:"auto"` call falls back to controlled CDP, keep the managed page
      as `isolated_target` through reuse and `finalize_task`; do not reinterpret
@@ -93,6 +100,19 @@ two paired MCP surfaces:
      continuing.
    - Ordinary unmanaged tabs are read-only. Raw TMWD scripts and NodeRef
      mutations require an agent-created or adopted managed tab.
+   - `list_managed` defaults to `summary_only:true` and returns only managed
+     ownership counts, not unrelated live-session metadata. Request expanded
+     rows explicitly only for scoped diagnosis.
+   - A task scope defaults to at most eight open `keep:false` managed tabs.
+     When `MANAGED_TAB_LIMIT_REACHED` occurs, finalize/prune that exact scope;
+     use `confirm_managed_tab_overflow:true` only after reviewing it.
+   - `finalize_task` also terminalizes nonterminal structured runs in the exact
+     workspace/task scope as `interrupted`; explicit caller-owned screenshot
+     runs therefore cannot remain `running` after normal task handoff.
+   - Chrome debugger attachment UI is Browser-Profile-scoped. A same-Profile
+     Agent window isolates tabs/focus, not Chrome's debugger indicator. Use a
+     separate Browser Instance/Profile when that indicator must be isolated
+     from the user's ordinary windows.
 5. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
    `js-reverse new_page`.
 6. Windows GUI portability proof remains in the default external acceptance
@@ -158,6 +178,9 @@ two paired MCP surfaces:
   current `physical-input-v1` behavior digest; an unexpired historical proof
   cannot prove newer focus/native code. Use `npm run check:ljqctrl` only as a
   diagnostic unless the guarded execution bridge is explicitly enabled.
+- Treat macOS native `scroll` as unsupported until a verified wheel-event
+  driver exists; `cliclick w:` is wait, not scroll. Use managed-page DOM/CDP
+  scrolling only when it preserves the intended interaction semantics.
 - Wait at least five seconds after a failed physical attempt and hand off for
   multi-round image/puzzle challenges. Do not keep trying selectors, unrelated
   profiles, cross-origin IdP actions, or repeated submits.
@@ -168,7 +191,9 @@ two paired MCP surfaces:
   reason; responsive screenshots must include viewport/PNG dimension verification
   before treating a mobile artifact as valid evidence.
 - Keep large outputs bounded; write screenshots, run records, and rebuild
-  bundles as repo-external artifacts with path/hash/count metadata.
+  bundles as repo-external artifacts with path/hash/count metadata. Prefer
+  selector/clip screenshots and inspect the returned path only when needed;
+  never inline screenshot base64 into tool context.
 - Do not silently fallback from browser67 login-state tasks to remote CDP.
   `tmwd_mode=auto` CDP fallback is not the explicit remote-CDP exception.
 - Treat locked/disconnected Windows sessions as insufficient for the default

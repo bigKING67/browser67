@@ -4,6 +4,7 @@ import {
 import { createToolError } from "../runtime/tool-errors.mjs";
 import { defaultSessionRegistry } from "../runtime/sessions/registry.mjs";
 import {
+  assertManagedTabCapacity,
   deleteManagedTab,
   extractCreatedTabId,
   findReusableManagedTab,
@@ -31,10 +32,6 @@ import {
   normalizeManagementPolicy,
 } from "../tab-workspace/policy-bridge.mjs";
 import {
-  authorizeManagedExecutionNavigation,
-} from "../browser/execution/managed-context.mjs";
-import {
-  executeBrowserScript,
   executeTmwdCommandWithPreferred,
   liveTabMap,
   normalizeAction,
@@ -43,10 +40,11 @@ import {
 } from "./shared.mjs";
 import {
   closeUnkeptManagedTabs,
-  finalizeManagedTask,
   pruneStaleManagedTabs,
 } from "./tab-lifecycle-close.mjs";
+import { finalizeManagedTask } from "./tab-lifecycle-finalize.mjs";
 import { listManagedTabs } from "./tab-lifecycle-list.mjs";
+import { navigateReusableManagedTab } from "./tab-lifecycle-navigation.mjs";
 import {
   ensureAgentWindow,
   foregroundManagedTab,
@@ -99,6 +97,16 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
     command,
     runtimeOptions,
   );
+  const plannedOwnership = planManagedTab({
+    ...args,
+    ...managedWindowRecordFields(presentation),
+    browser_instance_id: browserInstanceId,
+    url,
+    dry_run: true,
+  });
+  const capacity = await assertManagedTabCapacity(plannedOwnership, {
+    confirm_overflow: args?.confirm_managed_tab_overflow === true,
+  });
   const agentWindow = options.agent_window
     ?? await ensureAgentWindow(presentation, runCommand, runtimeOptions);
   let tabId = "";
@@ -198,6 +206,7 @@ async function createManagedTab(args, options = {}, runtimeOptions = {}) {
     ready_warning: visible.ready_warning,
     managed_tab: managedTabPayload(record),
     policy_application: policyApplication,
+    capacity,
     finalize_hint: managedTabFinalizeHint(record),
     ...sessionStore.sessionPointers(),
   };
@@ -355,38 +364,22 @@ async function selectOrCreateManagedTab(args, runtimeOptions = {}) {
     let record = reusable.record;
     let navigation;
     if (reusable.policy.navigate_reused && record.url !== reusable.policy.target.normalized_url) {
-      const navigationAuthorization = await authorizeManagedExecutionNavigation(
+      const navigated = await navigateReusableManagedTab(
+        args,
         preferred,
-        {
-          ...args,
-          browser_instance_id: record.browser_instance_id,
-          session_id: record.tab_id,
-          switch_tab_id: record.tab_id,
-        },
-        "managed_tab_reuse_navigation",
+        record,
+        url,
+        runCommand,
         runtimeOptions,
       );
-      const nav = await executeBrowserScript(
-        {
-          ...args,
-          browser_instance_id: record.browser_instance_id,
-          session_id: record.tab_id,
-          switch_tab_id: record.tab_id,
-        },
-        "if (location.href !== input.url) location.href = input.url; return { url: location.href, title: document.title };",
-        { url },
-        { ...runtimeOptions, preferred },
-      );
-      navigation = {
-        requested_url: url,
-        result: nav.value,
-        transport: nav.transport,
-        authorization: navigationAuthorization,
-      };
+      navigation = navigated.navigation;
       record = await updateManagedTab(record.tab_id, {
         focus_policy: presentation.focus_policy,
-        url,
-        title: String(nav.value?.title ?? record.title ?? ""),
+        observed_url: String(navigated.tab.url ?? ""),
+        observed_title: String(navigated.tab.title ?? ""),
+        observed_at: new Date().toISOString(),
+        url: String(navigated.tab.url ?? url),
+        title: String(navigated.tab.title ?? record.title ?? ""),
       }, record.browser_instance_id) ?? record;
     } else {
       record = await updateManagedTab(record.tab_id, {

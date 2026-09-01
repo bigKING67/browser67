@@ -42,6 +42,7 @@ async function runExternalCloseCase(context) {
   const liveOnlyAfterExternalClose = await context.callTool("browser_tab_lifecycle", {
     ...context.baseArgs,
     action: "list_managed",
+    summary_only: false,
   });
   assert.equal(
     liveOnlyAfterExternalClose.managed_tabs.some((row) => String(row?.tab_id ?? "") === externallyClosedTabId),
@@ -58,6 +59,7 @@ async function runExternalCloseCase(context) {
     ...context.baseArgs,
     action: "list_managed",
     include_disconnected: true,
+    summary_only: false,
   });
   assert.equal(
     historyAfterExternalClose.managed_tabs.some((row) => String(row?.tab_id ?? "") === externallyClosedTabId),
@@ -90,6 +92,7 @@ async function runExternalCloseCase(context) {
   const finalManagedList = await context.callTool("browser_tab_lifecycle", {
     ...context.baseArgs,
     action: "list_managed",
+    summary_only: false,
   });
   assert.equal(Array.isArray(finalManagedList.managed_tabs), true);
   assert.equal(finalManagedList.managed_tabs.length, 0, "isolated managed registry should be empty after external-close cleanup");

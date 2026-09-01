@@ -72,6 +72,33 @@ function resolveManagedPresentation(args = {}, options = {}) {
   const requestedWindowPolicy = normalizeWindowPolicy(args.window_policy);
   const explicitRemoteCdp = ["remote_cdp", "cdp"].includes(String(args.tmwd_mode ?? ""));
   const tmwdTransport = ["tmwd_ws", "tmwd_link"].includes(String(options.transport ?? ""));
+  const resolvedToTmwd = !options.transport || tmwdTransport;
+  if (requestedWindowPolicy === "current" && !explicitRemoteCdp && resolvedToTmwd) {
+    throw createToolError(
+      "CURRENT_WINDOW_REQUIRES_ADOPTION",
+      "window_policy=current cannot create or reuse managed tabs in an ordinary user window; use inspect_adoption -> adopt_existing for the exact user tab",
+      {
+        retryable: false,
+        details: {
+          window_policy: requestedWindowPolicy,
+          required_flow: ["inspect_adoption", "adopt_existing"],
+        },
+      },
+    );
+  }
+  if (focusPolicy === "foreground" && args.confirm_foreground !== true) {
+    throw createToolError(
+      "FOREGROUND_NOT_CONFIRMED",
+      "focus_policy=foreground requires confirm_foreground=true because it intentionally leaves the Agent window visible",
+      {
+        retryable: false,
+        details: {
+          focus_policy: focusPolicy,
+          required_confirmation: "confirm_foreground",
+        },
+      },
+    );
+  }
   const windowPolicy = explicitRemoteCdp || (options.transport && !tmwdTransport)
     ? "isolated_target"
     : requestedWindowPolicy;

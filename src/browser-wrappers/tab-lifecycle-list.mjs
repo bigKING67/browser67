@@ -19,19 +19,36 @@ import {
   normalizeListManagedLimit,
 } from "./tab-lifecycle-limits.mjs";
 
+function ownedSessionPointers(sessionStore, ownedSessionKeys) {
+  const pointers = sessionStore.sessionPointers();
+  const activeSessionId = ownedSessionKeys.has(String(pointers.active_session_id ?? ""))
+    ? pointers.active_session_id
+    : null;
+  const defaultSessionId = ownedSessionKeys.has(String(pointers.default_session_id ?? ""))
+    ? pointers.default_session_id
+    : null;
+  const latestSessionId = ownedSessionKeys.has(String(pointers.latest_session_id ?? ""))
+    ? pointers.latest_session_id
+    : null;
+  return {
+    active_session_id: activeSessionId,
+    default_session_id: defaultSessionId,
+    latest_session_id: latestSessionId,
+    active_browser_instance_id: activeSessionId ? pointers.active_browser_instance_id : null,
+    default_browser_instance_id: defaultSessionId ? pointers.default_browser_instance_id : null,
+  };
+}
+
 async function listManagedTabs(args = {}, options = {}) {
   const sessionStore = options.runtime?.sessionStore ?? defaultSessionRegistry;
   const includeDisconnected = args?.include_disconnected === true || args?.history === true;
-  const summaryOnly = args?.summary_only === true;
+  const summaryOnly = args?.summary_only !== false;
   const maxItems = normalizeListManagedLimit(args?.max_items, DEFAULT_LIST_MANAGED_MAX_ITEMS);
   const maxStaleItems = normalizeListManagedLimit(args?.max_stale_items, DEFAULT_LIST_MANAGED_MAX_STALE_ITEMS);
   const liveSessions = sessionStore.list();
   const sessions = includeDisconnected
     ? sessionStore.list({ include_disconnected: true })
     : liveSessions;
-  const disconnectedSessions = includeDisconnected
-    ? sessions.filter((session) => session.active !== true)
-    : undefined;
   const pruneStale = args?.prune_stale === true
     ? await options.pruneStaleManagedTabs({ ...args, dry_run: args?.dry_run === true }, options)
     : undefined;
@@ -131,6 +148,12 @@ async function listManagedTabs(args = {}, options = {}) {
     };
   }
   const managedPayloads = managedRecords.map((record) => managedTabPayload(record));
+  const ownedSessionKeys = new Set(registryRecords.map((record) => browserTabKey(record)).filter(Boolean));
+  const ownedLiveSessions = liveSessions.filter((session) => ownedSessionKeys.has(browserTabKey(session)));
+  const ownedSessions = sessions.filter((session) => ownedSessionKeys.has(browserTabKey(session)));
+  const ownedDisconnectedSessions = includeDisconnected
+    ? ownedSessions.filter((session) => session.active !== true)
+    : undefined;
   const managedLimit = limitedList(managedPayloads, maxItems, summaryOnly);
   const groupPayloads = (await managedTabGroups(managedRecords)).map((group) => {
     const tabs = Array.isArray(group.tabs) ? group.tabs : [];
@@ -160,10 +183,10 @@ async function listManagedTabs(args = {}, options = {}) {
       managed_returned_count: managedLimit.returned_count,
       groups_total_count: groupLimit.total_count,
       groups_returned_count: groupLimit.returned_count,
-      live_session_count: liveSessions.length,
-      live_session_returned_count: summaryOnly ? 0 : liveSessions.length,
-      disconnected_session_count: disconnectedSessions?.length ?? 0,
-      disconnected_session_returned_count: summaryOnly ? 0 : (disconnectedSessions?.length ?? 0),
+      live_session_count: ownedLiveSessions.length,
+      live_session_returned_count: summaryOnly ? 0 : ownedLiveSessions.length,
+      disconnected_session_count: ownedDisconnectedSessions?.length ?? 0,
+      disconnected_session_returned_count: summaryOnly ? 0 : (ownedDisconnectedSessions?.length ?? 0),
       stale_total_count: limitedLiveFilter?.stale_total_count ?? 0,
       stale_returned_count: limitedLiveFilter?.stale_returned_count ?? 0,
     },
@@ -174,14 +197,15 @@ async function listManagedTabs(args = {}, options = {}) {
       groups_truncated: groupLimit.truncated,
       stale_truncated: limitedLiveFilter?.stale_truncated === true,
     },
-    live_sessions: summaryOnly ? [] : liveSessions,
-    disconnected_sessions: summaryOnly ? [] : disconnectedSessions,
-    sessions: summaryOnly ? [] : sessions,
+    live_sessions: summaryOnly ? [] : ownedLiveSessions,
+    disconnected_sessions: summaryOnly ? [] : ownedDisconnectedSessions,
+    sessions: summaryOnly ? [] : ownedSessions,
     prune_stale: pruneStale,
-    ...sessionStore.sessionPointers(),
+    ...ownedSessionPointers(sessionStore, ownedSessionKeys),
   };
 }
 
 export {
   listManagedTabs,
+  ownedSessionPointers,
 };

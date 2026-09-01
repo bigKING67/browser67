@@ -140,23 +140,35 @@ async function dispatchRegisteredTool(name, args = {}, options = {}) {
   const requestId = options.request_id || randomId("tool");
   const registry = options.registry ?? BROWSER_TOOL_REGISTRY;
   const runtime = options.runtime ?? DEFAULT_BROWSER_RUNTIME;
+  const journal = async (entry = {}) => runtime.toolJournal?.record?.({
+    runtime_id: runtime.runtime_id,
+    request_id: requestId,
+    surface: "browser",
+    tool: String(name),
+    args,
+    ...entry,
+  });
   const tool = registry[name];
   if (!tool) {
+    const durationMs = Number((performance.now() - startedAt).toFixed(2));
+    await journal({ status: "error", error_code: "TOOL_NOT_FOUND", retryable: false, duration_ms: durationMs });
     return formatMcpOutcome(failedOutcome(new Error(`unknown tool: ${String(name)}`), {
       code: "TOOL_NOT_FOUND",
       retryable: false,
       request_id: requestId,
-      duration_ms: Number((performance.now() - startedAt).toFixed(2)),
+      duration_ms: durationMs,
       meta: { tool: String(name) },
     }));
   }
   const validationErrors = validateToolArguments(tool, args);
   if (validationErrors.length > 0) {
+    const durationMs = Number((performance.now() - startedAt).toFixed(2));
+    await journal({ status: "error", error_code: "INVALID_ARGUMENTS", retryable: false, duration_ms: durationMs });
     return formatMcpOutcome(failedOutcome(new Error("tool arguments failed validation"), {
       code: "INVALID_ARGUMENTS",
       retryable: false,
       request_id: requestId,
-      duration_ms: Number((performance.now() - startedAt).toFixed(2)),
+      duration_ms: durationMs,
       details: { validation_errors: validationErrors },
       meta: { tool: name },
     }));
@@ -175,10 +187,12 @@ async function dispatchRegisteredTool(name, args = {}, options = {}) {
     const transportAttempts = outputMode === "compact"
       ? compactTransportAttempts(rawTransportAttempts)
       : rawTransportAttempts;
+    const durationMs = Number((performance.now() - startedAt).toFixed(2));
+    await journal({ status: "success", duration_ms: durationMs, result: rawData });
     return formatMcpOutcome(completedOutcome(data, {
       page,
       request_id: requestId,
-      duration_ms: Number((performance.now() - startedAt).toFixed(2)),
+      duration_ms: durationMs,
       transport_attempts: transportAttempts,
       meta: {
         tool: name,
@@ -197,12 +211,14 @@ async function dispatchRegisteredTool(name, args = {}, options = {}) {
     const transportAttempts = outputMode === "compact"
       ? compactTransportAttempts(error?.transportAttempts)
       : error?.transportAttempts;
+    const durationMs = Number((performance.now() - startedAt).toFixed(2));
+    await journal({ status: "error", error_code: code, retryable, duration_ms: durationMs });
     return formatMcpOutcome(failedOutcome(error, {
       page,
       code,
       retryable,
       request_id: requestId,
-      duration_ms: Number((performance.now() - startedAt).toFixed(2)),
+      duration_ms: durationMs,
       details: error?.details,
       transport_attempts: transportAttempts,
       meta: { tool: name, output_policy: tool.outputPolicy, output_mode: outputMode },
