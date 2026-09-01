@@ -64,7 +64,17 @@ replacement for the target agent's own MCP config if it does not read that path.
 
 ## Skill installation
 
-For Pi, prefer package installation:
+For Pi-67, use the explicit external-repository lifecycle. Initial installation
+and later updates prepare dependencies, extension files, active Skills, and MCP
+configuration before the deep readiness check:
+
+```bash
+pi-67 external install browser67
+pi-67 external update browser67
+pi-67 external doctor browser67 --deep
+```
+
+For direct upstream Pi package use outside Pi-67, pin a tag or commit:
 
 ```bash
 pi install git:github.com/bigKING67/browser67@<tag-or-commit>

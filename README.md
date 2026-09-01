@@ -152,7 +152,16 @@ skills/browser67
 skills/js-reverse
 ```
 
-For Pi, pin a tag or commit so the package checkout remains reproducible:
+For Pi-67, use the explicit external-repository lifecycle:
+
+```bash
+pi-67 external install browser67
+pi-67 external update browser67
+pi-67 external doctor browser67 --deep
+```
+
+For direct upstream Pi package use outside Pi-67, pin a tag or commit so that
+package checkout remains reproducible:
 
 ```bash
 pi install git:github.com/bigKING67/browser67@<tag-or-commit>

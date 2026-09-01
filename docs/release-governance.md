@@ -132,26 +132,33 @@ home, not the repository:
 ~/.browser67/optional-live-proofs/
 ```
 
-## Pi package pin
+## Pi-67 external integration
 
-After pushing a browser67 release or release-candidate commit, update the Pi
-package pin to the exact browser67 commit:
+After pushing a browser67 release or release-candidate commit, update the clean
+Pi-67 external checkout through its explicit lifecycle:
+
+```bash
+pi-67 external update browser67 --json
+git -C ~/.agents/packages/browser67 rev-parse HEAD
+pi-67 external doctor browser67 --deep --json
+pi-67 status --json
+pi-67 report --operation browser67-release --output /tmp/pi67-browser67-release-report.json --json
+```
+
+Verify that the external checkout revision equals the intended browser67
+release commit. If remote `main` moved first, report and audit the newer commit
+instead of resetting, detaching, or overwriting the managed checkout. The
+external updater blocks dirty or detached repositories and must preserve a
+valid alternate MCP root.
+
+Do not edit Pi-67 `settings.json` to create a static browser67 package pin. The
+maintained Pi-67 distribution owns browser67 through the external-repository
+contract. Direct upstream Pi users outside Pi-67 may still use a reproducible
+package pin when that is their selected integration model:
 
 ```bash
 pi install git:github.com/bigKING67/browser67@<tag-or-commit>
 ```
-
-For the maintained pi-67 checkout, update `settings.json` with the exact commit,
-then run:
-
-```bash
-bash /Users/gaoqian/.pi/agent/scripts/pi67-doctor.sh --deep-mcp --mcp-timeout-ms 5000 --json
-bash /Users/gaoqian/.pi/agent/scripts/pi67-report.sh --operation browser67-pin-commit --doctor-deep-mcp --mcp-timeout-ms 5000
-bash /Users/gaoqian/.pi/agent/scripts/pi67-status.sh --json
-```
-
-Commit only the scoped Pi pin change and push it after the doctor reports
-`READY`.
 
 ## Tagging and publishing boundary
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Align Pi integration and release-governance guidance with Pi-67's explicit
+  external-repository lifecycle. Maintained Pi-67 installs now use
+  `pi-67 external install/update/doctor browser67` and verify the external
+  checkout revision instead of editing `settings.json` as a static package
+  pin; direct upstream Pi users may still pin a browser67 tag or commit.
+
 ## 0.10.0 - 2026-09-01
 
 - Harden managed-browser isolation and bounded runtime ownership: fail closed

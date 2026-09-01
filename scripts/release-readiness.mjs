@@ -232,11 +232,12 @@ async function buildReadiness(args) {
       textIncludesAll(releaseDoc, [
         "npm run check:release-readiness",
         "npm run release:ready",
-        "Pi package pin",
+        "Pi-67 external integration",
+        "pi-67 external update browser67",
         "optional live proofs",
         "Do not publish or tag",
       ]),
-      "docs/release-governance.md documents release gates, Pi pin, optional proof boundaries, and publish/tag confirmation.",
+      "docs/release-governance.md documents release gates, Pi-67 external integration, optional proof boundaries, and publish/tag confirmation.",
     ),
     check(
       "readme_documents_release_gate",
