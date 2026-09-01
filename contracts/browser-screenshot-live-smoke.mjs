@@ -129,6 +129,16 @@ function createToolCaller(rpc, timeoutMs) {
   };
 }
 
+function createToolErrorCaller(rpc, timeoutMs) {
+  return async function callToolError(name, args) {
+    const response = await rpc.call("tools/call", { name, arguments: args }, timeoutMs);
+    const payload = firstJsonContent(response.result);
+    assert.equal(response?.result?.isError, true, `${name} should return a tool error`);
+    assert.ok(payload && typeof payload === "object", `${name} should return a structured error`);
+    return payload;
+  };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -185,6 +195,7 @@ async function run() {
   const fixture = await startScreenshotFixture();
   const rpc = createRpcClient();
   const callTool = createToolCaller(rpc, cli.timeout_ms);
+  const callToolError = createToolErrorCaller(rpc, cli.timeout_ms);
   const workspaceKey = `screenshot-live-${String(Date.now())}`;
   let tabId = "";
   try {
@@ -231,6 +242,28 @@ async function run() {
     });
     await assertScreenshotArtifact(viewport, "viewport");
     assert.equal(viewport.target, "viewport");
+
+    const viewportOverBudget = await callToolError("browser_screenshot_ops", {
+      ...baseArgs,
+      tab_id: tabId,
+      target: "viewport",
+      viewport: {
+        width: 100,
+        height: 100,
+        dpr: 2,
+      },
+      workspace_key: workspaceKey,
+      task_id: "screenshot-live-smoke",
+      title: "viewport-over-budget",
+      prepare_run: false,
+      max_pixels: 10_000,
+    });
+    assert.equal(viewportOverBudget.error_code, "INVALID_ARGUMENT");
+    assert.equal(viewportOverBudget.details?.device_pixel_ratio, 2);
+    assert.equal(viewportOverBudget.details?.area_css_pixels, 10_000);
+    assert.equal(viewportOverBudget.details?.area_bitmap_pixels, 40_000);
+    assert.equal(viewportOverBudget.details?.max_pixels, 10_000);
+    assert.equal(viewportOverBudget.artifact, undefined);
 
     const mobileViewport = await callTool("browser_screenshot_ops", {
       ...baseArgs,
@@ -305,6 +338,22 @@ async function run() {
     );
     assert.ok(selectorFallback.capture.clip.width > 0, "selector fallback clip width");
 
+    const fullPageOverBudget = await callToolError("browser_screenshot_ops", {
+      ...baseArgs,
+      tab_id: tabId,
+      target: "full_page",
+      workspace_key: workspaceKey,
+      task_id: "screenshot-live-smoke",
+      title: "full-page-over-budget",
+      prepare_run: false,
+      max_pixels: 8_000_000,
+    });
+    assert.equal(fullPageOverBudget.error_code, "INVALID_ARGUMENT");
+    assert.equal(fullPageOverBudget.details?.device_pixel_ratio, 2);
+    assert.ok(fullPageOverBudget.details?.area_bitmap_pixels > 8_000_000);
+    assert.equal(fullPageOverBudget.details?.max_pixels, 8_000_000);
+    assert.equal(fullPageOverBudget.artifact, undefined);
+
     const fullPage = await callTool("browser_screenshot_ops", {
       ...baseArgs,
       tab_id: tabId,
@@ -312,11 +361,18 @@ async function run() {
       workspace_key: workspaceKey,
       task_id: "screenshot-live-smoke",
       title: "full-page",
-      max_pixels: 8_000_000,
+      max_pixels: 12_000_000,
     });
     await assertScreenshotArtifact(fullPage, "full_page");
     assert.equal(fullPage.target, "full_page");
     assert.equal(fullPage.capture.capture_beyond_viewport, true);
+    assert.equal(fullPage.capture.device_pixel_ratio, 2);
+    assert.equal(
+      fullPage.capture.actual_bitmap_pixels,
+      fullPage.artifact.width * fullPage.artifact.height,
+    );
+    assert.ok(fullPage.capture.predicted_bitmap_pixels <= fullPage.capture.max_pixels);
+    assert.ok(fullPage.capture.actual_bitmap_pixels <= fullPage.capture.max_pixels);
 
     const finalized = await callTool("browser_tab_lifecycle", {
       ...baseArgs,
@@ -335,6 +391,8 @@ async function run() {
       selector_artifact: selector.artifact.path,
       selector_fallback_artifact: selectorFallback.artifact.path,
       full_page_artifact: fullPage.artifact.path,
+      viewport_budget_error_code: viewportOverBudget.error_code,
+      full_page_budget_error_code: fullPageOverBudget.error_code,
       finalized_status: finalized.status,
       run_root: runRoot,
     })}\n`);

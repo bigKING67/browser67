@@ -8,11 +8,72 @@ import {
   buildViewportOverrideVerification,
 } from "../../src/browser-screenshot/verification.mjs";
 import {
+  normalizeClip,
+} from "../../src/browser-screenshot/clip.mjs";
+import {
+  buildFullPageClip,
+  buildSelectorClip,
+} from "../../src/browser-screenshot/capture-targets.mjs";
+import {
   buildTmwdViewportScreenshotBatch,
   parseTmwdViewportScreenshotBatchResults,
 } from "../../src/browser-screenshot/transport.mjs";
 
 async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
+  const assertBitmapBudgetError = (error) => {
+    assert.equal(error?.errorCode, "INVALID_ARGUMENT");
+    assert.equal(error?.details?.area_css_pixels, 10_000);
+    assert.equal(error?.details?.device_pixel_ratio, 2);
+    assert.equal(error?.details?.capture_scale, 1);
+    assert.equal(error?.details?.area_bitmap_pixels, 40_000);
+    assert.equal(error?.details?.max_pixels, 10_000);
+    return true;
+  };
+
+  assert.throws(
+    () => normalizeClip({ x: 0, y: 0, width: 100, height: 100, scale: 1 }, {
+      dpr: 2,
+      maxPixels: 10_000,
+      label: "clip",
+    }),
+    assertBitmapBudgetError,
+  );
+
+  const scaledHiDpiClip = normalizeClip(
+    { x: 0, y: 0, width: 100, height: 100, scale: 0.5 },
+    { dpr: 2, maxPixels: 10_000, label: "clip" },
+  );
+  assert.equal(scaledHiDpiClip.area_css_pixels, 10_000);
+  assert.equal(scaledHiDpiClip.device_pixel_ratio, 2);
+  assert.equal(scaledHiDpiClip.capture_scale, 0.5);
+  assert.equal(scaledHiDpiClip.bitmap_width, 100);
+  assert.equal(scaledHiDpiClip.bitmap_height, 100);
+  assert.equal(scaledHiDpiClip.area_bitmap_pixels, 10_000);
+
+  assert.throws(
+    () => buildSelectorClip({
+      ok: true,
+      selector: "#hidpi-target",
+      rect: { left: 0, top: 0, width: 100, height: 100 },
+      page: {
+        viewport: {
+          device_pixel_ratio: 2,
+          scroll_x: 0,
+          scroll_y: 0,
+        },
+      },
+    }, 10_000),
+    assertBitmapBudgetError,
+  );
+
+  assert.throws(
+    () => buildFullPageClip({
+      viewport: { device_pixel_ratio: 2 },
+      document: { scroll_width: 100, scroll_height: 100 },
+    }, 10_000),
+    assertBitmapBudgetError,
+  );
+
   const atomicBatch = buildTmwdViewportScreenshotBatch({
     viewportParams: {
       width: 390,
@@ -206,6 +267,7 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
     invalid_viewport_error_code: invalidViewportPayload.error_code,
     tmwd_viewport_atomic_batch: "enabled",
     viewport_artifact_dimension_guard: "enabled",
+    hidpi_bitmap_pixel_guard: "enabled",
   };
 }
 

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Enforce screenshot `max_pixels` against the predicted final PNG bitmap after
+  device pixel ratio and capture scale for viewport, clip, selector, and
+  full-page targets. Captures also verify the decoded PNG dimensions before
+  writing an artifact, return predicted and actual bitmap metrics, and fail
+  closed with `INVALID_ARGUMENT` instead of silently emitting an oversized
+  HiDPI image.
+
 ## 0.9.0 - 2026-08-31
 
 - Prevent live/release verification from leaving a browser67-created Agent

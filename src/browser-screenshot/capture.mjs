@@ -1,6 +1,7 @@
 import { createToolError } from "../runtime/tool-errors.mjs";
 import { mergeTransportAttempts } from "../runtime/transport-attempts.mjs";
 import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
+import { readPngDimensions } from "../image/png-lite.mjs";
 import { writeScreenshotArtifact } from "./artifact.mjs";
 import {
   buildFullPageClip,
@@ -10,6 +11,7 @@ import {
   selectorFailureStatus,
 } from "./capture-targets.mjs";
 import {
+  assertBitmapPixelBudget,
   finiteNumber,
   normalizeClip,
 } from "./clip.mjs";
@@ -105,6 +107,29 @@ function shouldUseAtomicTmwdViewportCapture(request, state) {
     && isTmwdTransport(state.preferred);
 }
 
+function assertCapturePixelBudget(request, state) {
+  const source = state.cdpClip ?? {};
+  const viewport = state.page?.viewport ?? {};
+  const requestedViewport = request.viewportOverride?.requested ?? {};
+  const width = state.cdpClip
+    ? source.width
+    : finiteNumber(viewport.inner_width) ?? requestedViewport.width;
+  const height = state.cdpClip
+    ? source.height
+    : finiteNumber(viewport.inner_height) ?? requestedViewport.height;
+  const dpr = finiteNumber(viewport.device_pixel_ratio)
+    ?? finiteNumber(requestedViewport.dpr)
+    ?? 1;
+  const scale = state.cdpClip ? finiteNumber(source.scale) ?? 1 : 1;
+  const budget = assertBitmapPixelBudget(width, height, request.maxPixels, {
+    dpr,
+    label: request.target,
+    scale,
+  });
+  state.pixelBudget = budget;
+  return budget;
+}
+
 function selectorFailureResponse(request, state, selectorClip) {
   const target = state.preferred.context?.target ?? {};
   const tabId = String(target.tab_id ?? target.tabId ?? target.id ?? "").trim();
@@ -182,6 +207,7 @@ async function resolveSelectorTarget(args, request, state) {
 async function resolveCaptureTarget(args, request, state) {
   if (request.target === "clip") {
     const normalized = normalizeClip(args.clip, {
+      dpr: finiteNumber(state.page?.viewport?.device_pixel_ratio) ?? 1,
       maxPixels: request.maxPixels,
       label: "clip",
     });
@@ -215,9 +241,17 @@ async function writeCapturedArtifact(args, request, state, base64) {
       retryable: false,
     });
   }
+  const bytes = Buffer.from(base64, "base64");
+  const dimensions = readPngDimensions(bytes);
+  state.actualPixelBudget = assertBitmapPixelBudget(
+    dimensions.width,
+    dimensions.height,
+    request.maxPixels,
+    { label: `${request.target} PNG` },
+  );
   const artifact = await writeScreenshotArtifact({
     args,
-    bytes: Buffer.from(base64, "base64"),
+    bytes,
     target: request.target,
     title: args.title ?? state.page?.title ?? "",
     clip: state.clip,
@@ -247,6 +281,7 @@ async function captureArtifact(args, request, state) {
 }
 
 async function captureAtomicTmwdViewport(args, request, state) {
+  assertCapturePixelBudget(request, state);
   const batch = absorbTransportResult(state, await runTmwdViewportScreenshotBatch(
     args,
     state.preferred,
@@ -328,9 +363,13 @@ function successResponse(args, request, state, artifact) {
       capture_beyond_viewport: state.captureBeyondViewport,
       clip: state.clip,
       max_pixels: request.maxPixels,
-      area_css_pixels: state.clip
-        ? finiteNumber(state.clip.width) * finiteNumber(state.clip.height)
-        : undefined,
+      area_css_pixels: state.pixelBudget?.area_css_pixels,
+      device_pixel_ratio: state.pixelBudget?.device_pixel_ratio,
+      capture_scale: state.pixelBudget?.capture_scale,
+      predicted_bitmap_width: state.pixelBudget?.bitmap_width,
+      predicted_bitmap_height: state.pixelBudget?.bitmap_height,
+      predicted_bitmap_pixels: state.pixelBudget?.area_bitmap_pixels,
+      actual_bitmap_pixels: state.actualPixelBudget?.area_bitmap_pixels,
       returns_base64: false,
     },
     artifact: artifact.artifact,
@@ -408,6 +447,8 @@ async function captureBrowserScreenshot(args = {}, runtimeOptions = {}) {
     captureBeyondViewport: false,
     viewportOverrideResult: null,
     viewportOverrideCleanupHandled: false,
+    pixelBudget: null,
+    actualPixelBudget: null,
   };
 
   try {
@@ -419,6 +460,7 @@ async function captureBrowserScreenshot(args = {}, runtimeOptions = {}) {
     await readPageState(args, request, state);
     const targetFailure = await resolveCaptureTarget(args, request, state);
     if (targetFailure) return targetFailure;
+    assertCapturePixelBudget(request, state);
     const artifact = await captureArtifact(args, request, state);
     return successResponse(args, request, state, artifact);
   } finally {

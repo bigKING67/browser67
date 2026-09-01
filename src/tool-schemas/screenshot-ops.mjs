@@ -5,7 +5,7 @@ import {
 
 const SCREENSHOT_TOOL_SCHEMAS = {
   browser_screenshot_ops: {
-    description: "Capture real-browser PNG screenshots through TMWD/CDP and write repo-external artifacts. selector captures pre-sample layout metrics and may fall back to the measured clip when the selector detaches between probes. Responsive viewport captures verify requested viewport metrics against PNG dimensions before returning success. Returns metadata, an artifact path, and context-budget guidance; never screenshot base64. Prefer selector or clip for narrow evidence.",
+    description: "Capture real-browser PNG screenshots through TMWD/CDP and write repo-external artifacts. selector captures pre-sample layout metrics and may fall back to the measured clip when the selector detaches between probes. Responsive viewport captures verify requested viewport metrics against PNG dimensions before returning success. max_pixels bounds final PNG bitmap pixels after device pixel ratio and capture scale. Returns metadata, an artifact path, and context-budget guidance; never screenshot base64. Prefer selector or clip for narrow evidence.",
     inputSchema: {
       type: "object",
       properties: {
@@ -76,6 +76,7 @@ const SCREENSHOT_TOOL_SCHEMAS = {
           minimum: 1,
           maximum: HARD_MAX_SCREENSHOT_PIXELS,
           default: DEFAULT_MAX_SCREENSHOT_PIXELS,
+          description: "Maximum final PNG bitmap pixel count after device pixel ratio and capture scale. Captures that exceed the budget fail closed before artifact write.",
         },
         timeout_ms: { type: "number", minimum: 100, maximum: 120_000 },
       },

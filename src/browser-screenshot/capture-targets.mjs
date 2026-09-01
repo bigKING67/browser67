@@ -1,5 +1,5 @@
 import {
-  assertPixelBudget,
+  assertBitmapPixelBudget,
   finiteNumber,
   roundCoordinate,
 } from "./clip.mjs";
@@ -26,7 +26,10 @@ function metricSelectorResult(metric, layoutMetrics, selector) {
 function buildFullPageClip(page, maxPixels) {
   const width = roundCoordinate(page?.document?.scroll_width);
   const height = roundCoordinate(page?.document?.scroll_height);
-  assertPixelBudget(width, height, maxPixels, "full_page");
+  assertBitmapPixelBudget(width, height, maxPixels, {
+    dpr: finiteNumber(page?.viewport?.device_pixel_ratio) ?? 1,
+    label: "full_page",
+  });
   return {
     x: 0,
     y: 0,
@@ -60,7 +63,10 @@ function buildSelectorClip(selectorResult, maxPixels) {
       rect,
     };
   }
-  assertPixelBudget(width, height, maxPixels, "selector");
+  assertBitmapPixelBudget(width, height, maxPixels, {
+    dpr: finiteNumber(page.viewport?.device_pixel_ratio) ?? 1,
+    label: "selector",
+  });
   return {
     ok: true,
     clip: {
