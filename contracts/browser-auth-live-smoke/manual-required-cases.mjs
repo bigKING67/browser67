@@ -38,6 +38,7 @@ async function createManagedTab({ callTool, cli, fixture, workspaceKey }, path) 
     workspace_key: workspaceKey,
     fresh: true,
     active: false,
+    confirm_managed_tab_overflow: true,
     wait_until: "listed",
     wait_timeout_ms: 5_000,
     wait_poll_ms: 100,
