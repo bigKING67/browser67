@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.10.0 - 2026-09-01
+
+- Harden managed-browser isolation and bounded runtime ownership: fail closed
+  when agent-created work requests the user's current window, cap each task
+  scope at eight open unkept tabs, keep managed listings summary-only by
+  default, terminalize scoped unfinished runs during finalization, serialize
+  per-tab Debugger access, and add a privacy-safe rotating tool journal that
+  excludes URLs, scripts, page content, form inputs, cookies, and credentials.
 - Enforce screenshot `max_pixels` against the predicted final PNG bitmap after
   device pixel ratio and capture scale for viewport, clip, selector, and
   full-page targets. Captures also verify the decoded PNG dimensions before
