@@ -9,15 +9,15 @@ import {
   validateUploadFiles,
 } from "./shared.mjs";
 
-function dispatchFileInputEventsExpression(selector) {
+function verifyFileInputStateExpression(selector) {
   return `(() => {
     const el = document.querySelector(${JSON.stringify(selector)});
     if (!el) return { ok: false, error: "input not found after setFileInputFiles" };
-    ["input", "change"].forEach((type) => el.dispatchEvent(new Event(type, { bubbles: true })));
     return {
       ok: true,
       files_count: el.files ? el.files.length : 0,
-      selector: ${JSON.stringify(selector)}
+      selector: ${JSON.stringify(selector)},
+      events_source: "DOM.setFileInputFiles"
     };
   })()`;
 }
@@ -43,11 +43,14 @@ async function setInputFilesViaCdp(args, selector, files, options = {}) {
     nodeId,
     files,
   }, options);
-  const dispatchResult = await cdpRunCommand(args ?? {}, "Runtime.evaluate", {
-    expression: dispatchFileInputEventsExpression(selector),
+  const verificationResult = await cdpRunCommand(args ?? {}, "Runtime.evaluate", {
+    expression: verifyFileInputStateExpression(selector),
     awaitPromise: true,
     returnByValue: true,
   }, options);
+  const verification = verificationResult.result.response?.result?.value
+    ?? verificationResult.result.response
+    ?? {};
   return {
     transport: "cdp",
     tab_id: setResult.target.id,
@@ -57,13 +60,14 @@ async function setInputFilesViaCdp(args, selector, files, options = {}) {
     cdp: {
       node_id: nodeId,
       set_file_input_files: setResult.result.response ?? {},
-      dispatch: dispatchResult.result.response?.result?.value ?? dispatchResult.result.response ?? {},
+      verification,
+      dispatch: verification,
     },
   };
 }
 
-async function setInputFilesViaTmwd(args, selector, files, options = {}) {
-  const command = {
+function buildSetInputFilesTmwdCommand(selector, files) {
+  return {
     cmd: "batch",
     commands: [
       {
@@ -74,24 +78,28 @@ async function setInputFilesViaTmwd(args, selector, files, options = {}) {
       {
         cmd: "cdp",
         method: "DOM.querySelector",
-        params: { nodeId: "$0.data.root.nodeId", selector },
+        params: { nodeId: "$0.root.nodeId", selector },
       },
       {
         cmd: "cdp",
         method: "DOM.setFileInputFiles",
-        params: { nodeId: "$1.data.nodeId", files },
+        params: { nodeId: "$1.nodeId", files },
       },
       {
         cmd: "cdp",
         method: "Runtime.evaluate",
         params: {
-          expression: dispatchFileInputEventsExpression(selector),
+          expression: verifyFileInputStateExpression(selector),
           awaitPromise: true,
           returnByValue: true,
         },
       },
     ],
   };
+}
+
+async function setInputFilesViaTmwd(args, selector, files, options = {}) {
+  const command = buildSetInputFilesTmwdCommand(selector, files);
   const result = await executeTmwdCommand(args, command, options);
   const results = extractBatchResults(result);
   const failed = results.find((item) => item?.ok === false);
@@ -252,4 +260,7 @@ async function handleBrowserFileOps(args, options = {}) {
   return handleNativeFileChooserPlan(args);
 }
 
-export { handleBrowserFileOps };
+export {
+  buildSetInputFilesTmwdCommand,
+  handleBrowserFileOps,
+};

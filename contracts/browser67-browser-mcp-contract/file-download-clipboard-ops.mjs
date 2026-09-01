@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { buildSetInputFilesTmwdCommand } from "../../src/browser-wrappers/file-ops.mjs";
 import {
   assertTextJsonContent,
   firstJsonContent,
@@ -10,6 +11,22 @@ import {
 export async function assertFileDownloadClipboardOpsContract({ rpc, timeoutMs }) {
   let tmpDownloadDir;
   try {
+    const tmwdMultiFileCommand = buildSetInputFilesTmwdCommand(
+      "#multiple-files",
+      ["/tmp/alpha.txt", "/tmp/beta.txt"],
+    );
+    assert.equal(tmwdMultiFileCommand.commands[1].params.nodeId, "$0.root.nodeId");
+    assert.equal(tmwdMultiFileCommand.commands[2].params.nodeId, "$1.nodeId");
+    assert.deepEqual(
+      tmwdMultiFileCommand.commands[2].params.files,
+      ["/tmp/alpha.txt", "/tmp/beta.txt"],
+    );
+    assert.doesNotMatch(
+      tmwdMultiFileCommand.commands[3].params.expression,
+      /dispatchEvent/,
+      "DOM.setFileInputFiles already dispatches input/change events",
+    );
+
     const filePlanCall = await rpc.call(
       "tools/call",
       {
