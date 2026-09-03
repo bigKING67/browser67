@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.11.2 - 2026-09-03
+
 - Make mobile viewport and selector screenshots reliable in background hidden
   tabs by replacing RAF-dependent probes with synchronous layout reads, adding
   an atomic CDP layout barrier, and bounding debugger timeout cleanup so
