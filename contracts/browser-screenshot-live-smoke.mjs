@@ -12,6 +12,19 @@ import {
   parseArgs,
 } from "./browser-captcha-assist-live-smoke/cli.mjs";
 
+const DEFAULT_SCREENSHOT_TOOL_TIMEOUT_MS = 25_000;
+const SCREENSHOT_RPC_HEADROOM_MS = 5_000;
+
+function resolveScreenshotTimeouts(argv, parsedTimeoutMs) {
+  const toolTimeoutMs = argv.includes("--timeout-ms")
+    ? parsedTimeoutMs
+    : DEFAULT_SCREENSHOT_TOOL_TIMEOUT_MS;
+  return {
+    tool_timeout_ms: toolTimeoutMs,
+    rpc_timeout_ms: toolTimeoutMs + SCREENSHOT_RPC_HEADROOM_MS,
+  };
+}
+
 async function startScreenshotFixture() {
   const sockets = new Set();
   const server = createServer((req, res) => {
@@ -183,8 +196,13 @@ async function assertScreenshotArtifact(payload, label) {
 }
 
 async function run() {
-  const cli = parseArgs(process.argv.slice(2));
-  const baseArgs = commonArgs(cli);
+  const argv = process.argv.slice(2);
+  const cli = parseArgs(argv);
+  const timeouts = resolveScreenshotTimeouts(argv, cli.timeout_ms);
+  const baseArgs = {
+    ...commonArgs(cli),
+    timeout_ms: timeouts.tool_timeout_ms,
+  };
   const registryDir = await mkdtemp(path.join(os.tmpdir(), "tmwd-screenshot-live-registry-"));
   const runRoot = await mkdtemp(path.join(os.tmpdir(), "tmwd-screenshot-live-runs-"));
   const previousRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
@@ -194,12 +212,12 @@ async function run() {
 
   const fixture = await startScreenshotFixture();
   const rpc = createRpcClient();
-  const callTool = createToolCaller(rpc, cli.timeout_ms);
-  const callToolError = createToolErrorCaller(rpc, cli.timeout_ms);
+  const callTool = createToolCaller(rpc, timeouts.rpc_timeout_ms);
+  const callToolError = createToolErrorCaller(rpc, timeouts.rpc_timeout_ms);
   const workspaceKey = `screenshot-live-${String(Date.now())}`;
   let tabId = "";
   try {
-    await initializeRpc(rpc, cli.timeout_ms);
+    await initializeRpc(rpc, timeouts.rpc_timeout_ms);
     const managed = await callTool("browser_tab_lifecycle", {
       ...baseArgs,
       action: "select_or_create",
@@ -436,6 +454,8 @@ async function run() {
       full_page_artifact: fullPage.artifact.path,
       viewport_budget_error_code: viewportOverBudget.error_code,
       full_page_budget_error_code: fullPageOverBudget.error_code,
+      tool_timeout_ms: timeouts.tool_timeout_ms,
+      rpc_timeout_ms: timeouts.rpc_timeout_ms,
       finalized_status: finalized.status,
       run_root: runRoot,
     })}\n`);

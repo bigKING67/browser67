@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Separate the screenshot live gate's 25-second operation deadline from its
+  30-second RPC envelope so slow viewport cleanup or a structured timeout can
+  return without racing an identical client-side deadline.
 - Stabilize the Windows performance smoke gate with a platform-specific
   run-lifecycle I/O budget while preserving the stricter macOS/Linux threshold
   and the existing latency, total-write, and relative-filesystem checks.

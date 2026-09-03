@@ -139,6 +139,12 @@ worker's build identity. The other gates create isolated managed fixtures and
 must finalize them. Their success does not prove behavior on an unrelated site
 or external account.
 
+The screenshot live gate gives screenshot operations a 25-second deadline and
+keeps a separate 30-second RPC envelope so viewport cleanup and structured
+timeout errors can reach the caller. `--timeout-ms` overrides the operation
+deadline; the RPC envelope remains five seconds larger instead of racing the
+same deadline.
+
 The TMWD performance live gate complements the deterministic performance smoke
 with cold and warm p50/p95/p99 measurements for extension transport, managed
 execution, actionable extraction, and selector waits against an isolated local
