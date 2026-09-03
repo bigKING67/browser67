@@ -297,8 +297,46 @@ async function run() {
     assert.equal(mobileViewport.viewport_override?.verification?.artifact?.expected?.height, 1688);
     assert.equal(mobileViewport.artifact.width, 780);
     assert.equal(mobileViewport.artifact.height, 1688);
+    assert.ok(mobileViewport.deadline?.elapsed_ms <= mobileViewport.deadline?.timeout_ms);
     assert.equal(mobileViewport.layout_metrics?.selectors?.capture_target?.found, true);
     assert.equal(typeof mobileViewport.layout_metrics?.horizontal_overflow, "boolean");
+
+    const mobileSelector = await callTool("browser_screenshot_ops", {
+      ...baseArgs,
+      tab_id: tabId,
+      target: "selector",
+      selector: "#capture-target",
+      viewport: {
+        width: 390,
+        height: 844,
+        dpr: 2,
+        is_mobile: true,
+      },
+      workspace_key: workspaceKey,
+      task_id: "screenshot-live-smoke",
+      title: "mobile-selector",
+      max_pixels: 8_000_000,
+    });
+    await assertScreenshotArtifact(mobileSelector, "mobile_selector");
+    assert.equal(mobileSelector.target, "selector");
+    assert.equal(mobileSelector.selector, "#capture-target");
+    assert.equal(mobileSelector.viewport_override?.requested?.width, 390);
+    assert.equal(mobileSelector.viewport_override?.requested?.height, 844);
+    assert.equal(mobileSelector.viewport_override?.cleanup?.cleared, true);
+    assert.equal(mobileSelector.page?.viewport?.inner_width, 390);
+    assert.equal(mobileSelector.page?.viewport?.inner_height, 844);
+    assert.equal(mobileSelector.viewport_override?.verification?.ok, true);
+    assert.equal(mobileSelector.viewport_override?.verification?.page?.ok, true);
+    assert.equal(mobileSelector.viewport_override?.verification?.artifact?.ok, true);
+    assert.ok(mobileSelector.deadline?.elapsed_ms <= mobileSelector.deadline?.timeout_ms);
+    assert.equal(
+      mobileSelector.artifact.width,
+      mobileSelector.viewport_override?.verification?.artifact?.expected?.width,
+    );
+    assert.equal(
+      mobileSelector.artifact.height,
+      mobileSelector.viewport_override?.verification?.artifact?.expected?.height,
+    );
 
     const selector = await callTool("browser_screenshot_ops", {
       ...baseArgs,
@@ -388,6 +426,11 @@ async function run() {
       workspace_key: workspaceKey,
       viewport_artifact: viewport.artifact.path,
       mobile_viewport_artifact: mobileViewport.artifact.path,
+      mobile_viewport_inner_width: mobileViewport.page.viewport.inner_width,
+      mobile_viewport_artifact_dimensions: [mobileViewport.artifact.width, mobileViewport.artifact.height],
+      mobile_selector_artifact: mobileSelector.artifact.path,
+      mobile_selector_inner_width: mobileSelector.page.viewport.inner_width,
+      mobile_selector_artifact_dimensions: [mobileSelector.artifact.width, mobileSelector.artifact.height],
       selector_artifact: selector.artifact.path,
       selector_fallback_artifact: selectorFallback.artifact.path,
       full_page_artifact: fullPage.artifact.path,

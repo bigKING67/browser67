@@ -47,6 +47,9 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   );
 
   const executeJsTool = tools.find((entry) => entry?.name === "browser_execute_js");
+  const scanTool = tools.find((entry) => entry?.name === "browser_scan");
+  const extractTool = tools.find((entry) => entry?.name === "browser_extract");
+  const tabOpsTool = tools.find((entry) => entry?.name === "browser_tab_ops");
   const nativeInputTool = tools.find((entry) => entry?.name === "browser_native_input");
   const consoleOpsTool = tools.find((entry) => entry?.name === "browser_console_ops");
   assert.deepEqual(consoleOpsTool?.inputSchema?.properties?.action?.enum, ["observe"]);
@@ -62,6 +65,20 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(executeJsTool?.inputSchema?.properties?.new_tab_wait_ms?.minimum, 0);
   assert.equal(executeJsTool?.inputSchema?.properties?.new_tab_wait_ms?.maximum, 5_000);
   assert.equal(Object.hasOwn(executeJsTool?.inputSchema?.properties ?? {}, "code"), false);
+  for (const [label, tool, fields] of [
+    ["browser_scan", scanTool, ["tab_id", "workspace_key", "task_id", "timeout_ms"]],
+    ["browser_extract", extractTool, ["tab_id", "workspace_key", "task_id", "timeout_ms"]],
+    ["browser_wait", tools.find((entry) => entry?.name === "browser_wait"), ["workspace_key", "task_id"]],
+    ["browser_tab_ops", tabOpsTool, ["include_unmanaged", "workspace_key", "task_id", "timeout_ms"]],
+  ]) {
+    for (const field of fields) {
+      assert.equal(
+        Object.hasOwn(tool?.inputSchema?.properties ?? {}, field),
+        true,
+        `${label} must accept compatibility field ${field}`,
+      );
+    }
+  }
 
   const waitTool = tools.find((entry) => entry?.name === "browser_wait");
   assert.equal(waitTool?.inputSchema?.properties?.type?.enum?.includes("selector"), true);
@@ -188,6 +205,7 @@ async function assertToolSurface({ rpc, timeoutMs }) {
   assert.equal(tabLifecycleTool?.inputSchema?.properties?.summary_only?.type, "boolean");
   assert.equal(tabLifecycleTool?.inputSchema?.properties?.max_items?.maximum, 500);
   assert.equal(tabLifecycleTool?.inputSchema?.properties?.max_stale_items?.maximum, 500);
+  assert.equal(tabLifecycleTool?.inputSchema?.properties?.wait_timeout_ms?.maximum, 120_000);
 
   const authTool = tools.find((entry) => entry?.name === "browser_auth_ops");
   assert.equal(authTool?.inputSchema?.properties?.action?.enum?.includes("ensure_login"), true);

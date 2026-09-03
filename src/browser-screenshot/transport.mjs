@@ -1,7 +1,9 @@
 import {
   cdpEvaluateScript,
   cdpRunCommand,
+  withTargetClient,
 } from "../cdp-runtime/index.mjs";
+import { resolveBatchReferences } from "../browser/execution/batch-references.mjs";
 import { createToolError } from "../runtime/tool-errors.mjs";
 import {
   executeTmwdJsWithFallback,
@@ -65,6 +67,7 @@ function buildTmwdViewportScreenshotBatch({
   settleScript,
   pageMetadataScript,
   layoutMetricsScript: metricsScript,
+  targetScript,
   screenshotParams,
 } = {}) {
   const commands = [
@@ -81,6 +84,7 @@ function buildTmwdViewportScreenshotBatch({
     settle: 1,
     page: 2,
     layout_metrics: null,
+    target: null,
     screenshot: null,
     cleanup: null,
   };
@@ -88,12 +92,18 @@ function buildTmwdViewportScreenshotBatch({
     resultIndexes.layout_metrics = commands.length;
     commands.push(runtimeEvaluateCommand(metricsScript));
   }
-  resultIndexes.screenshot = commands.length;
-  commands.push({
-    cmd: "cdp",
-    method: "Page.captureScreenshot",
-    params: screenshotParams ?? {},
-  });
+  if (typeof targetScript === "string" && targetScript.length > 0) {
+    resultIndexes.target = commands.length;
+    commands.push(runtimeEvaluateCommand(targetScript));
+  }
+  if (screenshotParams && typeof screenshotParams === "object") {
+    resultIndexes.screenshot = commands.length;
+    commands.push({
+      cmd: "cdp",
+      method: "Page.captureScreenshot",
+      params: screenshotParams,
+    });
+  }
   resultIndexes.cleanup = commands.length;
   commands.push({
     cmd: "cdp",
@@ -198,7 +208,9 @@ function parseTmwdViewportScreenshotBatchResults(executed, plan) {
   }
 
   unwrapBatchCommandResult(results[indexes.viewport_override]);
-  const screenshotResponse = unwrapBatchCommandResult(results[indexes.screenshot]);
+  const screenshotResponse = Number.isInteger(indexes.screenshot)
+    ? unwrapBatchCommandResult(results[indexes.screenshot])
+    : null;
   const base64 = screenshotResponse?.data ?? screenshotResponse?.result?.data;
   unwrapBatchCommandResult(results[indexes.cleanup]);
   return {
@@ -206,6 +218,9 @@ function parseTmwdViewportScreenshotBatchResults(executed, plan) {
     page: batchRuntimeValue(results, indexes.page, "page metadata probe"),
     layout_metrics: Number.isInteger(indexes.layout_metrics)
       ? batchRuntimeValue(results, indexes.layout_metrics, "layout metrics probe")
+      : null,
+    target: Number.isInteger(indexes.target)
+      ? batchRuntimeValue(results, indexes.target, "capture target probe")
       : null,
     base64,
     cleanup: {
@@ -215,20 +230,98 @@ function parseTmwdViewportScreenshotBatchResults(executed, plan) {
   };
 }
 
+async function executeCdpViewportBatch(args, preferred, plan, runtimeOptions = {}) {
+  const targetTabId = selectedRawTabId(preferred);
+  const run = await withTargetClient({
+    ...(args ?? {}),
+    switch_tab_id: targetTabId,
+  }, async (client, _target, _endpoint, timeoutMs, _resolved, operationDeadline) => {
+    const results = [];
+    const deadlineAt = Date.now() + timeoutMs;
+    let overrideActive = false;
+    let cleanup = null;
+    try {
+      for (const rawCommand of plan.command.commands) {
+        const command = resolveBatchReferences(rawCommand, results, {
+          command_index: results.length,
+        });
+        if (command?.cmd !== "cdp") {
+          throw createToolError(
+            "INVALID_ARGUMENT",
+            `CDP viewport batch only accepts cdp commands, got ${String(command?.cmd ?? "")}`,
+            { retryable: false, details: { command_index: results.length } },
+          );
+        }
+        const remainingMs = Math.min(
+          Math.floor(deadlineAt - Date.now()),
+          operationDeadline.remaining("viewport_batch"),
+        );
+        if (remainingMs < 100) {
+          throw createToolError("TIMEOUT", "CDP viewport batch deadline exceeded", {
+            retryable: true,
+            details: { command_index: results.length, failed_phase: "viewport_batch" },
+          });
+        }
+        const response = await client.send(command.method, command.params || {}, remainingMs);
+        results.push(response);
+        if (command.method === "Emulation.setDeviceMetricsOverride") overrideActive = true;
+        if (command.method === "Emulation.clearDeviceMetricsOverride") overrideActive = false;
+      }
+      return { ok: true, results };
+    } finally {
+      if (overrideActive) {
+        try {
+          await client.send("Emulation.clearDeviceMetricsOverride", {}, Math.max(100, deadlineAt - Date.now()));
+          cleanup = { cleared: true, method: "Emulation.clearDeviceMetricsOverride" };
+        } catch (error) {
+          cleanup = {
+            cleared: false,
+            method: "Emulation.clearDeviceMetricsOverride",
+            error: String(error?.message ?? error),
+          };
+        }
+      }
+      if (cleanup?.cleared === false) {
+        throw createToolError(
+          "VIEWPORT_CLEANUP_FAILED",
+          "CDP viewport batch cleanup failed",
+          { retryable: true, details: { cleanup } },
+        );
+      }
+    }
+  }, runtimeOptions);
+  return {
+    executed: {
+      raw: run.result,
+      value: run.result.results,
+    },
+    preferred,
+    transport_attempts: [],
+  };
+}
+
 async function runTmwdViewportScreenshotBatch(
   args,
   preferred,
   batchInput,
   runtimeOptions = {},
 ) {
-  if (!isTmwdTransport(preferred)) {
-    throw createToolError(
-      "TRANSPORT_UNAVAILABLE",
-      `TMWD viewport screenshot batch requires TMWD transport, got ${String(preferred?.transport ?? "unknown")}`,
-      { retryable: true },
-    );
-  }
   const plan = buildTmwdViewportScreenshotBatch(batchInput);
+  if (!isTmwdTransport(preferred)) {
+    if (preferred?.transport !== "cdp") {
+      throw createToolError(
+        "TRANSPORT_UNAVAILABLE",
+        `viewport screenshot batch requires TMWD or CDP transport, got ${String(preferred?.transport ?? "unknown")}`,
+        { retryable: true },
+      );
+    }
+    const cdp = await executeCdpViewportBatch(args, preferred, plan, runtimeOptions);
+    return {
+      ...parseTmwdViewportScreenshotBatchResults(cdp.executed, plan),
+      preferred: cdp.preferred,
+      transport_attempts: cdp.transport_attempts,
+    };
+  }
   const tmwd = await executeTmwdJsWithFallback(
     args ?? {},
     preferred.context,

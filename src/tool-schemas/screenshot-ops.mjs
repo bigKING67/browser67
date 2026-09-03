@@ -5,7 +5,7 @@ import {
 
 const SCREENSHOT_TOOL_SCHEMAS = {
   browser_screenshot_ops: {
-    description: "Capture real-browser PNG screenshots through TMWD/CDP and write repo-external artifacts. selector captures pre-sample layout metrics and may fall back to the measured clip when the selector detaches between probes. Responsive viewport captures verify requested viewport metrics against PNG dimensions before returning success. max_pixels bounds final PNG bitmap pixels after device pixel ratio and capture scale. Returns metadata, an artifact path, and context-budget guidance; never screenshot base64. Prefer selector or clip for narrow evidence.",
+    description: "Capture real-browser PNG screenshots through TMWD/CDP and write repo-external artifacts. Temporary viewport overrides are atomic for viewport, clip, selector, and full_page targets; persistent overrides are unsupported. selector captures pre-sample layout metrics and may fall back to the measured clip when the selector detaches between probes. Responsive captures verify requested page metrics and PNG dimensions before returning success. max_pixels bounds final PNG bitmap pixels after device pixel ratio and capture scale. Returns metadata, an artifact path, and context-budget guidance; never screenshot base64. Prefer selector or clip for narrow evidence.",
     inputSchema: {
       type: "object",
       properties: {
@@ -48,7 +48,7 @@ const SCREENSHOT_TOOL_SCHEMAS = {
         },
         viewport: {
           type: "object",
-          description: "Optional temporary viewport override for responsive screenshot capture. Cleared after capture by default.",
+          description: "Optional temporary viewport override for responsive screenshot capture. The atomic capture transaction always clears it; clear_after=false is rejected because persistent debugger-scoped emulation is unsupported.",
           properties: {
             width: { type: "number", minimum: 1 },
             height: { type: "number", minimum: 1 },

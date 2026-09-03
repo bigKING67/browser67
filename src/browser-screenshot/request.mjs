@@ -88,6 +88,21 @@ function validateScreenshotRequest(args, target, requestedSelector) {
       details: { required_fields: ["selector"] },
     });
   }
+  if (args.viewport && typeof args.viewport === "object" && args.viewport.clear_after === false) {
+    throw createToolError(
+      "INVALID_ARGUMENT",
+      "persistent viewport overrides are unsupported; viewport.clear_after must remain true",
+      {
+        retryable: false,
+        details: {
+          field: "viewport.clear_after",
+          requested: false,
+          persistent_viewport_override_supported: false,
+          reason: "debugger-scoped emulation cannot outlive the atomic capture transaction",
+        },
+      },
+    );
+  }
 }
 
 function normalizeScreenshotRequest(args = {}) {

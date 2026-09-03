@@ -214,7 +214,13 @@ async function dispatchRegisteredTool(name, args = {}, options = {}) {
       ? compactTransportAttempts(error?.transportAttempts)
       : error?.transportAttempts;
     const durationMs = Number((performance.now() - startedAt).toFixed(2));
-    await journal({ status: "error", error_code: code, retryable, duration_ms: durationMs });
+    await journal({
+      status: "error",
+      error_code: code,
+      retryable,
+      duration_ms: durationMs,
+      error_details: error?.details,
+    });
     return formatMcpOutcome(failedOutcome(error, {
       page,
       code,

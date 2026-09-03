@@ -12,10 +12,25 @@ const SAFE_RESULT_COUNT_KEYS = [
   "entry_count",
   "finished_count",
   "managed_count",
+  "managed_total_count",
+  "managed_returned_count",
   "pruned_count",
+  "registry_count",
+  "registry_remaining",
+  "released_count",
+  "remaining_total_count",
+  "remaining_kept_count",
+  "remaining_unkept_count",
   "returned_count",
   "stale_count",
+  "stale_total_count",
+  "stale_returned_count",
+  "stale_pruned_count",
+  "stale_would_prune_count",
+  "terminalized_count",
   "total_chars",
+  "would_close_count",
+  "would_prune_count",
 ];
 
 function boundedText(value, maxLength = 160) {
@@ -42,17 +57,69 @@ function safeIdentity(args = {}) {
   };
 }
 
-function safeResultSummary(result = {}) {
+function numericField(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+function safeScreenshotSummary(args = {}, result = {}, errorDetails = {}) {
+  const isScreenshot = String(result?.tool ?? "") === "browser_screenshot_ops"
+    || String(args?.action ?? "") === "capture"
+    || args?.viewport !== undefined;
+  if (!isScreenshot) return undefined;
+  const requested = args?.viewport && typeof args.viewport === "object" ? args.viewport : {};
+  const verification = result?.viewport_override?.verification?.page
+    ?? errorDetails?.verification?.page
+    ?? errorDetails?.probe;
+  const actual = verification?.actual ?? verification?.viewport ?? result?.page?.viewport ?? {};
+  const artifact = result?.artifact ?? {};
+  const summary = {
+    target: boundedText(args?.target ?? result?.target ?? "viewport", 32),
+    clear_after: requested.clear_after !== false,
+    artifact_written: Boolean(artifact?.width && artifact?.height && artifact?.bytes),
+  };
+  for (const [key, value] of [
+    ["requested_width", requested.width],
+    ["requested_height", requested.height],
+    ["requested_dpr", requested.dpr ?? requested.device_scale_factor],
+    ["actual_width", actual.inner_width ?? actual.width],
+    ["actual_height", actual.inner_height ?? actual.height],
+    ["actual_dpr", actual.device_pixel_ratio ?? actual.dpr],
+    ["artifact_width", artifact.width],
+    ["artifact_height", artifact.height],
+    ["artifact_bytes", artifact.bytes],
+  ]) {
+    const number = numericField(value);
+    if (number !== undefined) summary[key] = number;
+  }
+  return summary;
+}
+
+function safeResultSummary(result = {}, args = {}, errorDetails = {}) {
   const summary = {};
+  const candidates = [
+    result,
+    result?.summary,
+    result?.cleanup_summary,
+    result?.run_finalize,
+    result?.remaining,
+    result?.live_filter,
+  ].filter((candidate) => candidate && typeof candidate === "object");
   for (const key of ["created", "reused", "dry_run", "closed"]) {
-    if (typeof result?.[key] === "boolean") summary[key] = result[key];
+    const candidate = candidates.find((value) => typeof value?.[key] === "boolean");
+    if (candidate) summary[key] = candidate[key];
   }
   for (const key of SAFE_RESULT_COUNT_KEYS) {
-    const number = Number(result?.[key]);
-    if (Number.isFinite(number) && number >= 0) summary[key] = number;
+    const candidate = candidates.find((value) => numericField(value?.[key]) !== undefined);
+    if (candidate) summary[key] = numericField(candidate[key]);
   }
-  const transport = boundedText(result?.transport, 64);
+  const transportCandidate = candidates.find((value) => boundedText(value?.transport, 64));
+  const transport = boundedText(transportCandidate?.transport, 64);
   if (transport) summary.transport = transport;
+  const runTerminalized = result?.run?.terminalized ?? result?.run_terminalized;
+  if (typeof runTerminalized === "boolean") summary.run_terminalized = runTerminalized;
+  const screenshot = safeScreenshotSummary(args, result, errorDetails);
+  if (screenshot) summary.screenshot = screenshot;
   return summary;
 }
 
@@ -63,6 +130,10 @@ function normalizedToolEvent(entry = {}, clock = () => new Date()) {
   const focusPolicy = boundedText(args.focus_policy ?? args.focusPolicy, 48);
   const windowPolicy = boundedText(args.window_policy ?? args.windowPolicy, 48);
   const errorCode = boundedText(entry.error_code, 80);
+  const errorDetails = entry.error_details && typeof entry.error_details === "object"
+    ? entry.error_details
+    : {};
+  const failedPhase = boundedText(errorDetails.failed_phase ?? entry.failed_phase, 80);
   return {
     schema_version: TOOL_JOURNAL_SCHEMA_VERSION,
     ts: clock().toISOString(),
@@ -73,6 +144,7 @@ function normalizedToolEvent(entry = {}, clock = () => new Date()) {
     ...(action ? { action } : {}),
     status: entry.status === "success" ? "success" : "error",
     ...(errorCode ? { error_code: errorCode } : {}),
+    ...(failedPhase ? { failed_phase: failedPhase } : {}),
     ...(typeof entry.retryable === "boolean" ? { retryable: entry.retryable } : {}),
     ...(finiteDuration(entry.duration_ms) !== undefined
       ? { duration_ms: finiteDuration(entry.duration_ms) }
@@ -80,7 +152,7 @@ function normalizedToolEvent(entry = {}, clock = () => new Date()) {
     ...safeIdentity(args),
     ...(focusPolicy ? { focus_policy: focusPolicy } : {}),
     ...(windowPolicy ? { window_policy: windowPolicy } : {}),
-    result: safeResultSummary(result),
+    result: safeResultSummary(result, args, errorDetails),
   };
 }
 
@@ -123,7 +195,8 @@ class ToolJournal {
     if (!this.enabled || this.disposed) return { recorded: false, reason: "disabled" };
     const payload = normalizedToolEvent(entry, this.clock);
     this.pending = this.pending.then(async () => {
-      await mkdir(path.dirname(this.path), { recursive: true });
+      await mkdir(path.dirname(this.path), { recursive: true, mode: 0o700 });
+      await chmod(path.dirname(this.path), 0o700);
       await this.rotateIfNeeded();
       await appendFile(this.path, `${JSON.stringify(payload)}\n`, {
         encoding: "utf8",

@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { nowIso } from "../runtime/identity.mjs";
+import { ensurePrivateDirectory, writePrivateFile } from "../runtime/storage/private-path.mjs";
 import { readPngDimensions } from "../image/png-lite.mjs";
 import {
   finishRun,
@@ -44,7 +45,7 @@ async function resolveScreenshotRun(args = {}, target = "viewport", options = {}
     const existing = await readRunJson(runDir);
     if (existing && typeof existing === "object") {
       const artifactsDir = String(existing.artifacts_dir ?? path.join(runDir, "artifacts"));
-      await mkdir(artifactsDir, { recursive: true });
+      await ensurePrivateDirectory(artifactsDir);
       return {
         run: {
           ...existing,
@@ -69,7 +70,7 @@ async function resolveScreenshotRun(args = {}, target = "viewport", options = {}
       };
     }
     const artifactsDir = path.join(runDir, "artifacts");
-    await mkdir(artifactsDir, { recursive: true });
+    await ensurePrivateDirectory(artifactsDir);
     return {
       run: {
         run_id: safeSegment(rawRunId),
@@ -91,7 +92,7 @@ async function resolveScreenshotRun(args = {}, target = "viewport", options = {}
     const runId = `adhoc-${stamp}-${randomBytes(4).toString("hex")}`;
     const runDir = path.join(runRoot(options), runGroup(args), runId);
     const artifactsDir = path.join(runDir, "artifacts");
-    await mkdir(artifactsDir, { recursive: true });
+    await ensurePrivateDirectory(artifactsDir);
     return {
       run: {
         run_id: runId,
@@ -145,8 +146,8 @@ async function writeScreenshotArtifact({
   const { run, prepared, mode, auto_finish: autoFinish } = resolution;
   const artifactPath = path.join(run.artifacts_dir, screenshotFileName(target, title));
   try {
-    await mkdir(run.artifacts_dir, { recursive: true });
-    await writeFile(artifactPath, bytes);
+    await ensurePrivateDirectory(run.artifacts_dir);
+    await writePrivateFile(artifactPath, bytes);
   } catch (error) {
     if (autoFinish) {
       await finishRun({
@@ -202,6 +203,10 @@ async function writeScreenshotArtifact({
       cdp_clip: cdpClip,
       fullscreen: false,
       created_at: createdAt,
+      evidence_ttl_ms: SCREENSHOT_ARTIFACT_TTL_MS,
+      evidence_valid_until: new Date(Date.parse(createdAt) + SCREENSHOT_ARTIFACT_TTL_MS).toISOString(),
+      retention_policy: "runtime_run_retention",
+      retention_delete_after: null,
       ttl_ms: SCREENSHOT_ARTIFACT_TTL_MS,
       expires_at: new Date(Date.parse(createdAt) + SCREENSHOT_ARTIFACT_TTL_MS).toISOString(),
     },

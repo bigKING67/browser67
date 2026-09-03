@@ -132,6 +132,41 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
   assert.equal(parsedAtomicBatch.base64, "c2NyZWVuc2hvdC1wbmctZml4dHVyZQ==");
   assert.equal(parsedAtomicBatch.cleanup.cleared, true);
 
+  const selectorPreflight = buildTmwdViewportScreenshotBatch({
+    viewportParams: { width: 390, height: 844, deviceScaleFactor: 2 },
+    settleScript: "return { ok: true };",
+    pageMetadataScript: "return { viewport: { inner_width: 390, inner_height: 844 } };",
+    layoutMetricsScript: "return { horizontal_overflow: false };",
+    targetScript: "return { ok: true, rect: { left: 8, top: 16, width: 120, height: 80 } };",
+    screenshotParams: null,
+  });
+  assert.deepEqual(
+    selectorPreflight.command.commands.map((command) => command.method),
+    [
+      "Emulation.setDeviceMetricsOverride",
+      "Runtime.evaluate",
+      "Runtime.evaluate",
+      "Runtime.evaluate",
+      "Runtime.evaluate",
+      "Emulation.clearDeviceMetricsOverride",
+    ],
+  );
+  assert.equal(selectorPreflight.result_indexes.screenshot, null);
+  const parsedSelectorPreflight = parseTmwdViewportScreenshotBatchResults({
+    raw: { ok: true },
+    value: [
+      {},
+      { result: { type: "object", value: { ok: true } } },
+      { result: { type: "object", value: { viewport: { inner_width: 390, inner_height: 844 } } } },
+      { result: { type: "object", value: { horizontal_overflow: false } } },
+      { result: { type: "object", value: { ok: true, rect: { left: 8, top: 16, width: 120, height: 80 } } } },
+      {},
+    ],
+  }, selectorPreflight);
+  assert.equal(parsedSelectorPreflight.target.rect.width, 120);
+  assert.equal(parsedSelectorPreflight.base64, undefined);
+  assert.equal(parsedSelectorPreflight.cleanup.cleared, true);
+
   const missingClipCall = await rpc.call(
     "tools/call",
     {
@@ -206,6 +241,28 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
   const invalidViewportPayload = firstJsonContent(invalidViewportCall.result);
   assert.equal(invalidViewportPayload?.error_code, "INVALID_ARGUMENTS");
 
+  const persistentViewportCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_screenshot_ops",
+      arguments: {
+        action: "capture",
+        target: "viewport",
+        viewport: {
+          width: 390,
+          height: 844,
+          clear_after: false,
+        },
+        prepare_run: false,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(persistentViewportCall?.result?.isError, true);
+  const persistentViewportPayload = firstJsonContent(persistentViewportCall.result);
+  assert.equal(persistentViewportPayload?.error_code, "INVALID_ARGUMENT");
+  assert.equal(persistentViewportPayload?.details?.persistent_viewport_override_supported, false);
+
   const matchingViewportVerification = buildViewportOverrideVerification({
     target: "viewport",
     page: {
@@ -260,12 +317,34 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
   assert.equal(staleDesktopArtifactVerification?.artifact?.width?.actual, 3024);
   assert.equal(staleDesktopArtifactVerification?.artifact?.width?.expected, 780);
 
+  const clippedViewportVerification = buildViewportOverrideVerification({
+    target: "selector",
+    captureClip: { x: 10, y: 20, width: 120, height: 80, scale: 1 },
+    page: {
+      viewport: {
+        inner_width: 390,
+        inner_height: 844,
+        device_pixel_ratio: 2,
+      },
+    },
+    artifact: { width: 240, height: 160 },
+    viewportOverrideResult: {
+      requested: { width: 390, height: 844, dpr: 2 },
+    },
+  });
+  assert.equal(clippedViewportVerification?.ok, true);
+  assert.equal(clippedViewportVerification?.artifact?.scope, "capture_clip_png_dimensions");
+  assert.equal(clippedViewportVerification?.artifact?.expected?.width, 240);
+  assert.equal(clippedViewportVerification?.artifact?.expected?.height, 160);
+
   return {
     missing_clip_error_code: missingClipPayload.error_code,
     missing_selector_error_code: missingSelectorPayload.error_code,
     invalid_format_error_code: invalidFormatPayload.error_code,
     invalid_viewport_error_code: invalidViewportPayload.error_code,
+    persistent_viewport_error_code: persistentViewportPayload.error_code,
     tmwd_viewport_atomic_batch: "enabled",
+    tmwd_selector_preflight_atomic_batch: "enabled",
     viewport_artifact_dimension_guard: "enabled",
     hidpi_bitmap_pixel_guard: "enabled",
   };

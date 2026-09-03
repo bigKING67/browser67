@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -24,6 +24,17 @@ async function main() {
     });
     assert.equal(prepared.ok, true);
     assert.equal(prepared.run.schema_version, RUN_SCHEMA_VERSION);
+    if (process.platform !== "win32") {
+      assert.equal((await stat(root)).mode & 0o777, 0o700);
+      assert.equal((await stat(prepared.run.run_dir)).mode & 0o777, 0o700);
+      assert.equal((await stat(prepared.run.artifacts_dir)).mode & 0o777, 0o700);
+      assert.equal((await stat(path.join(prepared.run.run_dir, "run.json"))).mode & 0o777, 0o600);
+      assert.equal((await stat(path.join(prepared.run.run_dir, "events.ndjson"))).mode & 0o777, 0o600);
+    }
+
+    const missingGroupList = await store.list({ workspace_key: "read-only-missing-group" });
+    assert.equal(missingGroupList.total, 0);
+    assert.equal((await readdir(root)).includes("read-only-missing-group"), false);
 
     let checkpointWrites = 0;
     for (let index = 0; index < 2_000; index += 1) {
@@ -175,6 +186,13 @@ async function main() {
     assert.equal(implicitScreenshot.run.status, "success");
     assert.equal(typeof implicitScreenshot.run.finished_at, "string");
     assert.equal(implicitScreenshot.run.summary.artifact_count, 1);
+    assert.equal(implicitScreenshot.artifact.evidence_ttl_ms, 86_400_000);
+    assert.equal(typeof implicitScreenshot.artifact.evidence_valid_until, "string");
+    assert.equal(implicitScreenshot.artifact.retention_policy, "runtime_run_retention");
+    assert.equal(implicitScreenshot.artifact.retention_delete_after, null);
+    if (process.platform !== "win32") {
+      assert.equal((await stat(implicitScreenshot.artifact.path)).mode & 0o777, 0o600);
+    }
 
     await screenshotStore.prepare({
       workspace_key: "explicit-screenshot",
@@ -220,6 +238,35 @@ async function main() {
     assert.equal(staleAudit.current_stale_running_count, 1);
     assert.equal(staleAudit.legacy_stale_running_count, 0);
     assert.equal(staleAudit.status_counts.running, 1);
+    const staleDryRun = await staleAuditStore.terminalizeStale({
+      stale_running_after_minutes: 120,
+      write: false,
+    });
+    assert.equal(staleDryRun.dry_run, true);
+    assert.equal(staleDryRun.candidate_count, 1);
+    assert.equal(staleDryRun.would_terminalize_count, 1);
+    assert.equal(staleDryRun.terminalized_count, 0);
+    assert.equal((await staleAuditStore.status({
+      workspace_key: "stale-audit",
+      run_id: "stale-running-run",
+      summary_only: true,
+    })).run.status, "running");
+    const staleWrite = await staleAuditStore.terminalizeStale({
+      stale_running_after_minutes: 120,
+      write: true,
+    });
+    assert.equal(staleWrite.dry_run, false);
+    assert.equal(staleWrite.terminalized_count, 1);
+    assert.equal((await staleAuditStore.status({
+      workspace_key: "stale-audit",
+      run_id: "stale-running-run",
+      summary_only: true,
+    })).run.status, "interrupted");
+    const staleAfter = await staleAuditStore.inspect({
+      summary_only: true,
+      stale_running_after_minutes: 120,
+    });
+    assert.equal(staleAfter.stale_running_count, 0);
 
     const tempFiles = (await readdir(runDir)).filter((name) => name.endsWith(".tmp"));
     assert.deepEqual(tempFiles, []);
@@ -252,6 +299,9 @@ async function main() {
       implicit_screenshot_terminal: true,
       explicit_screenshot_caller_owned: true,
       aggregate_run_inspection: true,
+      private_runtime_modes: process.platform !== "win32",
+      read_only_list_does_not_create_group: true,
+      stale_terminalization: true,
     })}\n`);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -1,4 +1,5 @@
 import { createToolError } from "../runtime/tool-errors.mjs";
+import { createOperationDeadline } from "../runtime/operation-deadline.mjs";
 import { mergeTransportAttempts } from "../runtime/transport-attempts.mjs";
 import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import { readPngDimensions } from "../image/png-lite.mjs";
@@ -68,6 +69,11 @@ async function applyViewportOverride(args, request, state) {
   state.viewportOverrideResult.settle = settled.value;
 }
 
+function phaseArgs(args, state, phase) {
+  state.phase = phase;
+  return state.deadline.argsFor(args, phase);
+}
+
 async function readPageState(args, request, state) {
   const pageEval = absorbTransportResult(
     state,
@@ -100,11 +106,10 @@ async function readPageState(args, request, state) {
   }
 }
 
-function shouldUseAtomicTmwdViewportCapture(request, state) {
-  return request.target === "viewport"
-    && request.viewportOverride !== null
+function shouldUseAtomicViewportCapture(request, state) {
+  return request.viewportOverride !== null
     && request.viewportOverride?.requested?.clear_after !== false
-    && isTmwdTransport(state.preferred);
+    && (isTmwdTransport(state.preferred) || state.preferred?.transport === "cdp");
 }
 
 function assertCapturePixelBudget(request, state) {
@@ -159,17 +164,7 @@ function selectorFailureResponse(request, state, selectorClip) {
   };
 }
 
-async function resolveSelectorTarget(args, request, state) {
-  const selectorEval = absorbTransportResult(
-    state,
-    await evaluatePageScript(
-      args,
-      state.preferred,
-      selectorClipScript(request.requestedSelector),
-      state.runtimeOptions,
-    ),
-  );
-  const selectorResult = selectorEval.value;
+function acceptSelectorTarget(request, state, selectorResult) {
   const selectorClip = buildSelectorClip(selectorResult, request.maxPixels);
   if (selectorClip.ok) {
     state.selector = selectorResult.selector;
@@ -202,6 +197,19 @@ async function resolveSelectorTarget(args, request, state) {
   state.clip = fallback.clip;
   state.cdpClip = fallback.clip;
   return null;
+}
+
+async function resolveSelectorTarget(args, request, state) {
+  const selectorEval = absorbTransportResult(
+    state,
+    await evaluatePageScript(
+      args,
+      state.preferred,
+      selectorClipScript(request.requestedSelector),
+      state.runtimeOptions,
+    ),
+  );
+  return acceptSelectorTarget(request, state, selectorEval.value);
 }
 
 async function resolveCaptureTarget(args, request, state) {
@@ -237,8 +245,13 @@ function screenshotParams(state) {
 
 async function writeCapturedArtifact(args, request, state, base64) {
   if (typeof base64 !== "string" || base64.length < 16) {
-    throw createToolError("EXECUTION_ERROR", "Page.captureScreenshot did not return PNG data", {
-      retryable: false,
+    throw createToolError("SCREENSHOT_CAPTURE_EMPTY", "Page.captureScreenshot did not return PNG data", {
+      retryable: true,
+      details: {
+        failed_phase: "capture_png",
+        page_visibility_state: state.page?.visibility_state,
+        transport: state.preferred?.transport,
+      },
     });
   }
   const bytes = Buffer.from(base64, "base64");
@@ -249,6 +262,8 @@ async function writeCapturedArtifact(args, request, state, base64) {
     request.maxPixels,
     { label: `${request.target} PNG` },
   );
+  state.phase = "artifact_write";
+  state.deadline.remaining(state.phase);
   const artifact = await writeScreenshotArtifact({
     args,
     bytes,
@@ -260,6 +275,7 @@ async function writeCapturedArtifact(args, request, state, base64) {
   if (state.viewportOverrideResult) {
     const verification = buildViewportOverrideVerification({
       artifact: artifact.artifact,
+      captureClip: state.cdpClip,
       page: state.page,
       target: request.target,
       viewportOverrideResult: state.viewportOverrideResult,
@@ -280,10 +296,21 @@ async function captureArtifact(args, request, state) {
   return writeCapturedArtifact(args, request, state, screenshot.base64);
 }
 
-async function captureAtomicTmwdViewport(args, request, state) {
-  assertCapturePixelBudget(request, state);
-  const batch = absorbTransportResult(state, await runTmwdViewportScreenshotBatch(
-    args,
+async function prepareAtomicViewportTarget(args, request, state) {
+  if (request.target === "viewport") return null;
+  if (request.target === "clip") {
+    const normalized = normalizeClip(args.clip, {
+      dpr: finiteNumber(request.viewportOverride?.requested?.dpr) ?? 1,
+      maxPixels: request.maxPixels,
+      label: "clip",
+    });
+    state.clip = normalized.clip;
+    state.cdpClip = normalized.clip;
+    return null;
+  }
+
+  const preflight = absorbTransportResult(state, await runTmwdViewportScreenshotBatch(
+    phaseArgs(args, state, "viewport_preflight"),
     state.preferred,
     {
       viewportParams: request.viewportOverride.cdp_params,
@@ -292,12 +319,80 @@ async function captureAtomicTmwdViewport(args, request, state) {
       layoutMetricsScript: request.includeLayoutMetrics
         ? layoutMetricsScript(request.effectiveLayoutSelectors)
         : null,
+      targetScript: request.target === "selector"
+        ? selectorClipScript(request.requestedSelector)
+        : null,
+      screenshotParams: null,
+    },
+    state.runtimeOptions,
+  ));
+  state.viewportOverrideCleanupHandled = preflight.cleanup?.cleared === true;
+  state.viewportOverrideResult = {
+    applied: true,
+    requested: request.viewportOverride.requested,
+    cdp_params: request.viewportOverride.cdp_params,
+    preflight: {
+      settle: preflight.settle,
+      cleanup: preflight.cleanup,
+    },
+    cleanup: preflight.cleanup,
+  };
+  state.page = preflight.page;
+  state.layoutMetrics = preflight.layout_metrics;
+  const pageVerification = buildViewportOverrideVerification({
+    page: state.page,
+    target: request.target,
+    viewportOverrideResult: state.viewportOverrideResult,
+  });
+  state.viewportOverrideResult.verification = {
+    page: pageVerification?.page,
+  };
+  try {
+    assertViewportOverridePageVerification(pageVerification?.page);
+  } catch (error) {
+    error.details = {
+      ...(error.details ?? {}),
+      probe: {
+        settle: preflight.settle,
+        viewport: state.page?.viewport,
+      },
+    };
+    throw error;
+  }
+  if (request.target === "selector") {
+    return acceptSelectorTarget(request, state, preflight.target);
+  }
+  if (request.target === "full_page") {
+    state.cdpClip = buildFullPageClip(state.page, request.maxPixels);
+    state.clip = state.cdpClip;
+    state.captureBeyondViewport = true;
+  }
+  return null;
+}
+
+async function captureAtomicViewport(args, request, state) {
+  const targetFailure = await prepareAtomicViewportTarget(args, request, state);
+  if (targetFailure) return { targetFailure };
+  assertCapturePixelBudget(request, state);
+  const shouldRefreshLayout = request.target !== "selector" && request.includeLayoutMetrics;
+  state.viewportOverrideCleanupHandled = false;
+  const batch = absorbTransportResult(state, await runTmwdViewportScreenshotBatch(
+    phaseArgs(args, state, "viewport_capture"),
+    state.preferred,
+    {
+      viewportParams: request.viewportOverride.cdp_params,
+      settleScript: viewportOverrideSettleScript(request.viewportOverride.requested),
+      pageMetadataScript: PAGE_METADATA_SCRIPT,
+      layoutMetricsScript: shouldRefreshLayout
+        ? layoutMetricsScript(request.effectiveLayoutSelectors)
+        : null,
       screenshotParams: screenshotParams(state),
     },
     state.runtimeOptions,
   ));
   state.viewportOverrideCleanupHandled = batch.cleanup?.cleared === true;
   state.viewportOverrideResult = {
+    ...(state.viewportOverrideResult ?? {}),
     applied: true,
     requested: request.viewportOverride.requested,
     cdp_params: request.viewportOverride.cdp_params,
@@ -305,7 +400,7 @@ async function captureAtomicTmwdViewport(args, request, state) {
     cleanup: batch.cleanup,
   };
   state.page = batch.page;
-  state.layoutMetrics = batch.layout_metrics;
+  if (batch.layout_metrics) state.layoutMetrics = batch.layout_metrics;
   const pageVerification = buildViewportOverrideVerification({
     page: state.page,
     target: request.target,
@@ -326,7 +421,7 @@ async function captureAtomicTmwdViewport(args, request, state) {
     };
     throw error;
   }
-  return writeCapturedArtifact(args, request, state, batch.base64);
+  return { artifact: await writeCapturedArtifact(args, request, state, batch.base64) };
 }
 
 function successResponse(args, request, state, artifact) {
@@ -334,6 +429,7 @@ function successResponse(args, request, state, artifact) {
   const tabId = String(target.tab_id ?? target.tabId ?? target.id ?? "").trim();
   const sessionId = String(target.session_key ?? target.sessionKey ?? target.id ?? tabId).trim();
   const pixelCount = Number(artifact.artifact?.width ?? 0) * Number(artifact.artifact?.height ?? 0);
+  const deadlineSnapshot = state.deadline.snapshot("completed");
   return {
     ok: true,
     status: "success",
@@ -393,6 +489,12 @@ function successResponse(args, request, state, artifact) {
       status: artifact.run.status,
       finished_at: artifact.run.finished_at,
     },
+    deadline: {
+      timeout_ms: deadlineSnapshot.timeout_ms,
+      elapsed_ms: deadlineSnapshot.elapsed_ms,
+      remaining_ms: deadlineSnapshot.remaining_ms,
+      deadline_at: deadlineSnapshot.deadline_at,
+    },
     transport_attempts: state.transportAttempts,
   };
 }
@@ -430,8 +532,17 @@ async function clearViewportOverride(args, request, state) {
 
 async function captureBrowserScreenshot(args = {}, runtimeOptions = {}) {
   const request = normalizeScreenshotRequest(args);
-  const preferred = await resolvePreferredBrowserContext(args ?? {}, runtimeOptions);
+  const deadline = createOperationDeadline(args.timeout_ms);
+  let phase = "resolve_context";
+  let preferred;
+  try {
+    preferred = await resolvePreferredBrowserContext(deadline.argsFor(args, phase), runtimeOptions);
+  } catch (error) {
+    throw deadline.annotate(error, phase);
+  }
   const state = {
+    deadline,
+    phase,
     runtimeOptions,
     preferred,
     transportAttempts: Array.isArray(preferred.transport_attempts)
@@ -452,17 +563,28 @@ async function captureBrowserScreenshot(args = {}, runtimeOptions = {}) {
   };
 
   try {
-    if (shouldUseAtomicTmwdViewportCapture(request, state)) {
-      const artifact = await captureAtomicTmwdViewport(args, request, state);
-      return successResponse(args, request, state, artifact);
+    if (shouldUseAtomicViewportCapture(request, state)) {
+      const atomic = await captureAtomicViewport(args, request, state);
+      if (atomic.targetFailure) return atomic.targetFailure;
+      return successResponse(args, request, state, atomic.artifact);
     }
-    await applyViewportOverride(args, request, state);
-    await readPageState(args, request, state);
-    const targetFailure = await resolveCaptureTarget(args, request, state);
+    await applyViewportOverride(phaseArgs(args, state, "viewport_apply"), request, state);
+    await readPageState(phaseArgs(args, state, "page_state"), request, state);
+    const targetFailure = await resolveCaptureTarget(
+      phaseArgs(args, state, "target_resolution"),
+      request,
+      state,
+    );
     if (targetFailure) return targetFailure;
     assertCapturePixelBudget(request, state);
-    const artifact = await captureArtifact(args, request, state);
+    const artifact = await captureArtifact(
+      phaseArgs(args, state, "capture_png"),
+      request,
+      state,
+    );
     return successResponse(args, request, state, artifact);
+  } catch (error) {
+    throw state.deadline.annotate(error, error?.details?.failed_phase ?? state.phase);
   } finally {
     await clearViewportOverride(args, request, state);
   }

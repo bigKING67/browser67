@@ -25,6 +25,7 @@ const PAGE_METADATA_SCRIPT = `return (() => {
   return {
     url: String(location.href || ""),
     title: String(document.title || ""),
+    visibility_state: String(document.visibilityState || "unknown"),
     viewport: {
       inner_width: Number(window.innerWidth || 0),
       inner_height: Number(window.innerHeight || 0),
@@ -161,6 +162,7 @@ function selectorClipScript(selector) {
     return {
       url: String(location.href || ""),
       title: String(document.title || ""),
+      visibility_state: String(document.visibilityState || "unknown"),
       viewport: {
         inner_width: Number(window.innerWidth || 0),
         inner_height: Number(window.innerHeight || 0),

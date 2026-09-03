@@ -98,20 +98,45 @@ function expectedViewportArtifactDimensions({
   };
 }
 
+function expectedClippedArtifactDimensions({
+  captureClip,
+  page,
+  viewportOverrideResult,
+}) {
+  const width = positiveFiniteNumber(captureClip?.width);
+  const height = positiveFiniteNumber(captureClip?.height);
+  if (width === null || height === null) return null;
+  const scale = positiveFiniteNumber(captureClip?.scale) ?? 1;
+  const pageDimensions = pageViewportDimensions(page);
+  const requested = requestedViewportDimensions(viewportOverrideResult);
+  const dpr = pageDimensions.dpr ?? requested.dpr;
+  return {
+    width: Math.round(width * scale * dpr),
+    height: Math.round(height * scale * dpr),
+    css_width: width,
+    css_height: height,
+    capture_scale: scale,
+    dpr,
+  };
+}
+
 function verifyViewportOverrideArtifact({
   artifact,
+  captureClip,
   page,
   target,
   viewportOverrideResult,
 }) {
-  if (!viewportOverrideResult || target !== "viewport") {
+  if (!viewportOverrideResult) {
     return {
       ok: true,
       skipped: true,
-      reason: viewportOverrideResult ? "non_viewport_target" : "no_viewport_override",
+      reason: "no_viewport_override",
     };
   }
-  const expected = expectedViewportArtifactDimensions({ page, viewportOverrideResult });
+  const expected = target === "viewport"
+    ? expectedViewportArtifactDimensions({ page, viewportOverrideResult })
+    : expectedClippedArtifactDimensions({ captureClip, page, viewportOverrideResult });
   if (!expected) {
     return {
       ok: false,
@@ -137,7 +162,7 @@ function verifyViewportOverrideArtifact({
   return {
     ok: width.ok && height.ok,
     skipped: false,
-    scope: "viewport_png_dimensions",
+    scope: target === "viewport" ? "viewport_png_dimensions" : "capture_clip_png_dimensions",
     width,
     height,
     expected,
@@ -150,6 +175,7 @@ function verifyViewportOverrideArtifact({
 
 function buildViewportOverrideVerification({
   artifact,
+  captureClip,
   page,
   target,
   viewportOverrideResult,
@@ -163,6 +189,7 @@ function buildViewportOverrideVerification({
   });
   const artifactVerification = verifyViewportOverrideArtifact({
     artifact,
+    captureClip,
     page,
     target,
     viewportOverrideResult,
@@ -208,6 +235,7 @@ export {
   assertViewportOverrideArtifactVerification,
   assertViewportOverridePageVerification,
   buildViewportOverrideVerification,
+  expectedClippedArtifactDimensions,
   expectedViewportArtifactDimensions,
   verifyViewportOverrideArtifact,
   verifyViewportOverridePage,
