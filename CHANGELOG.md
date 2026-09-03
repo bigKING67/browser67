@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the Agent integration doctor to compare browser67 and js-reverse MCP
+  tool schemas with Codex approval policy. The audit accepts either an explicit
+  server default or complete per-tool coverage, while failing closed on missing,
+  invalid, duplicate, or stale tool-policy entries.
 - Align Pi integration and release-governance guidance with Pi-67's explicit
   external-repository lifecycle. Maintained Pi-67 installs now use
   `pi-67 external install/update/doctor browser67` and verify the external

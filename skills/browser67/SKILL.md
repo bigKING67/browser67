@@ -195,7 +195,11 @@ two paired MCP surfaces:
 
 - Keep browser-visible claims backed by live browser evidence or a clear skipped
   reason; responsive screenshots must include viewport/PNG dimension verification
-  before treating a mobile artifact as valid evidence.
+  before treating a mobile artifact as valid evidence. Viewport overrides for
+  viewport, selector, clip, and bounded full-page targets must keep each
+  set/probe/capture/clear transaction on one debugger attachment; reject
+  `viewport.clear_after=false` because persistent debugger-scoped emulation is
+  unsupported.
 - Keep large outputs bounded; write screenshots, run records, and rebuild
   bundles as repo-external artifacts with path/hash/count metadata. Prefer
   selector/clip screenshots and inspect the returned path only when needed;
@@ -215,3 +219,10 @@ two paired MCP surfaces:
 - Run `npm run check:mcp`, `npm run check:js-reverse-mcp`,
   `npm run check:browser67-naming`, `npm run check:runtime-home`, and
   `npm run skills:check` after naming/runtime/tooling changes.
+- Keep runtime directories owner-only (`0700`) and runtime files/artifacts
+  owner-only (`0600`); new MCP server processes set umask `077`, and the
+  managed-tab registry is written atomically as `0600` under its private default
+  directory. Audit existing runtime and managed-tab registry state before applying with
+  `npm run runtime:permissions:dry-run -- --json`; stale run terminalization and
+  empty-group pruning have separate dry-run/explicit-write commands and must not
+  be conflated with retention deletion.

@@ -245,7 +245,8 @@ splits, oldest/newest timestamps, and running runs older than
 `include_storage:true` only when a recursive scan is useful; it separates
 indexed-run bytes from run-like directories that have no `run.json`. Use
 `action:"list", summary_only:true` for one group's count without returning run
-titles or rows. Similarly, `browser_job_ops action:"list", summary_only:true`
+titles or rows. Missing-group reads do not create group directories or empty
+indexes. Similarly, `browser_job_ops action:"list", summary_only:true`
 returns status/durability/result counts without job titles, errors, ids, or
 rows. A browser job without `run_id` owns its auto-prepared run and terminalizes
 it with `finished_at`; a caller-supplied job run remains caller-owned and reports
@@ -253,6 +254,58 @@ it with `finished_at`; a caller-supplied job run remains caller-owned and report
 own run after the PNG is written. A caller-supplied `run_id` keeps caller-owned
 lifecycle semantics; inspect `run_requires_finish` and finish that run
 explicitly when it remains `running`.
+
+Screenshot metadata separates evidence freshness from storage retention:
+`evidence_valid_until` is 24 hours after capture and says when the visual sample
+should be refreshed before reuse. It does not schedule deletion. Deletion is
+governed by the run-retention plan below; `retention_delete_after` stays `null`
+until that plan selects the run.
+
+Audit old nonterminal run records before changing them:
+
+```bash
+npm run runtime:terminalize-stale:dry-run -- --json
+```
+
+After reviewing the exact candidates, mark only those stale `running` records
+as `interrupted` (no files or artifacts are deleted):
+
+```bash
+npm run runtime:terminalize-stale -- --write --json
+```
+
+Old index-only group directories use a separate deletion boundary:
+
+```bash
+npm run runtime:prune-empty-groups:dry-run -- --json
+npm run runtime:prune-empty-groups -- --write --json
+```
+
+The apply command removes only direct child group directories that have no run
+directories, no unknown entries, and at most empty `index.ndjson` and
+zero-count `index.meta.json` files. It rechecks each target before removal.
+
+Audit owner-only runtime permissions without changing them:
+
+```bash
+npm run runtime:permissions:dry-run -- --json
+```
+
+After reviewing the exact mismatch paths, apply mode `0700` to
+`~/.browser67`, runtime and managed-tab registry directories, and `0600` to
+runtime/registry files without following symlinks:
+
+```bash
+npm run runtime:permissions -- --write --json
+```
+
+The audit covers `~/.browser67/runtime/` plus
+`~/.browser67/tab-workspace/`; it does not recursively rewrite extension or
+provider configuration trees. New `tmwd_browser` and `js-reverse` MCP server processes set process umask
+`077`; run, job, screenshot, journal, hub-state, live-gate event, and managed-tab
+registry writers also enforce private modes at their own boundaries. An MCP
+server that was already running before this version keeps its loaded writer code
+until the owning Agent session restarts.
 
 Preview cleanup before allowing deletion:
 

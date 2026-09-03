@@ -46,6 +46,17 @@ const entries = [
   npmEntry("tool-journal", "check:tool-journal"),
   npmEntry("browser-content-core", "check:browser-content-core"),
   npmEntry("run-store", "check:run-store"),
+  npmEntry("runtime-maintenance", "check:runtime-maintenance", {
+    changed_paths: [
+      "src/runtime/**",
+      "src/browser-screenshot/artifact.mjs",
+      "scripts/audit-runtime-permissions.mjs",
+      "scripts/prune-empty-run-groups.mjs",
+      "scripts/terminalize-stale-runs.mjs",
+      "contracts/runtime-maintenance-contract.mjs",
+      "package.json",
+    ],
+  }),
   npmEntry("job-persistence", "check:job-persistence"),
   npmEntry("hub-control", "check:hub-control"),
   npmEntry("hub-relay", "check:hub-relay"),
@@ -140,12 +151,12 @@ const entries = [
 const tiers = {
   fast: {
     purpose: "Fast static and core runtime feedback for local edits.",
-    steps: ["lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "tool-journal", "browser-content-core", "run-store", "job-persistence"],
+    steps: ["lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "tool-journal", "browser-content-core", "run-store", "runtime-maintenance", "job-persistence"],
   },
   check: {
     purpose: "Deterministic repository contracts without requiring a real browser profile.",
     steps: [
-      "lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "tool-journal", "browser-content-core", "run-store", "job-persistence",
+      "lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "tool-journal", "browser-content-core", "run-store", "runtime-maintenance", "job-persistence",
       "hub-control", "hub-relay", "doctor-schema", "js-reverse-mcp", "js-reverse-upstream", "js-reverse-upstream-audit-contract",
       "js-reverse-absorption", "active-skill-sync-contract", "skills-roots-audit-contract", "browser67-naming", "readme", "runtime-home",
       "project-structure", "change-set-contract", "setup-extension", "extension-build", "extension-managed-runtime", "extension-debugger-runtime", "extension-install-doctor", "performance-smoke",

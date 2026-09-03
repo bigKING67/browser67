@@ -241,7 +241,17 @@ transport drift.
   group names. It aggregates indexed/untracked run-directory counts, statuses,
   current-versus-legacy stale running runs, and timestamps; add
   `include_storage:true` only for an explicit recursive byte scan. Use
-  `action:"list",summary_only:true` for a group count without run rows/titles.
+  `action:"list",summary_only:true` for a group count without run rows/titles;
+  a read-only list of a missing group no longer creates an empty group index.
+  Audit old `running` records with
+  `npm run runtime:terminalize-stale:dry-run -- --json`, then, after reviewing
+  the exact candidates, apply only the status transition with
+  `npm run runtime:terminalize-stale -- --write --json`. This marks eligible
+  records `interrupted` and never deletes artifacts. Historical index-only
+  group directories have their own dry-run/apply boundary via
+  `runtime:prune-empty-groups:dry-run` and
+  `runtime:prune-empty-groups -- --write`; only direct child directories with
+  no runs and empty index files qualify.
 - `browser_job_ops`: starts background browser execution jobs backed by
   `browser_execute_js`, then exposes `status`, `result`, `cancel`, and `list`.
   Jobs with a valid run are `durable:true`: metadata/results are checkpointed
@@ -258,9 +268,12 @@ transport drift.
 - browser67 appends a repo-external, privacy-bounded tool journal at
   `~/.browser67/runtime/tool-events.ndjson`. Entries contain only tool/action
   identity, managed scope identifiers, status/error code, duration, transport,
-  and bounded counts. URLs, scripts, inputs, page content, cookies, and
+  bounded lifecycle counts, screenshot requested/observed/artifact dimensions,
+  run terminal state, and a safe failed-phase label. URLs, scripts, inputs,
+  page content, cookies, and
   credentials are never written to this journal. The active file rotates at
-  8 MiB and keeps one `tool-events.ndjson.1` backup; both are mode `0600`.
+  8 MiB and keeps one `tool-events.ndjson.1` backup; both are mode `0600`, and
+  their parent runtime directory is mode `0700`.
 - `browser_screenshot_ops`: first-class PNG screenshot capture for real browser
   visual QA. Use after `browser_tab_lifecycle.select_or_create` and
   `browser_wait`; supported targets are `viewport`, `selector`, `clip`, and
@@ -272,9 +285,13 @@ transport drift.
   only on bounded pages with an explicit `max_pixels`. For responsive evidence,
   pass `viewport:{width,height,dpr,is_mobile}`; the wrapper applies temporary
   CDP device metrics, verifies the page viewport and PNG artifact dimensions
-  against the requested viewport, and clears the override after capture by
-  default. On TMWD, the set/verify/capture/clear sequence runs in one debugger
-  batch so the session-scoped emulation remains active through the capture.
+  against the requested viewport, and clears the override after capture.
+  `viewport.clear_after:false` is rejected because debugger-scoped emulation
+  cannot persist after the capture transaction. For all four targets on both
+  TMWD and explicit remote CDP, the capture-side set/verify/capture/clear
+  sequence stays on one debugger attachment. Selector/full-page target
+  resolution uses a separate atomic preflight transaction when required, so
+  every viewport probe and the final PNG observe the requested `innerWidth`.
   A responsive capture with stale desktop-sized artifact dimensions
   returns a verification error instead of success. Pass
   `layout_selectors` to return compact selector rect/computed-style metrics for
@@ -283,8 +300,11 @@ transport drift.
   probe reports `selector_not_found` or a detached node while that same-run
   metric has a valid rectangle, the tool captures the measured clip instead of
   failing and returns `selector_fallback:{used:true,source:"layout_metrics"}`.
-  Screenshot PNGs follow the runtime run retention policy instead of
-  accumulating in the project. When no `run_id` is supplied, the capture owns
+  `evidence_valid_until` is a 24-hour evidence-freshness boundary, not a
+  deletion time. Screenshot PNGs follow the separate runtime run retention
+  policy instead of accumulating in the project; `retention_delete_after`
+  remains `null` until a reviewed cleanup plan establishes a deletion action.
+  When no `run_id` is supplied, the capture owns
   its implicit run and marks it terminal after the artifact write. When a
   caller supplies `run_id`, lifecycle remains caller-owned; use the returned
   `run_requires_finish` signal and finish a still-running explicit run.

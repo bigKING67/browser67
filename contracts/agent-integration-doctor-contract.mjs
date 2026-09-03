@@ -17,6 +17,8 @@ import {
   runNodeScript,
   runtimeIdentityStatus,
 } from "../scripts/agent-integration-doctor.mjs";
+import { TOOL_SCHEMAS as JS_REVERSE_TOOL_SCHEMAS } from "../src/js-reverse-server/tool-schemas.mjs";
+import { TOOL_SCHEMAS as BROWSER_TOOL_SCHEMAS } from "../src/tool-schemas/index.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const doctorScript = path.resolve(repoRoot, "scripts/agent-integration-doctor.mjs");
@@ -45,10 +47,92 @@ function writeConfig(filePath) {
     "[mcp_servers.tmwd_browser]",
     'command = "node"',
     'args = ["/fixture/browser67/src/mcp/browser/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
     "",
     "[mcp_servers.js-reverse]",
     'command = "node"',
     'args = ["/fixture/browser67/src/mcp/js-reverse/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
+    "",
+  ].join("\n"), "utf8");
+}
+
+function writeExplicitConfig(filePath, {
+  omitBrowserTools = [],
+  omitJsReverseTools = [],
+} = {}) {
+  const lines = [
+    "[mcp_servers.tmwd_browser]",
+    'command = "node"',
+    'args = ["/fixture/browser67/src/mcp/browser/server.mjs"]',
+    "",
+    "[mcp_servers.js-reverse]",
+    'command = "node"',
+    'args = ["/fixture/browser67/src/mcp/js-reverse/server.mjs"]',
+    "",
+  ];
+  const omittedBrowser = new Set(omitBrowserTools);
+  const omittedJsReverse = new Set(omitJsReverseTools);
+  for (const toolName of Object.keys(BROWSER_TOOL_SCHEMAS).sort()) {
+    if (omittedBrowser.has(toolName)) continue;
+    lines.push(
+      `[mcp_servers.tmwd_browser.tools.${toolName}]`,
+      'approval_mode = "approve"',
+      "",
+    );
+  }
+  for (const toolName of Object.keys(JS_REVERSE_TOOL_SCHEMAS).sort()) {
+    if (omittedJsReverse.has(toolName)) continue;
+    lines.push(
+      `[mcp_servers.js-reverse.tools.${toolName}]`,
+      'approval_mode = "approve"',
+      "",
+    );
+  }
+  writeFileSync(filePath, lines.join("\n"), "utf8");
+}
+
+function writeStalePolicyConfig(filePath) {
+  writeFileSync(filePath, [
+    "[mcp_servers.tmwd_browser]",
+    'command = "node"',
+    'args = ["/fixture/browser67/src/mcp/browser/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
+    "",
+    "[mcp_servers.tmwd_browser.tools.retired_browser_tool]",
+    'approval_mode = "approve"',
+    "",
+    "[mcp_servers.js-reverse]",
+    'command = "node"',
+    'args = ["/fixture/browser67/src/mcp/js-reverse/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
+    "",
+    "[mcp_servers.js-reverse.tools.retired_js_reverse_tool]",
+    'approval_mode = "approve"',
+    "",
+  ].join("\n"), "utf8");
+}
+
+function writeInvalidAndDuplicatePolicyConfig(filePath) {
+  writeFileSync(filePath, [
+    "[mcp_servers.tmwd_browser]",
+    'command = "node"',
+    'args = ["/fixture/browser67/src/mcp/browser/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
+    "",
+    "[mcp_servers.tmwd_browser.tools.browser_console_ops]",
+    'approval_mode = "always"',
+    "",
+    "[mcp_servers.js-reverse]",
+    'command = "node"',
+    'args = ["/fixture/browser67/src/mcp/js-reverse/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
+    "",
+    "[mcp_servers.js-reverse.tools.get_local_storage]",
+    'approval_mode = "approve"',
+    "",
+    "[mcp_servers.js-reverse.tools.get_local_storage]",
+    'approval_mode = "approve"',
     "",
   ].join("\n"), "utf8");
 }
@@ -58,10 +142,12 @@ function writeMisboundConfig(filePath) {
     "[mcp_servers.tmwd_browser]",
     'command = "node"',
     'args = ["/fixture/browser67/src/mcp/js-reverse/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
     "",
     "[mcp_servers.js-reverse]",
     'command = "node"',
     'args = ["/fixture/browser67/src/mcp/browser/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
     "",
   ].join("\n"), "utf8");
 }
@@ -73,10 +159,12 @@ function writeCommentOnlyConfig(filePath) {
     "[mcp_servers.tmwd_browser]",
     'command = "node"',
     'args = ["/fixture/wrong-browser-entrypoint.mjs"] # src/mcp/browser/server.mjs',
+    'default_tools_approval_mode = "approve"',
     "",
     "[mcp_servers.js-reverse]",
     'command = "node"',
     'args = ["/fixture/wrong-js-reverse-entrypoint.mjs"] # src/mcp/js-reverse/server.mjs',
+    'default_tools_approval_mode = "approve"',
     "",
     "[[hooks.PostToolUse]]",
     'matcher = "src/mcp/browser/server.mjs"',
@@ -90,14 +178,17 @@ function writeDuplicateConfig(filePath) {
     "[mcp_servers.tmwd_browser]",
     'command = "node"',
     'args = ["/fixture/browser67/src/mcp/browser/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
     "",
     "[mcp_servers.tmwd_browser]",
     'command = "node"',
     'args = ["/fixture/wrong-browser-entrypoint.mjs"]',
+    'default_tools_approval_mode = "approve"',
     "",
     "[mcp_servers.js-reverse]",
     'command = "node"',
     'args = ["/fixture/browser67/src/mcp/js-reverse/server.mjs"]',
+    'default_tools_approval_mode = "approve"',
     "",
   ].join("\n"), "utf8");
 }
@@ -194,6 +285,10 @@ function main() {
     assert.equal(ready.checks.global_agents.current, true);
     assert.equal(ready.checks.browser_rule.current, true);
     assert.equal(ready.mcp_config_current, true);
+    assert.equal(ready.checks.mcp_config.checks.tmwd_tool_policy_current, true);
+    assert.equal(ready.checks.mcp_config.checks.js_reverse_tool_policy_current, true);
+    assert.equal(ready.checks.mcp_config.tool_policies.tmwd_browser.strategy, "server_default");
+    assert.equal(ready.checks.mcp_config.tool_policies.js_reverse.strategy, "server_default");
     assert.equal(ready.effective_agent_usage_ready, false);
     assert.match(ready.next_steps.join("\n"), /rerun without --skip-live/);
 
@@ -265,6 +360,62 @@ function main() {
     assert.equal(mcpDuplicate.mcp_config_current, false);
     assert.equal(mcpDuplicate.checks.mcp_config.checks.tmwd_server_registered, false);
     assert.equal(mcpDuplicate.checks.mcp_config.checks.tmwd_canonical_entrypoint, true);
+
+    writeExplicitConfig(codexConfig);
+    const explicitPolicies = run(baseArgs);
+    assert.equal(explicitPolicies.mcp_config_current, true);
+    assert.equal(
+      explicitPolicies.checks.mcp_config.tool_policies.tmwd_browser.strategy,
+      "per_tool_explicit",
+    );
+    assert.equal(
+      explicitPolicies.checks.mcp_config.tool_policies.tmwd_browser.explicit_tool_policy_count,
+      Object.keys(BROWSER_TOOL_SCHEMAS).length,
+    );
+    assert.equal(
+      explicitPolicies.checks.mcp_config.tool_policies.js_reverse.explicit_tool_policy_count,
+      Object.keys(JS_REVERSE_TOOL_SCHEMAS).length,
+    );
+
+    writeExplicitConfig(codexConfig, {
+      omitBrowserTools: ["browser_console_ops"],
+      omitJsReverseTools: ["get_local_storage"],
+    });
+    const missingPolicies = run(baseArgs, 1);
+    assert.equal(missingPolicies.mcp_config_current, false);
+    assert.deepEqual(
+      missingPolicies.checks.mcp_config.tool_policies.tmwd_browser.missing_tool_policies,
+      ["browser_console_ops"],
+    );
+    assert.deepEqual(
+      missingPolicies.checks.mcp_config.tool_policies.js_reverse.missing_tool_policies,
+      ["get_local_storage"],
+    );
+    assert.match(missingPolicies.next_steps.join("\n"), /approval policies/);
+
+    writeStalePolicyConfig(codexConfig);
+    const stalePolicies = run(baseArgs, 1);
+    assert.equal(stalePolicies.mcp_config_current, false);
+    assert.deepEqual(
+      stalePolicies.checks.mcp_config.tool_policies.tmwd_browser.stale_tool_policies,
+      ["retired_browser_tool"],
+    );
+    assert.deepEqual(
+      stalePolicies.checks.mcp_config.tool_policies.js_reverse.stale_tool_policies,
+      ["retired_js_reverse_tool"],
+    );
+
+    writeInvalidAndDuplicatePolicyConfig(codexConfig);
+    const invalidAndDuplicatePolicies = run(baseArgs, 1);
+    assert.equal(invalidAndDuplicatePolicies.mcp_config_current, false);
+    assert.deepEqual(
+      invalidAndDuplicatePolicies.checks.mcp_config.tool_policies.tmwd_browser.invalid_tool_policies,
+      ["browser_console_ops"],
+    );
+    assert.deepEqual(
+      invalidAndDuplicatePolicies.checks.mcp_config.tool_policies.js_reverse.duplicate_tool_policy_sections,
+      ["get_local_storage"],
+    );
 
     const expectedProbeIdentity = {
       check: "fixture-probe",
@@ -349,6 +500,11 @@ function main() {
         "mcp-misbinding",
         "mcp-comment-only",
         "mcp-duplicate-section",
+        "mcp-server-default-policy",
+        "mcp-explicit-tool-policies",
+        "mcp-missing-tool-policies",
+        "mcp-stale-tool-policies",
+        "mcp-invalid-and-duplicate-tool-policies",
         "nonzero-success-payload",
         "wrong-schema",
         "timeout",

@@ -242,7 +242,10 @@ the browser67 run root and tool results return metadata only, never image base64
 Responsive viewport captures verify both page viewport metrics and PNG artifact
 dimensions against the requested viewport; stale desktop-sized artifacts fail
 with a screenshot verification error instead of being reported as valid mobile
-evidence.
+evidence. This atomic viewport contract applies to viewport, selector, clip,
+and bounded full-page targets. `viewport.clear_after=false` is unsupported and
+fails validation; the override is always cleared inside the debugger-scoped
+capture transaction.
 Audit retained screenshot/run evidence with `npm run runtime:cleanup:dry-run`;
 apply retention only with the explicit write path
 `npm run runtime:cleanup -- --write`.

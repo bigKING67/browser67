@@ -6,7 +6,15 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { TOOL_SCHEMAS as JS_REVERSE_TOOL_SCHEMAS } from "../src/js-reverse-server/tool-schemas.mjs";
+import { TOOL_SCHEMAS as BROWSER_TOOL_SCHEMAS } from "../src/tool-schemas/index.mjs";
+
 const repoRoot = path.resolve(import.meta.dirname, "..");
+const APPROVAL_MODES = new Set(["auto", "prompt", "writes", "approve"]);
+const MCP_TOOL_SCHEMAS = {
+  tmwd_browser: BROWSER_TOOL_SCHEMAS,
+  "js-reverse": JS_REVERSE_TOOL_SCHEMAS,
+};
 
 function expandHome(value) {
   const input = String(value ?? "");
@@ -228,19 +236,106 @@ function tomlSections(text) {
   return { sections, counts };
 }
 
+function tomlApprovalAssignment(lines, key) {
+  const assignments = lines.filter((line) => new RegExp(`^${key}\\s*=`).test(line));
+  const match = assignments.length === 1
+    ? assignments[0].match(new RegExp(`^${key}\\s*=\\s*["']([^"']+)["']$`))
+    : null;
+  const value = match?.[1] ?? null;
+  return {
+    present: assignments.length > 0,
+    valid: assignments.length === 1 && APPROVAL_MODES.has(value),
+    value,
+  };
+}
+
+function mcpToolPolicyStatus(serverId, schemas, sections, counts) {
+  const serverSection = `mcp_servers.${serverId}`;
+  const toolPrefix = `${serverSection}.tools.`;
+  const expectedToolNames = Object.keys(schemas).sort();
+  const expectedToolSet = new Set(expectedToolNames);
+  const configuredToolNames = [...counts.keys()]
+    .filter((sectionName) => sectionName.startsWith(toolPrefix))
+    .map((sectionName) => sectionName.slice(toolPrefix.length))
+    .sort();
+  const defaultPolicy = tomlApprovalAssignment(
+    sections.get(serverSection) ?? [],
+    "default_tools_approval_mode",
+  );
+  const explicitPolicyNames = [];
+  const invalidToolPolicies = [];
+  const duplicateToolPolicySections = [];
+
+  for (const toolName of configuredToolNames) {
+    const sectionName = `${toolPrefix}${toolName}`;
+    if (counts.get(sectionName) !== 1) {
+      duplicateToolPolicySections.push(toolName);
+      continue;
+    }
+    const policy = tomlApprovalAssignment(sections.get(sectionName) ?? [], "approval_mode");
+    if (policy.valid) explicitPolicyNames.push(toolName);
+    else invalidToolPolicies.push(toolName);
+  }
+
+  const explicitPolicySet = new Set(explicitPolicyNames);
+  const missingToolPolicies = expectedToolNames.filter((toolName) => !explicitPolicySet.has(toolName));
+  const staleToolPolicies = configuredToolNames.filter((toolName) => !expectedToolSet.has(toolName));
+  const defaultPolicyCurrent = !defaultPolicy.present || defaultPolicy.valid;
+  const current = defaultPolicyCurrent
+    && invalidToolPolicies.length === 0
+    && duplicateToolPolicySections.length === 0
+    && staleToolPolicies.length === 0
+    && (defaultPolicy.valid || missingToolPolicies.length === 0);
+
+  return {
+    current,
+    strategy: defaultPolicy.valid ? "server_default" : "per_tool_explicit",
+    default_tools_approval_mode: defaultPolicy.value,
+    default_tools_approval_mode_current: defaultPolicyCurrent,
+    actual_tool_count: expectedToolNames.length,
+    configured_tool_policy_count: configuredToolNames.length,
+    explicit_tool_policy_count: explicitPolicyNames.length,
+    missing_tool_policies: missingToolPolicies,
+    stale_tool_policies: staleToolPolicies,
+    invalid_tool_policies: invalidToolPolicies,
+    duplicate_tool_policy_sections: duplicateToolPolicySections,
+  };
+}
+
 function mcpConfigStatus(configPath) {
   const text = readText(configPath);
   const { sections, counts } = tomlSections(text);
   const tmwdSection = sections.get("mcp_servers.tmwd_browser")?.join("\n") ?? "";
   const jsReverseSection = sections.get("mcp_servers.js-reverse")?.join("\n") ?? "";
+  const toolPolicies = {
+    tmwd_browser: mcpToolPolicyStatus(
+      "tmwd_browser",
+      MCP_TOOL_SCHEMAS.tmwd_browser,
+      sections,
+      counts,
+    ),
+    js_reverse: mcpToolPolicyStatus(
+      "js-reverse",
+      MCP_TOOL_SCHEMAS["js-reverse"],
+      sections,
+      counts,
+    ),
+  };
   const checks = {
     config_present: Boolean(text),
     tmwd_server_registered: counts.get("mcp_servers.tmwd_browser") === 1,
     tmwd_canonical_entrypoint: /src\/mcp\/browser\/server\.mjs/.test(tmwdSection),
+    tmwd_tool_policy_current: toolPolicies.tmwd_browser.current,
     js_reverse_server_registered: counts.get("mcp_servers.js-reverse") === 1,
     js_reverse_canonical_entrypoint: /src\/mcp\/js-reverse\/server\.mjs/.test(jsReverseSection),
+    js_reverse_tool_policy_current: toolPolicies.js_reverse.current,
   };
-  return { ok: allTrue(checks), path: configPath, checks };
+  return {
+    ok: allTrue(checks),
+    path: configPath,
+    checks,
+    tool_policies: toolPolicies,
+  };
 }
 
 function runtimeIdentityStatus(payload) {
@@ -394,7 +489,16 @@ function buildReport(options) {
   if (!globalAgentsCurrent) nextSteps.push(`Update ${options.globalAgents} with the browser67 route and an execution-time pointer to ${options.browserRule}.`);
   if (!browserRuleCurrent) nextSteps.push(`Update ${options.browserRule} with explicit adoption, scoped finalization, Browser Instance fail-closed routing, and login fail-closed rules.`);
   if (!projectAgentsCurrent) nextSteps.push(`Update ${options.projectAgents} with browser67 route, explicit adoption, scoped finalization, Browser Instance fail-closed routing, and login fail-closed rules.`);
-  if (!mcpConfig.ok) nextSteps.push(`Register tmwd_browser and js-reverse canonical MCP entrypoints in ${options.codexConfig}.`);
+  if (!mcpConfig.checks.tmwd_server_registered
+    || !mcpConfig.checks.tmwd_canonical_entrypoint
+    || !mcpConfig.checks.js_reverse_server_registered
+    || !mcpConfig.checks.js_reverse_canonical_entrypoint) {
+    nextSteps.push(`Register tmwd_browser and js-reverse canonical MCP entrypoints in ${options.codexConfig}.`);
+  }
+  if (!mcpConfig.checks.tmwd_tool_policy_current
+    || !mcpConfig.checks.js_reverse_tool_policy_current) {
+    nextSteps.push(`Align MCP tool approval policies with the current browser67 tool schemas in ${options.codexConfig}, or set an explicit server default.`);
+  }
   if (!runtime.skipped && !runtime.ready) nextSteps.push("Start/repair the browser67 hub and extension, then rerun npm run doctor:agent -- --check --json.");
   if (runtime.skipped && staticReady) nextSteps.push("Static Agent integration checks passed; rerun without --skip-live before claiming effective runtime readiness.");
   if (nextSteps.length === 0) nextSteps.push("Installed Agent usage path is current; start a new Agent session only if skills or AGENTS were changed during the current session.");
