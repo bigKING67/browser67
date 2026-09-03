@@ -6,6 +6,10 @@
   tabs by replacing RAF-dependent probes with synchronous layout reads, adding
   an atomic CDP layout barrier, and bounding debugger timeout cleanup so
   emulation state and per-tab queues are always released.
+- Make the performance smoke resilient to isolated runner filesystem stalls by
+  enforcing the unchanged platform run-lifecycle budget against a three-sample
+  median; per-event latency and absolute/relative indexed-write gates remain
+  intact across every sample.
 
 ## 0.11.1 - 2026-09-03
 

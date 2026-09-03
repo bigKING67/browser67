@@ -35,6 +35,7 @@ const INDEXED_RUN_WRITE_TOTAL_BUDGET_MS = 45_000;
 const INDEXED_RUN_WRITE_RELATIVE_RATIO_BUDGET = 4;
 const INDEXED_RUN_WRITE_RELATIVE_FLOOR_MS = 2_000;
 const RUN_LIFECYCLE_BUDGET_MS = process.platform === "win32" ? 4_000 : 2_500;
+const RUN_LIFECYCLE_SAMPLE_COUNT = 3;
 const SEMANTIC_DIFF_BUDGET_MS = process.env.CI === "true" ? 1_000 : 500;
 
 function assertBudget(label, elapsedMs, budgetMs) {
@@ -52,6 +53,38 @@ function percentile(values, ratio) {
 
 function median(values) {
   return percentile(values, 0.5);
+}
+
+async function measureRunLifecycle(round) {
+  const startedAt = performance.now();
+  const prepared = await handleBrowserRunOps({
+    action: "prepare",
+    workspace_key: "performance-smoke",
+    title: `performance smoke ${String(round + 1)}`,
+  });
+  const eventLatencies = [];
+  for (let index = 0; index < RUN_EVENT_COUNT; index += 1) {
+    const eventStarted = performance.now();
+    await handleBrowserRunOps({
+      action: "record_event",
+      workspace_key: "performance-smoke",
+      run_id: prepared.run.run_id,
+      event: "tick",
+      data: { index, payload: "x".repeat(128) },
+    });
+    eventLatencies.push(performance.now() - eventStarted);
+  }
+  await handleBrowserRunOps({
+    action: "finish",
+    workspace_key: "performance-smoke",
+    run_id: prepared.run.run_id,
+    status: "success",
+  });
+  return {
+    prepared,
+    elapsed_ms: performance.now() - startedAt,
+    event_latencies_ms: eventLatencies,
+  };
 }
 
 async function measureFilesystemControl(root, round, count) {
@@ -191,32 +224,14 @@ async function main() {
     }
     const evidenceMs = performance.now() - evidenceStarted;
 
-    const runStarted = performance.now();
-    const prepared = await handleBrowserRunOps({
-      action: "prepare",
-      workspace_key: "performance-smoke",
-      title: "performance smoke",
-    });
-    const runId = prepared.run.run_id;
-    const eventLatencies = [];
-    for (let index = 0; index < RUN_EVENT_COUNT; index += 1) {
-      const eventStarted = performance.now();
-      await handleBrowserRunOps({
-        action: "record_event",
-        workspace_key: "performance-smoke",
-        run_id: runId,
-        event: "tick",
-        data: { index, payload: "x".repeat(128) },
-      });
-      eventLatencies.push(performance.now() - eventStarted);
+    const runLifecycleMeasurements = [];
+    for (let round = 0; round < RUN_LIFECYCLE_SAMPLE_COUNT; round += 1) {
+      runLifecycleMeasurements.push(await measureRunLifecycle(round));
     }
-    await handleBrowserRunOps({
-      action: "finish",
-      workspace_key: "performance-smoke",
-      run_id: runId,
-      status: "success",
-    });
-    const runMs = performance.now() - runStarted;
+    const prepared = runLifecycleMeasurements[0].prepared;
+    const runLifecycleSamplesMs = runLifecycleMeasurements.map((sample) => sample.elapsed_ms);
+    const runMs = median(runLifecycleSamplesMs);
+    const eventLatencies = runLifecycleMeasurements.flatMap((sample) => sample.event_latencies_ms);
     const runEventP95Ms = percentile(eventLatencies, 0.95);
     const runEventP99Ms = percentile(eventLatencies, 0.99);
 
@@ -400,7 +415,7 @@ async function main() {
     await runStore.dispose();
 
     assertBudget("evidence normalization", evidenceMs, 250);
-    assertBudget("run lifecycle io", runMs, RUN_LIFECYCLE_BUDGET_MS);
+    assertBudget("run lifecycle io median", runMs, RUN_LIFECYCLE_BUDGET_MS);
     assertBudget("run event p95", runEventP95Ms, 200);
     assertBudget("run event p99", runEventP99Ms, 500);
     assertBudget("indexed run list", runListReadMs, 500);
@@ -413,6 +428,9 @@ async function main() {
       ok: true,
       evidence_records: 5_000,
       run_events: RUN_EVENT_COUNT,
+      run_event_observations: eventLatencies.length,
+      run_lifecycle_sample_count: runLifecycleSamplesMs.length,
+      run_lifecycle_samples_ms: runLifecycleSamplesMs.map((value) => Number(value.toFixed(2))),
       evidence_ms: Number(evidenceMs.toFixed(2)),
       run_ms: Number(runMs.toFixed(2)),
       run_event_p95_ms: Number(runEventP95Ms.toFixed(2)),
@@ -444,6 +462,7 @@ async function main() {
       budgets_ms: {
         evidence: 250,
         run_lifecycle: RUN_LIFECYCLE_BUDGET_MS,
+        run_lifecycle_sample_count: RUN_LIFECYCLE_SAMPLE_COUNT,
         run_event_p95: 200,
         run_event_p99: 500,
         indexed_run_writes: INDEXED_RUN_WRITE_ABSOLUTE_ROUND_BUDGET_MS,

@@ -150,6 +150,13 @@ keeps the post-emulation `Page.getLayoutMetrics` barrier inside the same atomic
 debugger transaction before synchronous page probes and capture. It then proves
 a later debugger-backed capture still succeeds before finalization.
 
+The deterministic performance smoke measures three independent 2,000-event
+run-lifecycle samples and applies the existing platform budget to their median,
+so one isolated host-filesystem stall cannot decide the gate. All 6,000 event
+latencies still feed the p95/p99 checks, while indexed run writes retain their
+per-round, total, and relative-to-filesystem-control budgets; sustained product
+or host-independent regressions therefore remain blocking.
+
 The TMWD performance live gate complements the deterministic performance smoke
 with cold and warm p50/p95/p99 measurements for extension transport, managed
 execution, actionable extraction, and selector waits against an isolated local
