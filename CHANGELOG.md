@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Stabilize the Windows performance smoke gate with a platform-specific
+  run-lifecycle I/O budget while preserving the stricter macOS/Linux threshold
+  and the existing latency, total-write, and relative-filesystem checks.
 - Update the transitive `fast-uri` dependency to `3.1.7` so CI and local
   installs include the upstream fixes for the newly disclosed high-severity
   URL canonicalization and SSRF advisories.

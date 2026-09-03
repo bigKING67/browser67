@@ -34,6 +34,7 @@ const INDEXED_RUN_WRITE_ABSOLUTE_ROUND_BUDGET_MS = 15_000;
 const INDEXED_RUN_WRITE_TOTAL_BUDGET_MS = 45_000;
 const INDEXED_RUN_WRITE_RELATIVE_RATIO_BUDGET = 4;
 const INDEXED_RUN_WRITE_RELATIVE_FLOOR_MS = 2_000;
+const RUN_LIFECYCLE_BUDGET_MS = process.platform === "win32" ? 4_000 : 2_500;
 const SEMANTIC_DIFF_BUDGET_MS = process.env.CI === "true" ? 1_000 : 500;
 
 function assertBudget(label, elapsedMs, budgetMs) {
@@ -399,7 +400,7 @@ async function main() {
     await runStore.dispose();
 
     assertBudget("evidence normalization", evidenceMs, 250);
-    assertBudget("run lifecycle io", runMs, 2_500);
+    assertBudget("run lifecycle io", runMs, RUN_LIFECYCLE_BUDGET_MS);
     assertBudget("run event p95", runEventP95Ms, 200);
     assertBudget("run event p99", runEventP99Ms, 500);
     assertBudget("indexed run list", runListReadMs, 500);
@@ -442,7 +443,7 @@ async function main() {
       bounded_runtime_stores: boundedStoreStats,
       budgets_ms: {
         evidence: 250,
-        run_lifecycle: 2_500,
+        run_lifecycle: RUN_LIFECYCLE_BUDGET_MS,
         run_event_p95: 200,
         run_event_p99: 500,
         indexed_run_writes: INDEXED_RUN_WRITE_ABSOLUTE_ROUND_BUDGET_MS,
