@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.11.0 - 2026-09-03
+
+- Make responsive screenshots atomic across viewport, selector, clip, and
+  bounded full-page targets on TMWD and explicit remote CDP. Each temporary
+  viewport override now stays on one debugger attachment through
+  set/probe/capture/clear, verifies both page metrics and PNG dimensions, and
+  rejects unsupported persistent overrides.
+- Bound browser, console, native-input, TMWD, and CDP execution with one
+  end-to-end operation deadline while retaining the exact failed phase and
+  safety error identity.
+- Harden browser67 runtime storage with process umask `077`, owner-only
+  directories and files, atomic private writers, permission auditing, stale-run
+  terminalization, and narrowly guarded empty-group pruning.
+- Canonicalize Browser Instance and tab identities across page context,
+  managed-tab registry, reuse, and finalization, and publish the compatible
+  `managed-tabs-v9` capability contract.
 - Extend the Agent integration doctor to compare browser67 and js-reverse MCP
   tool schemas with Codex approval policy. The audit accepts either an explicit
   server default or complete per-tool coverage, while failing closed on missing,
