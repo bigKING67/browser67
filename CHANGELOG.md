@@ -5,6 +5,9 @@
 - Update the transitive `fast-uri` dependency to `3.1.7` so CI and local
   installs include the upstream fixes for the newly disclosed high-severity
   URL canonicalization and SSRF advisories.
+- Make the runtime permission audit explicitly skip unsupported POSIX mode
+  enforcement on Windows instead of reporting meaningless mode mismatches or
+  attempting to emulate ACL changes with `chmod`.
 
 ## 0.11.0 - 2026-09-03
 

@@ -64,13 +64,33 @@ try {
     max_items: 100,
   });
   assert.equal(permissionDryRun.ok, true);
+  assert.equal(permissionDryRun.platform_supported, posixModeSupported);
   assert.equal(permissionDryRun.changed_count, 0);
-  assert.equal(permissionDryRun.skipped_count, posixModeSupported ? 1 : 0);
+  assert.equal(permissionDryRun.skipped_count, 1);
   if (posixModeSupported) {
     assert.ok(permissionDryRun.mismatch_count >= 6);
     assert.equal((await stat(publicFile)).mode & 0o777, 0o644);
     assert.equal((await stat(registryDirectory)).mode & 0o777, 0o755);
     assert.equal((await stat(registryFile)).mode & 0o777, 0o644);
+  } else {
+    assert.equal(permissionDryRun.skipped, true);
+    assert.equal(permissionDryRun.skip_reason, "posix_modes_unsupported");
+    assert.equal(permissionDryRun.mismatch_count, 0);
+  }
+
+  const simulatedWindowsAudit = await auditRuntimePermissions({
+    home: browserHome,
+    write: true,
+    platform: "win32",
+  });
+  assert.equal(simulatedWindowsAudit.ok, true);
+  assert.equal(simulatedWindowsAudit.platform_supported, false);
+  assert.equal(simulatedWindowsAudit.skipped, true);
+  assert.equal(simulatedWindowsAudit.skip_reason, "posix_modes_unsupported");
+  assert.equal(simulatedWindowsAudit.mismatch_count, 0);
+  assert.equal(simulatedWindowsAudit.changed_count, 0);
+  if (posixModeSupported) {
+    assert.equal((await stat(publicFile)).mode & 0o777, 0o644);
   }
 
   const permissionWrite = await auditRuntimePermissions({
@@ -79,6 +99,7 @@ try {
     max_items: 100,
   });
   assert.equal(permissionWrite.ok, true);
+  assert.equal(permissionWrite.platform_supported, posixModeSupported);
   if (posixModeSupported) {
     assert.equal(permissionWrite.changed_count, permissionDryRun.mismatch_count);
     assert.equal((await stat(browserHome)).mode & 0o777, 0o700);
@@ -105,7 +126,7 @@ try {
   }
   const permissionAfter = await auditRuntimePermissions({ home: browserHome, write: false });
   assert.equal(permissionAfter.mismatch_count, 0);
-  assert.equal(permissionAfter.skipped_count, posixModeSupported ? 1 : 0);
+  assert.equal(permissionAfter.skipped_count, 1);
   const launchdSource = await readFile(new URL("../scripts/install-launchd.mjs", import.meta.url), "utf8");
   assert.match(launchdSource, /<key>Umask<\/key>\s*<integer>63<\/integer>/);
 
@@ -166,6 +187,7 @@ try {
     check: "runtime-maintenance-contract",
     permission_dry_run: true,
     permission_apply: true,
+    windows_posix_mode_skip: true,
     private_runtime_writers: true,
     launchd_private_umask: true,
     symlink_not_followed: true,

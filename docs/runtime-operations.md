@@ -301,7 +301,9 @@ npm run runtime:permissions -- --write --json
 
 The audit covers `~/.browser67/runtime/` plus
 `~/.browser67/tab-workspace/`; it does not recursively rewrite extension or
-provider configuration trees. New `tmwd_browser` and `js-reverse` MCP server processes set process umask
+provider configuration trees. On Windows it reports
+`platform_supported:false` and performs no `chmod`; this POSIX-mode audit does
+not claim to harden Windows ACLs. New `tmwd_browser` and `js-reverse` MCP server processes set process umask
 `077`; run, job, screenshot, journal, hub-state, live-gate event, and managed-tab
 registry writers also enforce private modes at their own boundaries. An MCP
 server that was already running before this version keeps its loaded writer code

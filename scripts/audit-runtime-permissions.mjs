@@ -75,6 +75,16 @@ function permissionBits(metadata) {
   return metadata.mode & 0o777;
 }
 
+function permissionPolicy(platformSupported) {
+  return {
+    directory_mode: "0700",
+    file_mode: "0600",
+    symlink_policy: "do_not_follow",
+    scopes: ["home", "runtime", "tab-workspace"],
+    platform_supported: platformSupported,
+  };
+}
+
 async function collectPermissionRows(target, rows) {
   const metadata = await lstat(target).catch((error) => {
     if (error?.code === "ENOENT") return null;
@@ -105,6 +115,8 @@ async function collectPermissionRows(target, rows) {
 
 async function auditRuntimePermissions(args = {}) {
   const home = assertSafeBrowserHome(args.home || resolveBrowser67HomePath());
+  const platform = String(args.platform ?? process.platform);
+  const platformSupported = platform !== "win32";
   const homeMetadata = await lstat(home).catch((error) => {
     if (error?.code === "ENOENT") return null;
     throw error;
@@ -116,14 +128,43 @@ async function auditRuntimePermissions(args = {}) {
       write: args.write === true,
       home,
       home_exists: false,
+      platform,
+      platform_supported: platformSupported,
+      skipped: !platformSupported,
+      skip_reason: platformSupported ? null : "posix_modes_unsupported",
+      policy: permissionPolicy(platformSupported),
       checked_count: 0,
       mismatch_count: 0,
       changed_count: 0,
-      rows: [],
+      mismatch_rows: [],
+      mismatch_rows_truncated: false,
+      skipped_count: platformSupported ? 0 : 1,
+      errors: [],
     };
   }
   if (!homeMetadata.isDirectory() || homeMetadata.isSymbolicLink()) {
     throw new Error(`browser67 home must be a real directory: ${home}`);
+  }
+  if (!platformSupported) {
+    return {
+      ok: true,
+      check: "runtime-permissions",
+      write: args.write === true,
+      home,
+      home_exists: true,
+      platform,
+      platform_supported: false,
+      skipped: true,
+      skip_reason: "posix_modes_unsupported",
+      policy: permissionPolicy(false),
+      checked_count: 0,
+      mismatch_count: 0,
+      changed_count: 0,
+      mismatch_rows: [],
+      mismatch_rows_truncated: false,
+      skipped_count: 1,
+      errors: [],
+    };
   }
   const rows = [];
   rows.push({
@@ -155,12 +196,11 @@ async function auditRuntimePermissions(args = {}) {
     write: args.write === true,
     home,
     home_exists: true,
-    policy: {
-      directory_mode: "0700",
-      file_mode: "0600",
-      symlink_policy: "do_not_follow",
-      scopes: ["home", "runtime", "tab-workspace"],
-    },
+    platform,
+    platform_supported: true,
+    skipped: false,
+    skip_reason: null,
+    policy: permissionPolicy(true),
     checked_count: rows.length,
     mismatch_count: mismatches.length,
     changed_count: changedCount,
@@ -181,6 +221,7 @@ function usage() {
     "",
     "The default is read-only. --write restricts the browser67 home directory, runtime subtree,",
     "and managed-tab registry subtree to owner-only modes without following symbolic links.",
+    "Windows reports platform_supported=false and does not emulate POSIX modes with ACL changes.",
   ].join("\n");
 }
 
@@ -196,6 +237,7 @@ async function main() {
     process.stdout.write([
       `runtime_permissions=${result.write ? "applied" : "audit"}`,
       `home=${result.home}`,
+      `platform_supported=${String(result.platform_supported)}`,
       `checked=${result.checked_count}`,
       `mismatches=${result.mismatch_count}`,
       `changed=${result.changed_count}`,
