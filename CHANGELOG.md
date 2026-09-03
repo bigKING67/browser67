@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Update the transitive `fast-uri` dependency to `3.1.7` so CI and local
+  installs include the upstream fixes for the newly disclosed high-severity
+  URL canonicalization and SSRF advisories.
+
 ## 0.11.0 - 2026-09-03
 
 - Make responsive screenshots atomic across viewport, selector, clip, and
