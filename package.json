@@ -143,6 +143,8 @@
     "check:managed-tab-live": "node contracts/browser-managed-tab-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto --require-tabs-get",
     "check:tmwd-performance-live": "node contracts/browser-tmwd-performance-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto --require-tabs-get",
     "check:screenshot-live": "node contracts/browser-screenshot-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto",
+    "check:screenshot-stability-contract": "node contracts/screenshot-stability-contract.mjs",
+    "check:screenshot-stability": "node scripts/screenshot-stability.mjs --iterations 3 -- --tmwd-mode tmwd --tmwd-transport auto",
     "check:file-ops-live": "node contracts/browser-file-ops-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto",
     "check:console-live": "node contracts/browser-console-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto",
     "check:auth-live": "node contracts/browser-auth-live-smoke.mjs --tmwd-mode tmwd --tmwd-transport auto",

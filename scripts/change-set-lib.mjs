@@ -89,6 +89,31 @@ const GROUPS = [
     ],
   },
   {
+    id: "screenshot_runtime",
+    title: "Harden screenshot runtime closure",
+    description: "Screenshot transport, responsive capture, live regression, and repeated stability evidence.",
+    commit_message: "Harden screenshot closure gates",
+    verification: [
+      "npm run check:mcp",
+      "npm run check:screenshot-stability-contract",
+      "npm run check:screenshot-live",
+      "npm run check:screenshot-stability",
+      "npm run check:change-set",
+    ],
+    risk_notes: [
+      "The real default path is a dedicated background managed tab with document.visibilityState=hidden.",
+      "Every stability iteration must preserve timeout cleanup, viewport restoration, and scoped finalization evidence.",
+    ],
+    patterns: [
+      /^src\/browser-screenshot\//,
+      /^src\/server\/browser-core\/screenshot\.mjs$/,
+      /^src\/tool-schemas\/screenshot-ops\.mjs$/,
+      /^contracts\/browser-screenshot-live-smoke\.mjs$/,
+      /^contracts\/screenshot-stability-contract\.mjs$/,
+      /^scripts\/screenshot-stability\.mjs$/,
+    ],
+  },
+  {
     id: "browser_mcp_surface",
     title: "Split structured browser MCP surface",
     description: "Structured browser MCP server, wrappers, schemas, and deterministic tool contracts.",
@@ -254,6 +279,7 @@ const GROUPS = [
     ],
     patterns: [
       /^AGENTS\.md$/,
+      /^\.review-craft\.json$/,
       /^\.gitignore$/,
       /^CHANGELOG\.md$/,
       /^agents\/openai\.yaml$/,

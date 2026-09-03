@@ -1,4 +1,17 @@
 const DEFAULT_CHANGED_PATHS = ["src/**", "contracts/**", "scripts/**", "package.json"];
+const SCREENSHOT_CHANGED_PATHS = [
+  "src/browser-screenshot/**",
+  "src/server/browser-core/screenshot.mjs",
+  "src/mcp/browser/tool-registry.mjs",
+  "src/tool-schemas/screenshot-ops.mjs",
+  "src/tmwd-runtime/**",
+  "extension/**",
+  "contracts/browser-screenshot-live-smoke.mjs",
+  "contracts/screenshot-stability-contract.mjs",
+  "scripts/screenshot-stability.mjs",
+  ".review-craft.json",
+  "package.json",
+];
 
 function npmEntry(id, script, options = {}) {
   return {
@@ -80,6 +93,7 @@ const entries = [
   npmEntry("extension-reload-live-contract", "check:extension-reload-live", { changed_paths: ["scripts/reload-extension-live.mjs", "contracts/extension-reload-live-contract.mjs"] }),
   npmEntry("agent-integration-doctor", "check:agent-integration-doctor", { changed_paths: ["AGENTS.md", "docs/agent-setup.md", "docs/global-prompt-snippet.md", "skills/**", "scripts/agent-integration-doctor.mjs", "contracts/agent-integration-doctor-contract.mjs", "package.json"] }),
   npmEntry("performance-smoke", "check:performance-smoke", { changed_paths: ["src/**", "scripts/performance-smoke.mjs"] }),
+  npmEntry("screenshot-stability-contract", "check:screenshot-stability-contract", { changed_paths: SCREENSHOT_CHANGED_PATHS }),
   npmEntry("runtime-cleanup", "check:runtime-cleanup", { changed_paths: ["src/runtime/runs/**", "src/runtime/jobs/**", "scripts/cleanup-runtime-artifacts.mjs", "contracts/runtime-artifact-cleanup-contract.mjs"] }),
   npmEntry("task-templates", "check:task-templates", { changed_paths: ["docs/**", "scripts/task-template.mjs"] }),
   npmEntry("regression-matrix", "check:regression-matrix", { changed_paths: ["scripts/regression-matrix.mjs", "package.json"] }),
@@ -116,7 +130,8 @@ const entries = [
   npmEntry("js-reverse-live", "check:js-reverse-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("managed-tab-live", "check:managed-tab-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("tmwd-performance-live", "check:tmwd-performance-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
-  npmEntry("screenshot-live", "check:screenshot-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
+  npmEntry("screenshot-live", "check:screenshot-live", { changed_paths: SCREENSHOT_CHANGED_PATHS, requirements: ["node", "tmwd_hub", "browser67_extension"] }),
+  npmEntry("screenshot-stability", "check:screenshot-stability", { changed_paths: SCREENSHOT_CHANGED_PATHS, requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("file-ops-live", "check:file-ops-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("console-live", "check:console-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
   npmEntry("auth-live", "check:auth-live", { requirements: ["node", "tmwd_hub", "browser67_extension"] }),
@@ -159,7 +174,7 @@ const tiers = {
       "lint", "type-check", "dependency-boundaries", "syntax", "core-coverage", "mcp", "browser-runtime", "tool-journal", "browser-content-core", "run-store", "runtime-maintenance", "job-persistence",
       "hub-control", "hub-relay", "doctor-schema", "js-reverse-mcp", "js-reverse-upstream", "js-reverse-upstream-audit-contract",
       "js-reverse-absorption", "active-skill-sync-contract", "skills-roots-audit-contract", "browser67-naming", "readme", "runtime-home",
-      "project-structure", "change-set-contract", "setup-extension", "extension-build", "extension-managed-runtime", "extension-debugger-runtime", "extension-install-doctor", "performance-smoke",
+      "project-structure", "change-set-contract", "setup-extension", "extension-build", "extension-managed-runtime", "extension-debugger-runtime", "extension-install-doctor", "performance-smoke", "screenshot-stability-contract",
       "extension-reload-live-contract", "agent-integration-doctor",
       "runtime-cleanup", "task-templates", "regression-matrix", "verification-manifest", "verification-runner", "upstream-audit-contract", "upstream-lock-contract", "extension-upstream-sync-contract", "upstream-review-contract",
       "upstream-review-refresh-contract", "tmwd-runtime-dispose", "tmwd-transport-health", "extension-bridge",
@@ -199,11 +214,11 @@ const tiers = {
   },
   release: {
     purpose: "Verify then require a clean, synced checkout and current upstream evidence.",
-    steps: ["@verify", "release-ready"],
+    steps: ["@verify", "screenshot-stability", "release-ready"],
   },
   "release-strict": {
     purpose: "Release verification with required optional external proofs.",
-    steps: ["@verify", "release-ready-strict"],
+    steps: ["@verify", "screenshot-stability", "release-ready-strict"],
   },
 };
 

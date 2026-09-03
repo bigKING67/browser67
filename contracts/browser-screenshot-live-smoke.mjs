@@ -557,6 +557,7 @@ async function run() {
       prune_stale: true,
       cleanup_created_agent_window: true,
     });
+    assert.equal(finalized.status, "success", "screenshot fixture finalization must succeed");
 
     process.stdout.write(`${JSON.stringify({
       ok: true,

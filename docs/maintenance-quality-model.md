@@ -12,6 +12,79 @@ governance.
   live-runtime verification path.
 - Failed or skipped live proof must return a structured reason and next command.
 
+## Defect closure and recurrence escalation
+
+A defect is closed only inside an explicit evidence envelope. “Completely fixed”
+means that the declared failure mechanism and acceptance matrix are closed; it
+does not promise correctness for every site, Chromium version, operating system,
+or future environment.
+
+Use these outcome labels:
+
+- `PASS`: the reproduced failure, real default path, regression, cleanup, and
+  required runtime layers all pass inside the declared scope.
+- `PARTIAL`: the mechanism may be fixed, but a required runtime, installed-state,
+  platform, stability, or delivery layer is missing.
+- `UNVERIFIED`: only source inspection, static reasoning, or a plan exists.
+- `INVALID SAMPLE`: the sample does not represent the target state, such as a
+  stale screenshot, wrong surface, or hidden WebGL frame without render progress.
+
+Escalate a defect to the high-risk closure path when any of these is true:
+
+- the same symptom recurs or a prior fix fails again;
+- the change affects shared browser lifecycle, screenshot, protocol ordering,
+  queues, timeouts, cleanup, persistent state, or installed-runtime identity;
+- local evidence passes while CI or the real runtime fails;
+- the user explicitly asks for a complete or perfect fix;
+- the existing behavioral contract must change.
+
+The closure chain is:
+
+```text
+original symptom -> minimal reproducer -> real default path -> lowest failing layer
+-> mechanism-level root cause -> pre-fix failing regression -> post-fix pass
+-> adjacent failure modes -> cleanup/restoration -> live/installed/CI evidence
+-> explicit remaining boundaries
+```
+
+Keep the evidence layers separate:
+
+| Layer | What it proves |
+| --- | --- |
+| Source | The implementation matches the intended design. |
+| Deterministic contract | Controlled inputs satisfy an executable behavior contract. |
+| Live runtime | The current hub, extension, and browser profile satisfy the path. |
+| Installed identity | The live extension is built from the intended source identity. |
+| Stability | Success is not a single accidental green run. |
+| CI | The exact revision passes its configured CI environments. |
+| Release/package | The published artifact matches the verified source. |
+| External/production | The explicitly named external environment passes. |
+
+No layer substitutes for another. A missing required layer keeps the outcome
+`PARTIAL` or `UNVERIFIED`. High-risk closure requires an independent diff review;
+Review Craft's canonical `diff`/`focus` or assured workflow still requires the
+user authorization defined by its Skill and does not replace runtime evidence.
+
+### Screenshot closure matrix
+
+At minimum, screenshot changes must account for:
+
+| Dimension | Required coverage |
+| --- | --- |
+| Lifecycle | Visible behavior and the default background/hidden managed-tab path. |
+| Target | Viewport, selector, clip, and bounded full-page capture. |
+| Viewport | Desktop, mobile, and device-pixel-ratio behavior. |
+| Protocol order | Set metrics, layout barrier, probe, capture, and clear on one debugger transaction. |
+| Failure | Timeout, pixel budget, selector fallback, and invalid/missing artifacts. |
+| Cleanup | Clear emulation, detach debugger, release queue, and restore viewport. |
+| Reuse | A later debugger-backed capture succeeds after the timeout path. |
+| Runtime identity | The connected extension identity matches the intended source/install state. |
+
+`npm run check:screenshot-live` proves one isolated default-path run. The
+release and recurring-defect stability gate uses
+`npm run check:screenshot-stability`: it requires three independent runs, keeps
+each result, and fails when any run fails. This is not a retry-until-green path.
+
 ## Long-term maintainability
 
 - Keep TMWD browser automation and JS reverse as separate MCP surfaces sharing a
@@ -128,6 +201,7 @@ npm run check:live
 npm run check:managed-tab-live
 npm run check:tmwd-performance-live
 npm run check:screenshot-live
+npm run check:screenshot-stability
 npm run check:file-ops-live
 npm run check:console-live
 npm run check:auth-live
@@ -149,6 +223,13 @@ selector mobile emulation, checks PNG dimensions and viewport restoration, and
 keeps the post-emulation `Page.getLayoutMetrics` barrier inside the same atomic
 debugger transaction before synchronous page probes and capture. It then proves
 a later debugger-backed capture still succeeds before finalization.
+
+The screenshot stability gate launches three independent live-gate processes.
+Every iteration must report the hidden default lifecycle, verified timeout
+cleanup, restored viewport, and successful scoped finalization. It emits one
+aggregate JSON document, preserves every iteration disposition, and never turns
+a later success into a replacement for an earlier failure. Normal `verify` keeps
+the single live run; release verification adds the stability gate.
 
 The deterministic performance smoke measures three independent 2,000-event
 run-lifecycle samples and applies the existing platform budget to their median,

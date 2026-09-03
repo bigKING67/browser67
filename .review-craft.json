@@ -1,0 +1,49 @@
+{
+  "$schema": "https://bigking67.github.io/review-craft/schemas/config.schema.json",
+  "mode": "review",
+  "assuranceLevel": "standard",
+  "profile": "agent-project",
+  "focusDimensions": [],
+  "diffBase": null,
+  "scope": ["."],
+  "exclude": ["node_modules/**", "runtime/**"],
+  "generated": [],
+  "vendored": ["docs/upstream/**"],
+  "commands": {
+    "deterministic-check": {
+      "argv": ["npm", "run", "check"],
+      "cwd": ".",
+      "timeoutSeconds": 1800
+    },
+    "screenshot-live": {
+      "argv": ["npm", "run", "-s", "check:screenshot-live"],
+      "cwd": ".",
+      "timeoutSeconds": 180,
+      "evidenceClaims": [
+        {"id": "screenshot-live-ok", "kind": "runtime", "jsonPointer": "/ok", "equals": true},
+        {"id": "screenshot-default-hidden", "kind": "runtime", "jsonPointer": "/background_visibility_state", "equals": "hidden"},
+        {"id": "screenshot-timeout-cleanup", "kind": "runtime", "jsonPointer": "/debugger_timeout_cleanup_verified", "equals": true},
+        {"id": "screenshot-viewport-restored", "kind": "runtime", "jsonPointer": "/viewport_restored_after_mobile_capture", "equals": true},
+        {"id": "screenshot-finalized", "kind": "runtime", "jsonPointer": "/finalized_status", "equals": "success"}
+      ]
+    },
+    "screenshot-stability": {
+      "argv": ["npm", "run", "-s", "check:screenshot-stability"],
+      "cwd": ".",
+      "timeoutSeconds": 600,
+      "evidenceClaims": [
+        {"id": "screenshot-stability-ok", "kind": "runtime", "jsonPointer": "/ok", "equals": true},
+        {"id": "screenshot-stability-required", "kind": "runtime", "jsonPointer": "/required_iterations", "equals": 3},
+        {"id": "screenshot-stability-passed", "kind": "runtime", "jsonPointer": "/passed_iterations", "equals": 3},
+        {"id": "screenshot-stability-failed", "kind": "runtime", "jsonPointer": "/failed_iterations", "equals": 0}
+      ]
+    }
+  },
+  "policy": {
+    "allowNetwork": false,
+    "allowInstall": false,
+    "allowRepositoryMutation": false,
+    "outputOutsideRepository": true
+  },
+  "reportLanguage": "zh-CN"
+}

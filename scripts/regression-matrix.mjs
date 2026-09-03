@@ -138,6 +138,12 @@ const MATRIX = [
     covers: ["cross-platform-command-resolution", "spawn-failure-exit-code", "false-green-prevention"],
   },
   {
+    id: "screenshot-stability-contract",
+    command: "npm run check:screenshot-stability-contract",
+    tier: "required",
+    covers: ["independent-iterations", "no-retry-masking", "hidden-cleanup-restoration-assertions"],
+  },
+  {
     id: "upstream-audit",
     command: "npm run check:upstream-audit",
     tier: "required",
@@ -177,7 +183,24 @@ const MATRIX = [
     id: "screenshot-live",
     command: "npm run check:screenshot-live",
     tier: "live",
-    covers: ["viewport-artifact", "responsive-override", "selector-fallback", "full-page-bounds"],
+    covers: [
+      "viewport-artifact",
+      "background-hidden-lifecycle",
+      "mobile-viewport-and-selector",
+      "post-emulation-layout-barrier",
+      "debugger-timeout-cleanup",
+      "viewport-restoration",
+      "post-timeout-debugger-reuse",
+      "png-dimension-verification",
+      "selector-fallback",
+      "full-page-bounds",
+    ],
+  },
+  {
+    id: "screenshot-stability",
+    command: "npm run check:screenshot-stability",
+    tier: "live",
+    covers: ["three-independent-default-path-runs", "failure-preservation", "no-retry-until-green"],
   },
   {
     id: "file-ops-live",

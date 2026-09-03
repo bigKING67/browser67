@@ -22,11 +22,22 @@
 6. CDP 只用于 Runtime、Network、Performance、DOM 精确状态、下载/file chooser、自动化断言；普通点击/观察不用 CDP。
 7. 涉及用户可见页面、交互、表单、登录态、下载、上传、导航、响应式、动画或性能体验的改动，交付前尽量浏览器验证。
 
+## 缺陷闭环与升级
+
+- 同一症状复发，或变更涉及浏览器生命周期、截图、协议时序、队列、超时、资源清理、安装态身份等共享运行时能力时，按高风险闭环处理。
+- 用户要求“彻底解决”“完美解决”时，表示需要当前已知风险范围内的增强验证，不扩大 commit、push、release 或其他外部动作授权。
+- 回归必须覆盖真实默认运行路径；方便的前台、mock 或替代 transport 不能单独证明默认后台路径。
+- 完整 `PASS` 至少需要：原故障可复现、机制级根因、修复前失败/修复后通过的回归、异常后清理恢复、相关 live/安装态证据和独立 diff review；任一必要证据层缺失时标记 `PARTIAL` 或 `UNVERIFIED`，不得宣称彻底解决。
+- 高风险闭环默认使用宿主独立 diff review；只有用户明确要求 canonical `diff`/`focus`、评分或高保障证据时才进入 Review Craft canonical workflow，审查不代替真实运行时验证。
+
 ## 质量要求
 
 - 修改核心 MCP/Hub/扩展代码后至少运行：
   - `npm run check`
   - `npm run check:live:doctor`
+- 修改截图、debugger transport 或扩展 screenshot bridge，或同一截图故障复发时运行：
+  - `npm run check:screenshot-live`
+  - `npm run check:screenshot-stability`
 - 修改 JS reverse MCP、逆向 runtime 或逆向契约后至少运行：
   - `npm run check:js-reverse-mcp`
   - `npm run check:js-reverse-live`
