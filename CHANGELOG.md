@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.11.1 - 2026-09-03
+
 - Separate the screenshot live gate's 25-second operation deadline from its
   30-second RPC envelope so slow viewport cleanup or a structured timeout can
   return without racing an identical client-side deadline.
