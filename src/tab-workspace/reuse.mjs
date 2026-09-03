@@ -13,11 +13,10 @@ import {
 
 function liveTabMap(liveTabs = []) {
   const rows = Array.isArray(liveTabs) ? liveTabs : [];
-  return new Map(
-    rows
-      .map((item) => [browserTabKey(item), item])
-      .filter(([id]) => id.length > 0),
+  const entries = /** @type {Array<[string, any]>} */ (
+    rows.map((item) => [browserTabKey(item), item])
   );
+  return new Map(entries.filter(([id]) => id.length > 0));
 }
 
 function recordIsLive(record, liveById) {

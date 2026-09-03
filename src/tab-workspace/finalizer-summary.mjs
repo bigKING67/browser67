@@ -35,6 +35,15 @@ function closeErrorCount(closeUnkept = {}) {
   return 0;
 }
 
+/**
+ * @param {{
+ *   closeUnkept?: Record<string, any>,
+ *   dryRun?: boolean,
+ *   pruneStale?: Record<string, any>,
+ *   remaining?: Record<string, any>,
+ *   scope?: Record<string, any>,
+ * }} [input]
+ */
 function buildFinalizeCleanupSummary({
   closeUnkept,
   dryRun = false,

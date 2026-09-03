@@ -1,6 +1,6 @@
 const CAPABILITIES = Object.freeze({
-  schema_revision: 8,
-  server_revision: "managed-tabs-v8",
+  schema_revision: 9,
+  server_revision: "managed-tabs-v9",
   supports_select_or_create: true,
   supports_dedicated_agent_window: true,
   supports_focus_policy: true,
@@ -23,6 +23,8 @@ const CAPABILITIES = Object.freeze({
   supports_finalize_hint: true,
   supports_close_verification: true,
   supports_screenshot_viewport_override: true,
+  screenshot_viewport_override_atomic_targets: ["viewport", "clip", "selector", "full_page"],
+  supports_persistent_screenshot_viewport_override: false,
   supports_screenshot_layout_metrics: true,
   supports_design_craft_l4_evidence_manifest: true,
   supports_durable_jobs: true,

@@ -24,6 +24,9 @@ import {
 const managedTabs = new Map();
 const deletedTabKeys = new Set();
 const registryPath = resolveRegistryPath();
+const registryPathIsExplicit = Boolean(
+  String(process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH ?? "").trim(),
+);
 let registryLoaded = false;
 let registryLoadPromise = null;
 let registryDiskFingerprint = "";
@@ -39,8 +42,8 @@ async function acquireRegistryLock() {
 
 async function attemptRegistryLock(lockPath, startedAt) {
   try {
-    await fs.mkdir(dirname(lockPath), { recursive: true });
-    await fs.mkdir(lockPath);
+    await ensureRegistryParent();
+    await fs.mkdir(lockPath, { mode: 0o700 });
     return { lockPath };
   } catch (error) {
     if (error?.code !== "EEXIST") {
@@ -60,6 +63,30 @@ async function attemptRegistryLock(lockPath, startedAt) {
     }
     await sleep(50);
     return attemptRegistryLock(lockPath, startedAt);
+  }
+}
+
+async function ensureRegistryParent() {
+  const parent = dirname(registryPath);
+  await fs.mkdir(parent, { recursive: true, mode: 0o700 });
+  if (!registryPathIsExplicit) await fs.chmod(parent, 0o700);
+  return parent;
+}
+
+async function writeRegistryPayload(payload) {
+  await ensureRegistryParent();
+  const tempPath = `${registryPath}.${process.pid}.tmp`;
+  try {
+    await fs.writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await fs.chmod(tempPath, 0o600);
+    await fs.rename(tempPath, registryPath);
+    await fs.chmod(registryPath, 0o600);
+  } catch (error) {
+    await fs.unlink(tempPath).catch(() => {});
+    throw error;
   }
 }
 
@@ -179,15 +206,12 @@ async function persistRegistry() {
       merged.set(browserTabKey(record), record);
     });
 
-    await fs.mkdir(dirname(registryPath), { recursive: true });
     const payload = {
       version: 3,
       updated_at: nowIso(),
       managed_tabs: Array.from(merged.values()).map((record) => managedTabPayload(record)),
     };
-    const tempPath = `${registryPath}.${process.pid}.tmp`;
-    await fs.writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`);
-    await fs.rename(tempPath, registryPath);
+    await writeRegistryPayload(payload);
 
     managedTabs.clear();
     Array.from(merged.values()).forEach((record) => managedTabs.set(browserTabKey(record), record));

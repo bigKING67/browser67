@@ -13,6 +13,18 @@ function normalizeBrowserTabId(raw) {
   return String(raw ?? "").trim();
 }
 
+function rawBrowserTabId(raw, browserInstanceId = "") {
+  const tabId = normalizeBrowserTabId(raw);
+  const instanceId = normalizeBrowserInstanceId(browserInstanceId);
+  if (!tabId || !instanceId) return tabId;
+  const prefix = `${instanceId}:`;
+  let normalized = tabId;
+  while (normalized.startsWith(prefix) && normalized.length > prefix.length) {
+    normalized = normalized.slice(prefix.length);
+  }
+  return normalized;
+}
+
 function browserInstanceIdFrom(value = {}) {
   return normalizeBrowserInstanceId(value.browser_instance_id ?? value.browserInstanceId);
 }
@@ -23,9 +35,9 @@ function browserTabIdFrom(value = {}) {
 
 function browserTabKey(value, browserInstanceId = "") {
   const input = value && typeof value === "object" ? value : { tab_id: value, browser_instance_id: browserInstanceId };
-  const tabId = browserTabIdFrom(input);
-  if (!tabId) return "";
   const instanceId = browserInstanceIdFrom(input);
+  const tabId = rawBrowserTabId(browserTabIdFrom(input), instanceId);
+  if (!tabId) return "";
   return `${instanceId || LEGACY_BROWSER_INSTANCE_KEY}:${tabId}`;
 }
 
@@ -41,5 +53,6 @@ export {
   browserTabKey,
   normalizeBrowserInstanceId,
   normalizeBrowserTabId,
+  rawBrowserTabId,
   sameBrowserTab,
 };

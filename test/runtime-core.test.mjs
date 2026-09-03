@@ -23,6 +23,11 @@ import {
   resolveOutputMode,
 } from "../src/runtime/output-mode.mjs";
 import { resolvePageContext, resolvePageId } from "../src/runtime/page-context.mjs";
+import { createOperationDeadline } from "../src/runtime/operation-deadline.mjs";
+import {
+  PRIVATE_PROCESS_UMASK,
+  applyPrivateProcessUmask,
+} from "../src/runtime/storage/private-path.mjs";
 import {
   asShortTabs,
   createSessionRegistry,
@@ -38,7 +43,8 @@ import {
 import { createTabScheduler } from "../src/runtime/tab-scheduler.mjs";
 import { createTmwdTransportHealthStore } from "../src/tmwd-runtime/health.mjs";
 import { browserDocumentIdentity } from "../src/tab-workspace/navigation-guard.mjs";
-import { browserTabKey } from "../src/tab-workspace/identity.mjs";
+import { mapNativeInputError } from "../src/native/input.mjs";
+import { browserTabKey, rawBrowserTabId } from "../src/tab-workspace/identity.mjs";
 import {
   capabilityPayload,
   summarizeCapabilities,
@@ -49,6 +55,29 @@ function hasErrorCode(error, code) {
   const candidate = /** @type {Record<string, any>} */ (error);
   return candidate.code === code || candidate.errorCode === code;
 }
+
+test("private runtime process umask is explicit and reversible", () => {
+  if (process.platform === "win32") {
+    assert.deepEqual(applyPrivateProcessUmask(), {
+      applied: false,
+      previous: null,
+      current: null,
+    });
+    return;
+  }
+  const original = process.umask();
+  try {
+    process.umask(0o022);
+    assert.deepEqual(applyPrivateProcessUmask(), {
+      applied: true,
+      previous: 0o022,
+      current: PRIVATE_PROCESS_UMASK,
+    });
+    assert.equal(process.umask(), 0o077);
+  } finally {
+    process.umask(original);
+  }
+});
 
 test("batch references resolve recursively without mutating input", () => {
   const command = {
@@ -218,6 +247,45 @@ test("Browser Instance identity prevents cross-profile tab collisions", () => {
   );
   assert.equal(browserTabKey(targets[0]), "browser-a:123");
   assert.equal(browserTabKey(targets[1]), "browser-b:123");
+  assert.equal(rawBrowserTabId("browser-a:123", "browser-a"), "123");
+  assert.equal(rawBrowserTabId("browser-a:browser-a:123", "browser-a"), "123");
+  assert.equal(browserTabKey({ browser_instance_id: "browser-a", tab_id: "browser-a:123" }), "browser-a:123");
+});
+
+test("operation deadlines use one end-to-end budget and preserve safety errors", () => {
+  let now = Date.parse("2026-09-03T00:00:00.000Z");
+  const deadline = createOperationDeadline(1_000, { clock: () => now });
+  assert.equal(deadline.remaining("resolve_context"), 1_000);
+  now += 625;
+  assert.equal(deadline.argsFor({ tab_id: "tab-1", timeout_ms: 9_000 }, "capture_png").timeout_ms, 375);
+  const safetyError = Object.assign(new Error("scope mismatch"), {
+    errorCode: "MANAGED_TAB_SCOPE_MISMATCH",
+    retryable: false,
+  });
+  const annotated = deadline.annotate(safetyError, "managed_context");
+  assert.equal(annotated.errorCode, "MANAGED_TAB_SCOPE_MISMATCH");
+  assert.equal(annotated.details.failed_phase, "managed_context");
+  assert.equal(annotated.details.elapsed_ms, 625);
+  now += 375;
+  assert.throws(
+    () => deadline.remaining("capture_png"),
+    (error) => {
+      const candidate = /** @type {any} */ (error);
+      return hasErrorCode(error, "TIMEOUT")
+        && candidate.details?.failed_phase === "capture_png"
+        && candidate.details?.remaining_ms === 0;
+    },
+  );
+});
+
+test("native input timeout errors retain an explicit phase", () => {
+  const mapped = /** @type {any} */ (
+    mapNativeInputError("click", new Error("osascript timeout after 5000ms"), 5_000)
+  );
+  assert.equal(mapped.errorCode, "TIMEOUT");
+  assert.equal(mapped.retryable, true);
+  assert.equal(mapped.details.failed_phase, "native_command");
+  assert.equal(mapped.details.timeout_ms, 5_000);
 });
 
 test("default session compatibility surface delegates to the canonical store", () => {
@@ -450,5 +518,34 @@ test("page context resolves result, session, and managed ownership without brows
       suspended: false,
     },
   });
+  const managedLookups = [];
+  const compositePage = await resolvePageContext("browser_screenshot_ops", {
+    browser_instance_id: "browser-a",
+    tab_id: "browser-a:1903738228",
+  }, {
+    browser_instance_id: "browser-a",
+    tab_id: "browser-a:browser-a:1903738228",
+    sessions: [{
+      id: "browser-a:1903738228",
+      browser_instance_id: "browser-a",
+      title: "Composite identity",
+      url: "https://example.test/composite",
+    }],
+  }, {
+    get_managed_tab: async (...lookup) => {
+      managedLookups.push(lookup);
+      return {
+        browser_instance_id: "browser-a",
+        tab_id: "1903738228",
+        owner: "tmwd",
+        ownership_origin: "agent_created",
+        management_policy_status: "applied",
+      };
+    },
+  });
+  assert.equal(compositePage.tab_id, "1903738228");
+  assert.equal(compositePage.session_key, "browser-a:1903738228");
+  assert.equal(compositePage.management.managed, true);
+  assert.deepEqual(managedLookups, [["1903738228", "browser-a"]]);
   assert.equal(await resolvePageContext("browser_scan", {}, {}), null);
 });

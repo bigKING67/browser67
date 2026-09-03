@@ -101,7 +101,7 @@ const TAB_LIFECYCLE_TOOL_SCHEMAS = {
         },
         navigate_reused: { type: "boolean", default: true },
         wait_until: { type: "string", enum: ["none", "listed"], default: "listed" },
-        wait_timeout_ms: { type: "number", minimum: 0, maximum: 10_000 },
+        wait_timeout_ms: { type: "number", minimum: 0, maximum: 120_000 },
         wait_poll_ms: { type: "number", minimum: 50, maximum: 1_000 },
         include_disconnected: { type: "boolean", default: false },
         history: { type: "boolean", default: false },

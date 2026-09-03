@@ -3,6 +3,7 @@ import { getManagedTab } from "../tab-workspace/registry.mjs";
 import {
   browserTabKey,
   normalizeBrowserInstanceId,
+  rawBrowserTabId,
 } from "../tab-workspace/identity.mjs";
 
 const PAGE_CONTEXT_RESOLUTION = new Set(["confirmed", "inferred"]);
@@ -75,8 +76,11 @@ function sessionForId(tabId, browserInstanceId, data = {}, sessionStore = null) 
     ...((sessionStore?.list({ include_disconnected: true })
       ?? listSessionsSnapshot({ include_disconnected: true }))),
   ].filter((session) => (
-    normalizeIdToken(session?.tab_id ?? session?.id) === tabId
-    && (!browserInstanceId || session?.browser_instance_id === browserInstanceId)
+    rawBrowserTabId(
+      normalizeIdToken(session?.tab_id ?? session?.id),
+      browserInstanceId || session?.browser_instance_id,
+    ) === tabId
+    && (!browserInstanceId || normalizeBrowserInstanceId(session?.browser_instance_id) === browserInstanceId)
   ));
   return matches.length === 1
     ? matches[0]
@@ -109,11 +113,11 @@ function normalizeManagement(record, data = {}) {
 
 async function resolvePageContext(_toolName, args = {}, data = {}, options = {}) {
   const resultTabId = resolvePageId({}, data);
-  const tabId = resultTabId || resolvePageId(args, {});
-  if (!tabId) return null;
   const resultBrowserInstanceId = resolvePageBrowserInstanceId({}, data);
   const browserInstanceId = resultBrowserInstanceId || resolvePageBrowserInstanceId(args, {});
-
+  const rawResultTabId = rawBrowserTabId(resultTabId, browserInstanceId);
+  const tabId = rawResultTabId || rawBrowserTabId(resolvePageId(args, {}), browserInstanceId);
+  if (!tabId) return null;
   const target = targetCandidate(data);
   const session = typeof options.session_for_id === "function"
     ? options.session_for_id(tabId, data, browserInstanceId)

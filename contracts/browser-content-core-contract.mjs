@@ -141,6 +141,29 @@ async function run() {
   assert.equal(page.title, "Monthly report");
   assert.equal(page.resolution, "confirmed");
   assert.equal(page.management.ownership_origin, "user_adopted");
+  const compositePage = await resolvePageContext("browser_screenshot_ops", {
+    browser_instance_id: "browser-contract",
+    tab_id: "browser-contract:42",
+  }, {
+    browser_instance_id: "browser-contract",
+    tab_id: "browser-contract:browser-contract:42",
+    sessions: [{
+      id: "browser-contract:42",
+      tab_id: "42",
+      browser_instance_id: "browser-contract",
+      title: "Canonical tab identity",
+    }],
+  }, {
+    get_managed_tab: async (tabId, browserInstanceId) => ({
+      tab_id: tabId,
+      browser_instance_id: browserInstanceId,
+      owner: "tmwd",
+      management_policy_status: "applied",
+    }),
+  });
+  assert.equal(compositePage.tab_id, "42");
+  assert.equal(compositePage.session_key, "browser-contract:42");
+  assert.equal(compositePage.management.managed, true);
   const compacted = compactToolData("browser_execute_js", {
     status: "success",
     sessions: [
