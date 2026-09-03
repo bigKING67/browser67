@@ -94,13 +94,19 @@ function buildTmwdViewportScreenshotBatch({
       method: "Emulation.setDeviceMetricsOverride",
       params: viewportParams ?? {},
     },
+    {
+      cmd: "cdp",
+      method: "Page.getLayoutMetrics",
+      params: {},
+    },
     runtimeEvaluateCommand(settleScript),
     runtimeEvaluateCommand(pageMetadataScript),
   ];
   const resultIndexes = {
     viewport_override: 0,
-    settle: 1,
-    page: 2,
+    viewport_barrier: 1,
+    settle: 2,
+    page: 3,
     layout_metrics: null,
     target: null,
     screenshot: null,
@@ -220,12 +226,17 @@ function parseTmwdViewportScreenshotBatchResults(executed, plan) {
   }
 
   unwrapBatchCommandResult(results[indexes.viewport_override]);
+  unwrapBatchCommandResult(results[indexes.viewport_barrier]);
   const screenshotResponse = Number.isInteger(indexes.screenshot)
     ? unwrapBatchCommandResult(results[indexes.screenshot])
     : null;
   const base64 = screenshotResponse?.data ?? screenshotResponse?.result?.data;
   unwrapBatchCommandResult(results[indexes.cleanup]);
   return {
+    viewport_barrier: {
+      acknowledged: true,
+      method: "Page.getLayoutMetrics",
+    },
     settle: batchRuntimeValue(results, indexes.settle, "viewport settle probe"),
     page: batchRuntimeValue(results, indexes.page, "page metadata probe"),
     layout_metrics: Number.isInteger(indexes.layout_metrics)

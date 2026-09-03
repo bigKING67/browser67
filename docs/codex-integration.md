@@ -292,9 +292,11 @@ transport drift.
   sequence stays on one debugger attachment. Selector/full-page target
   resolution uses a separate atomic preflight transaction when required, so
   every viewport probe and the final PNG observe the requested `innerWidth`.
-  The viewport and selector probes use synchronous layout reads instead of
-  `requestAnimationFrame`, so an `active:false` hidden managed tab remains a
-  supported capture target. TMWD debugger commands carry a shorter extension
+  Atomic viewport batches place a bounded `Page.getLayoutMetrics` barrier after
+  device-metrics emulation, then viewport and selector probes use synchronous
+  layout reads instead of `requestAnimationFrame`, so an `active:false` hidden
+  managed tab remains a supported capture target across headed and headless
+  Chrome. TMWD debugger commands carry a shorter extension
   deadline than the host request, reserve teardown time, cancel the attachment
   on expiry, clear temporary viewport emulation, and release the per-tab queue.
   A page/debugger timeout remains attributed to the current transport instead

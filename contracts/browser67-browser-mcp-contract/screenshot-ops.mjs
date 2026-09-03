@@ -111,6 +111,7 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
     atomicBatch.command.commands.map((command) => command.method),
     [
       "Emulation.setDeviceMetricsOverride",
+      "Page.getLayoutMetrics",
       "Runtime.evaluate",
       "Runtime.evaluate",
       "Runtime.evaluate",
@@ -119,13 +120,15 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
     ],
   );
   assert.equal(atomicBatch.command.commands[0].params.width, 390);
-  assert.match(atomicBatch.command.commands[1].params.expression, /return \{ ok: true \}/);
-  assert.equal(atomicBatch.command.commands[4].params.captureBeyondViewport, false);
+  assert.deepEqual(atomicBatch.command.commands[1].params, {});
+  assert.match(atomicBatch.command.commands[2].params.expression, /return \{ ok: true \}/);
+  assert.equal(atomicBatch.command.commands[5].params.captureBeyondViewport, false);
 
   const parsedAtomicBatch = parseTmwdViewportScreenshotBatchResults({
     raw: { ok: true },
     value: [
       {},
+      { cssLayoutViewport: { clientWidth: 390, clientHeight: 844 } },
       { result: { type: "object", value: { ok: true } } },
       {
         result: {
@@ -138,6 +141,7 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
       {},
     ],
   }, atomicBatch);
+  assert.equal(parsedAtomicBatch.viewport_barrier.acknowledged, true);
   assert.equal(parsedAtomicBatch.page.viewport.inner_width, 390);
   assert.equal(parsedAtomicBatch.layout_metrics.horizontal_overflow, false);
   assert.equal(parsedAtomicBatch.base64, "c2NyZWVuc2hvdC1wbmctZml4dHVyZQ==");
@@ -155,6 +159,7 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
     selectorPreflight.command.commands.map((command) => command.method),
     [
       "Emulation.setDeviceMetricsOverride",
+      "Page.getLayoutMetrics",
       "Runtime.evaluate",
       "Runtime.evaluate",
       "Runtime.evaluate",
@@ -167,6 +172,7 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
     raw: { ok: true },
     value: [
       {},
+      { cssLayoutViewport: { clientWidth: 390, clientHeight: 844 } },
       { result: { type: "object", value: { ok: true } } },
       { result: { type: "object", value: { viewport: { inner_width: 390, inner_height: 844 } } } },
       { result: { type: "object", value: { horizontal_overflow: false } } },

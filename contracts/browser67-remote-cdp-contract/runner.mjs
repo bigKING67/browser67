@@ -59,7 +59,7 @@ async function callTool(rpc, name, args, timeoutMs) {
   const outcome = firstOutcomeContent(response.result);
   assert.equal(response?.result?.isError, undefined, JSON.stringify(outcome));
   assert.equal(outcome?.schema, "browser67.tool-outcome.v3");
-  assert.equal(outcome?.ok, true);
+  assert.equal(outcome?.ok, true, JSON.stringify(outcome));
   return firstJsonContent(response.result);
 }
 
@@ -280,12 +280,18 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
       title: "remote-cdp-responsive-selector",
       max_pixels: 8_000_000,
     }, timeoutMs);
+    const responsiveEvidence = JSON.stringify({
+      page: responsiveSelector.page,
+      settle: responsiveSelector.viewport_override?.settle,
+      verification: responsiveSelector.viewport_override?.verification,
+      artifact: responsiveSelector.artifact,
+    });
     assert.equal(responsiveSelector.transport, "cdp");
     assert.equal(responsiveSelector.page?.viewport?.inner_width, 390);
     assert.equal(responsiveSelector.page?.viewport?.inner_height, 844);
     assert.equal(responsiveSelector.viewport_override?.cleanup?.cleared, true);
-    assert.equal(responsiveSelector.viewport_override?.verification?.ok, true);
-    assert.equal(responsiveSelector.viewport_override?.verification?.artifact?.ok, true);
+    assert.equal(responsiveSelector.viewport_override?.verification?.ok, true, responsiveEvidence);
+    assert.equal(responsiveSelector.viewport_override?.verification?.artifact?.ok, true, responsiveEvidence);
     assert.ok(responsiveSelector.deadline?.elapsed_ms <= responsiveSelector.deadline?.timeout_ms);
     const click = await callTool(rpc, "browser_execute_js", {
       ...operationRoute,

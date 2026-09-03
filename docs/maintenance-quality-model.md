@@ -146,7 +146,9 @@ deadline; the RPC envelope remains five seconds larger instead of racing the
 same deadline. The gate creates its fixture with `active:false` in the dedicated
 Agent window, requires `document.visibilityState="hidden"`, covers viewport and
 selector mobile emulation, checks PNG dimensions and viewport restoration, and
-then proves a later debugger-backed capture still succeeds before finalization.
+keeps the post-emulation `Page.getLayoutMetrics` barrier inside the same atomic
+debugger transaction before synchronous page probes and capture. It then proves
+a later debugger-backed capture still succeeds before finalization.
 
 The TMWD performance live gate complements the deterministic performance smoke
 with cold and warm p50/p95/p99 measurements for extension transport, managed

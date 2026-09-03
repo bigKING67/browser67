@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Make mobile viewport and selector screenshots reliable in background hidden
+  tabs by replacing RAF-dependent probes with synchronous layout reads, adding
+  an atomic CDP layout barrier, and bounding debugger timeout cleanup so
+  emulation state and per-tab queues are always released.
+
 ## 0.11.1 - 2026-09-03
 
 - Separate the screenshot live gate's 25-second operation deadline from its
