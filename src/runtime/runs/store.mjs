@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { normalizeEvidenceRecord } from "../evidence/schema.mjs";
 import { atomicWriteJson } from "../storage/atomic-file.mjs";
+import { appendPrivateFile, ensurePrivateDirectory } from "../storage/private-path.mjs";
 import { readNdjsonTail } from "../storage/ndjson.mjs";
 import { createRunIndex, isTerminalRunStatus } from "./index.mjs";
 import {
@@ -118,8 +118,8 @@ class RunStore {
   }
 
   async appendEvent(runDir, event) {
-    await mkdir(runDir, { recursive: true });
-    await appendFile(this.eventsPath(runDir), `${JSON.stringify(event)}\n`, "utf8");
+    await ensurePrivateDirectory(runDir);
+    await appendPrivateFile(this.eventsPath(runDir), `${JSON.stringify(event)}\n`, "utf8");
   }
 
   async readRecentEvents(runDir, limit = 20) {
@@ -182,9 +182,12 @@ class RunStore {
       event_count: 1,
       input: args.data && typeof args.data === "object" ? args.data : {},
     };
+    await ensurePrivateDirectory(this.root);
+    await ensurePrivateDirectory(this.groupDir(group));
+    await ensurePrivateDirectory(runDir);
     await Promise.all([
-      mkdir(payload.artifacts_dir, { recursive: true }),
-      mkdir(payload.logs_dir, { recursive: true }),
+      ensurePrivateDirectory(payload.artifacts_dir),
+      ensurePrivateDirectory(payload.logs_dir),
     ]);
     await this.withLock(`run:${runDir}`, async () => {
       await this.writeCheckpoint(runDir, payload, { is_new: true });
@@ -362,6 +365,60 @@ class RunStore {
   async inspect(args = {}) {
     this.assertActive();
     return this.index.inspect(args);
+  }
+
+  async terminalizeStale(args = {}) {
+    this.assertActive();
+    const scan = await this.index.staleRunning(args);
+    const write = args.write === true;
+    const maxItems = Math.max(0, Math.min(10_000, Number(args.max_items ?? 50)));
+    const results = [];
+    if (write) {
+      for (const candidate of scan.candidates) {
+        results.push(await this.finish({
+          group: candidate.group,
+          run_id: candidate.run_id,
+          status: "interrupted",
+          only_if_nonterminal: true,
+          data: {
+            terminalized_by: "stale_run_maintenance",
+            reason: "running_checkpoint_exceeded_stale_threshold",
+            stale_running_after_minutes: scan.stale_running_after_minutes,
+            previous_updated_at: candidate.updated_at,
+          },
+        }));
+      }
+    }
+    const failed = results.filter((result) => result?.ok !== true);
+    const terminalized = results.filter((result) => result?.ok === true && result?.skipped !== true);
+    return {
+      ok: failed.length === 0,
+      action: "terminalize_stale",
+      write,
+      dry_run: !write,
+      root: this.root,
+      stale_running_after_minutes: scan.stale_running_after_minutes,
+      cutoff_at: scan.cutoff_at,
+      candidate_count: scan.candidate_count,
+      would_terminalize_count: write ? 0 : scan.candidate_count,
+      terminalized_count: terminalized.length,
+      skipped_terminal_count: results.filter((result) => result?.skipped === true).length,
+      failed_count: failed.length,
+      unknown_updated_at_count: scan.unknown_updated_at_count,
+      candidates: scan.candidates.slice(0, maxItems).map((candidate) => ({
+        group: candidate.group,
+        run_id: candidate.run_id,
+        previous_status: candidate.previous_status,
+        next_status: "interrupted",
+        updated_at: candidate.updated_at,
+        age_minutes: candidate.age_minutes,
+      })),
+      candidates_truncated: scan.candidates.length > maxItems,
+      failures: failed.slice(0, maxItems).map((result) => ({
+        run_id: result?.run?.run_id,
+        error: String(result?.error ?? "terminalization failed"),
+      })),
+    };
   }
 
   async migrate() {

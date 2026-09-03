@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile, rm } from "node:fs/promises";
+
+import { writePrivateFile } from "../runtime/storage/private-path.mjs";
 
 import {
   DEFAULT_TMWD_LINK_ENDPOINT,
@@ -79,8 +80,7 @@ async function readState(statePath) {
 }
 
 async function writeState(statePath, payload) {
-  await mkdir(dirname(statePath), { recursive: true });
-  await writeFile(statePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await writePrivateFile(statePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
 async function removeState(statePath) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,6 +67,8 @@ function plist() {
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>Umask</key>
+  <integer>63</integer>
   <key>StandardOutPath</key>
   <string>${xmlEscape(stdoutPath)}</string>
   <key>StandardErrorPath</key>
@@ -77,7 +79,9 @@ function plist() {
 }
 
 function run() {
-  mkdirSync(resolve(runtimeHome, "runtime"), { recursive: true });
+  const runtimeDir = resolve(runtimeHome, "runtime");
+  mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
+  chmodSync(runtimeDir, 0o700);
   mkdirSync(launchAgentsDir, { recursive: true });
   writeFileSync(plistPath, plist(), "utf8");
 

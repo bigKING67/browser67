@@ -6,7 +6,10 @@ import {
   handleRequest,
   sendError,
 } from "../../js-reverse-server/protocol.mjs";
+import { applyPrivateProcessUmask } from "../../runtime/storage/private-path.mjs";
 import { disposeJsReverseRuntime } from "./tool-registry.mjs";
+
+applyPrivateProcessUmask();
 
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 

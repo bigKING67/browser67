@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { chmod, rename, unlink } from "node:fs/promises";
 import path from "node:path";
+
+import {
+  PRIVATE_FILE_MODE,
+  ensurePrivateDirectory,
+  writePrivateFile,
+} from "./private-path.mjs";
 
 /**
  * @param {string} filePath
@@ -10,10 +16,11 @@ import path from "node:path";
 async function atomicWriteFile(filePath, content, options = "utf8") {
   const resolved = path.resolve(filePath);
   const tempPath = `${resolved}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-  await mkdir(path.dirname(resolved), { recursive: true });
+  await ensurePrivateDirectory(path.dirname(resolved));
   try {
-    await writeFile(tempPath, content, options);
+    await writePrivateFile(tempPath, content, options);
     await rename(tempPath, resolved);
+    await chmod(resolved, PRIVATE_FILE_MODE);
   } catch (error) {
     await unlink(tempPath).catch(() => {});
     throw error;

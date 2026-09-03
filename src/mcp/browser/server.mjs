@@ -2,8 +2,11 @@
 
 import { createInterface } from "node:readline";
 
+import { applyPrivateProcessUmask } from "../../runtime/storage/private-path.mjs";
 import { createRequestHandler, sendError } from "../../server/protocol.mjs";
 import { createBrowserToolDispatcher } from "./tool-registry.mjs";
+
+applyPrivateProcessUmask();
 
 const tools = createBrowserToolDispatcher();
 const handleRequest = createRequestHandler({

@@ -1,7 +1,8 @@
-import { appendFile, mkdir, readdir, readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { atomicWriteFile, atomicWriteJson } from "../storage/atomic-file.mjs";
+import { appendPrivateFile, ensurePrivateDirectory } from "../storage/private-path.mjs";
 import { readNdjsonFile, scanNdjsonBackwards } from "../storage/ndjson.mjs";
 
 const JOB_INDEX_SCHEMA_VERSION = "browser67.job-index.v1";
@@ -120,8 +121,8 @@ class JobStore {
     const reference = jobReference(job, statePath);
     if (!reference.job_id) throw new Error("job_id is required for job index");
     return this.withLock("catalog", async () => {
-      await mkdir(this.root, { recursive: true });
-      await appendFile(this.catalogPath, `${JSON.stringify(reference)}\n`, "utf8");
+      await ensurePrivateDirectory(this.root);
+      await appendPrivateFile(this.catalogPath, `${JSON.stringify(reference)}\n`, "utf8");
       const active = await this.ensureActiveLoaded();
       if (reference.active) {
         active.set(reference.job_id, {
@@ -212,7 +213,7 @@ class JobStore {
       }
     }
     references.sort((left, right) => String(left.updated_at).localeCompare(String(right.updated_at)));
-    await mkdir(this.root, { recursive: true });
+    await ensurePrivateDirectory(this.root);
     const lines = references.map((reference) => JSON.stringify(reference));
     await atomicWriteFile(this.catalogPath, lines.length ? `${lines.join("\n")}\n` : "", "utf8");
     this.activeJobs = new Map(references

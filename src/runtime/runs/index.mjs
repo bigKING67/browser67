@@ -1,7 +1,8 @@
-import { appendFile, mkdir, readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { atomicWriteFile, atomicWriteJson } from "../storage/atomic-file.mjs";
+import { appendPrivateFile, ensurePrivateDirectory } from "../storage/private-path.mjs";
 import { directorySizeAndNewestMtime } from "../storage/directory-usage.mjs";
 import { scanNdjsonBackwards } from "../storage/ndjson.mjs";
 import {
@@ -101,13 +102,30 @@ class RunIndex {
   async ensure(group) {
     const meta = await readJsonIfExists(this.indexMetaPath(group));
     if (meta?.schema_version === RUN_INDEX_META_SCHEMA_VERSION) return meta;
+    const groupInfo = await stat(this.groupDir(group)).catch((error) => {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    });
+    if (!groupInfo?.isDirectory()) {
+      return {
+        schema_version: RUN_INDEX_META_SCHEMA_VERSION,
+        group: safeSegment(group),
+        unique_count: 0,
+        entry_count: 0,
+        revision: 0,
+        updated_at: null,
+        compacted_at: null,
+        ephemeral: true,
+      };
+    }
     return this.compactGroup(group);
   }
 
   async append(run, { is_new = false } = {}) {
     const group = safeSegment(run.group);
     return this.withLock(`index:${group}`, async () => {
-      await mkdir(this.groupDir(group), { recursive: true });
+      await ensurePrivateDirectory(this.root);
+      await ensurePrivateDirectory(this.groupDir(group));
       let meta = await readJsonIfExists(this.indexMetaPath(group));
       let rebuilt = false;
       if (meta?.schema_version !== RUN_INDEX_META_SCHEMA_VERSION) {
@@ -115,7 +133,7 @@ class RunIndex {
         rebuilt = true;
       }
       const revision = Number(meta.revision ?? 0) + 1;
-      await appendFile(this.indexPath(group), `${JSON.stringify(indexRecord(run, revision))}\n`, "utf8");
+      await appendPrivateFile(this.indexPath(group), `${JSON.stringify(indexRecord(run, revision))}\n`, "utf8");
       const nextMeta = {
         schema_version: RUN_INDEX_META_SCHEMA_VERSION,
         group,
@@ -260,6 +278,7 @@ class RunIndex {
     let currentStaleRunningCount = 0;
     let legacyStaleRunningCount = 0;
     let unknownUpdatedAtCount = 0;
+    let emptyGroupCount = 0;
     let oldestUpdatedAtMs = null;
     let newestUpdatedAtMs = null;
     const statusCounts = new Map();
@@ -342,6 +361,7 @@ class RunIndex {
         }
       }
       const meta = await readJsonIfExists(this.indexMetaPath(entry.name));
+      if (groupRuns === 0 && groupUntrackedRuns === 0) emptyGroupCount += 1;
       groups.push({
         group: entry.name,
         run_count: groupRuns,
@@ -366,6 +386,7 @@ class RunIndex {
       include_storage: includeStorage,
       groups: summaryOnly ? [] : groups,
       group_count: groups.length,
+      empty_group_count: emptyGroupCount,
       run_count: runCount,
       runtime_directory_count: runtimeDirectoryCount,
       untracked_run_directory_count: untrackedRunDirectoryCount,
@@ -385,6 +406,57 @@ class RunIndex {
       newest_updated_at: newestUpdatedAtMs === null ? null : new Date(newestUpdatedAtMs).toISOString(),
       status_counts: sortedStatusCounts(statusCounts),
       storage,
+    };
+  }
+
+  async staleRunning(args = {}) {
+    const staleRunningAfterMinutes = Math.max(
+      1,
+      Math.min(525_600, Number(args.stale_running_after_minutes ?? 1_440)),
+    );
+    const cutoffMs = this.clock().getTime() - staleRunningAfterMinutes * 60_000;
+    const groups = await readdir(this.root, { withFileTypes: true }).catch((error) => {
+      if (error?.code === "ENOENT") return [];
+      throw error;
+    });
+    const candidates = [];
+    let unknownUpdatedAtCount = 0;
+    for (const groupEntry of groups) {
+      if (!groupEntry.isDirectory()) continue;
+      const runEntries = await readdir(this.groupDir(groupEntry.name), { withFileTypes: true }).catch(() => []);
+      for (const runEntry of runEntries) {
+        if (!runEntry.isDirectory()) continue;
+        const runDir = path.join(this.groupDir(groupEntry.name), runEntry.name);
+        const run = await readJsonIfExists(this.runJsonPath(runDir));
+        if (!run || normalizeRunStatus(run.status) !== "running") continue;
+        const updatedAtMs = parsedRunUpdatedAt(run);
+        if (updatedAtMs === null) {
+          unknownUpdatedAtCount += 1;
+          continue;
+        }
+        if (updatedAtMs >= cutoffMs) continue;
+        candidates.push({
+          group: safeSegment(run.group ?? groupEntry.name),
+          run_id: String(run.run_id ?? runEntry.name),
+          run_dir: runDir,
+          previous_status: "running",
+          updated_at: new Date(updatedAtMs).toISOString(),
+          age_minutes: Math.floor((this.clock().getTime() - updatedAtMs) / 60_000),
+          schema_version: String(run.schema_version ?? ""),
+        });
+      }
+    }
+    candidates.sort((left, right) => (
+      String(left.updated_at).localeCompare(String(right.updated_at))
+      || String(left.run_dir).localeCompare(String(right.run_dir))
+    ));
+    return {
+      root: this.root,
+      stale_running_after_minutes: staleRunningAfterMinutes,
+      cutoff_at: new Date(cutoffMs).toISOString(),
+      candidate_count: candidates.length,
+      unknown_updated_at_count: unknownUpdatedAtCount,
+      candidates,
     };
   }
 

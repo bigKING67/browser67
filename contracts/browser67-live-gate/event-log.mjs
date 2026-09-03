@@ -1,6 +1,4 @@
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-
+import { appendPrivateFileSync } from "../../src/runtime/storage/private-path.mjs";
 import { DEFAULT_EVENT_LOG_PATH } from "./paths.mjs";
 
 function appendGateEvent(config, payload) {
@@ -17,8 +15,7 @@ function appendGateEvent(config, payload) {
     payload,
   };
   try {
-    mkdirSync(dirname(logPath), { recursive: true });
-    appendFileSync(logPath, `${JSON.stringify(record)}\n`, "utf8");
+    appendPrivateFileSync(logPath, `${JSON.stringify(record)}\n`, "utf8");
     return {
       enabled: true,
       ok: true,
