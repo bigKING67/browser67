@@ -206,7 +206,7 @@ function normalizeWaitOptions(args = {}) {
   const waitUntil = waitUntilRaw === "none" ? "none" : "listed";
   return {
     wait_until: waitUntil,
-    wait_timeout_ms: clampInteger(args.wait_timeout_ms ?? args.waitTimeoutMs, 3_000, 0, 10_000),
+    wait_timeout_ms: clampInteger(args.wait_timeout_ms ?? args.waitTimeoutMs, 3_000, 0, 120_000),
     wait_poll_ms: clampInteger(args.wait_poll_ms ?? args.waitPollMs, 100, 50, 1_000),
   };
 }
@@ -245,11 +245,10 @@ function normalizeTabList(raw, fallbackBrowserInstanceId = "") {
 }
 
 function liveTabMap(liveTabs = []) {
-  return new Map(
-    (Array.isArray(liveTabs) ? liveTabs : [])
-      .map((item) => [browserTabKey(item), item])
-      .filter(([id]) => id.length > 0),
+  const entries = /** @type {Array<[string, any]>} */ (
+    (Array.isArray(liveTabs) ? liveTabs : []).map((item) => [browserTabKey(item), item])
   );
+  return new Map(entries.filter(([id]) => id.length > 0));
 }
 
 async function readBrowserTabById(args, preferred, tabId, runtimeOptions = {}) {

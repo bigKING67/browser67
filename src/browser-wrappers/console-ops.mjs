@@ -1,5 +1,6 @@
 import { assertManagedExecutionContext } from "../browser/execution/managed-context.mjs";
 import { createToolError } from "../runtime/tool-errors.mjs";
+import { createOperationDeadline } from "../runtime/operation-deadline.mjs";
 import { resolvePreferredBrowserContext } from "../tmwd-runtime/index.mjs";
 import {
   executeTmwdCommandWithPreferred,
@@ -28,7 +29,30 @@ async function handleBrowserConsoleOps(args = {}, runtimeOptions = {}) {
     throw createToolError("INVALID_ARGUMENT", `unsupported browser_console_ops action: ${action}`);
   }
   const options = normalizeConsoleObservationOptions(args);
-  const preferred = await resolvePreferredBrowserContext(args, runtimeOptions);
+  const deadline = createOperationDeadline(args.timeout_ms ?? options.duration_ms + 5_000);
+  if (args.timeout_ms !== undefined && deadline.timeout_ms < options.duration_ms + 250) {
+    throw createToolError(
+      "INVALID_ARGUMENT",
+      "browser_console_ops timeout_ms must cover duration_ms plus debugger teardown",
+      {
+        retryable: false,
+        details: {
+          field: "timeout_ms",
+          timeout_ms: deadline.timeout_ms,
+          duration_ms: options.duration_ms,
+          minimum_timeout_ms: options.duration_ms + 250,
+          failed_phase: "console_budget_validation",
+        },
+      },
+    );
+  }
+  let phase = "resolve_context";
+  let preferred;
+  try {
+    preferred = await resolvePreferredBrowserContext(deadline.argsFor(args, phase), runtimeOptions);
+  } catch (error) {
+    throw deadline.annotate(error, phase);
+  }
   if (preferred.transport !== "tmwd_ws" && preferred.transport !== "tmwd_link") {
     throw createToolError(
       "TMWD_REQUIRED",
@@ -42,25 +66,48 @@ async function handleBrowserConsoleOps(args = {}, runtimeOptions = {}) {
       },
     );
   }
-  const management = await assertManagedExecutionContext(preferred, args, runtimeOptions);
+  phase = "managed_context";
+  let management;
+  try {
+    management = await assertManagedExecutionContext(
+      preferred,
+      deadline.argsFor(args, phase),
+      runtimeOptions,
+    );
+  } catch (error) {
+    throw deadline.annotate(error, phase);
+  }
   const tabId = String(preferred.context?.target?.tab_id ?? preferred.context?.target?.id ?? "");
-  const commandArgs = {
-    ...args,
-    timeout_ms: Math.max(
-      boundedInteger(args.timeout_ms, 0, 0, 120_000),
-      options.duration_ms + 5_000,
-    ),
-  };
-  const observed = await executeTmwdCommandWithPreferred(commandArgs, preferred, {
-    cmd: "debugger",
-    method: "observe_console",
-    tabId,
-    durationMs: options.duration_ms,
-    maxEntries: options.max_entries,
-    maxTotalChars: options.max_total_chars,
-    includeLogEntries: options.include_log_entries,
-    includeStackTrace: options.include_stack_trace,
-  }, runtimeOptions);
+  phase = "console_observation";
+  const remainingMs = deadline.remaining(phase);
+  if (remainingMs < options.duration_ms + 100) {
+    throw createToolError("TIMEOUT", "console observation deadline exhausted before attach", {
+      retryable: true,
+      details: {
+        ...deadline.snapshot(phase),
+        duration_ms: options.duration_ms,
+        required_remaining_ms: options.duration_ms + 100,
+      },
+    });
+  }
+  let observed;
+  try {
+    observed = await executeTmwdCommandWithPreferred({
+      ...args,
+      timeout_ms: remainingMs,
+    }, preferred, {
+      cmd: "debugger",
+      method: "observe_console",
+      tabId,
+      durationMs: options.duration_ms,
+      maxEntries: options.max_entries,
+      maxTotalChars: options.max_total_chars,
+      includeLogEntries: options.include_log_entries,
+      includeStackTrace: options.include_stack_trace,
+    }, runtimeOptions);
+  } catch (error) {
+    throw deadline.annotate(error, phase);
+  }
   if (observed.value?.schema !== "browser67.console-observation.v1") {
     throw createToolError(
       "CONSOLE_OBSERVATION_UNAVAILABLE",
@@ -79,6 +126,10 @@ async function handleBrowserConsoleOps(args = {}, runtimeOptions = {}) {
     transport_attempts: observed.transport_attempts,
     page: observed.page,
     management,
+    deadline: {
+      timeout_ms: deadline.timeout_ms,
+      elapsed_ms: deadline.snapshot("completed").elapsed_ms,
+    },
   };
 }
 

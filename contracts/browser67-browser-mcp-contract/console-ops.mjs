@@ -53,8 +53,27 @@ export async function assertConsoleOpsContract({ rpc, timeoutMs }) {
   const unsupportedActionPayload = firstJsonContent(unsupportedActionCall.result);
   assert.equal(unsupportedActionPayload?.error_code, "INVALID_ARGUMENTS");
 
+  const insufficientBudgetCall = await rpc.call(
+    "tools/call",
+    {
+      name: "browser_console_ops",
+      arguments: {
+        action: "observe",
+        duration_ms: 1_000,
+        timeout_ms: 500,
+      },
+    },
+    timeoutMs,
+  );
+  assert.equal(insufficientBudgetCall?.result?.isError, true);
+  const insufficientBudgetPayload = firstJsonContent(insufficientBudgetCall.result);
+  assert.equal(insufficientBudgetPayload?.error_code, "INVALID_ARGUMENT");
+  assert.equal(insufficientBudgetPayload?.details?.failed_phase, "console_budget_validation");
+  assert.equal(insufficientBudgetPayload?.details?.minimum_timeout_ms, 1_250);
+
   return {
     default_limits: normalizeConsoleObservationOptions({}),
     missing_action_error_code: missingActionPayload.error_code,
+    insufficient_budget_error_code: insufficientBudgetPayload.error_code,
   };
 }

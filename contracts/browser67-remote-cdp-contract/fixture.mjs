@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 const FIXTURE_HTML = `<!doctype html>
 <html>
   <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>remote-cdp-fixture</title>
     <style>body { font-family: sans-serif; } iframe { width: 320px; height: 80px; }</style>
   </head>

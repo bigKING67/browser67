@@ -35,12 +35,22 @@ const FOCUS_BOUND_NATIVE_ACTIONS = new Set([
   "scroll",
 ]);
 
-function mapNativeInputError(action, error) {
+function mapNativeInputError(action, error, timeoutMs) {
   if (typeof error?.errorCode === "string" && error.errorCode.trim().length > 0) {
     return error;
   }
   const rawMessage = String(error?.message ?? error ?? "native input execution failed");
   const normalized = rawMessage.toLowerCase();
+  if (normalized.includes("timeout") || normalized.includes("etimedout")) {
+    return createToolError("TIMEOUT", `native input timed out action=${action}: ${rawMessage}`, {
+      retryable: true,
+      details: {
+        action,
+        failed_phase: "native_command",
+        timeout_ms: timeoutMs,
+      },
+    });
+  }
   if (normalized.includes("enoent")) {
     return createToolError("ACTION_NOT_SUPPORTED", `action not supported: required binary missing for ${action}`);
   }
@@ -165,7 +175,7 @@ async function handleBrowserNativeInput(args, options = {}) {
       at: nowIso(),
     };
   } catch (error) {
-    throw mapNativeInputError(action, error);
+    throw mapNativeInputError(action, error, timeoutMs);
   } finally {
     if (focus?.lease) {
       await releaseManagedFocusLease(focus.lease, focus.run_command, "native_input_failed");

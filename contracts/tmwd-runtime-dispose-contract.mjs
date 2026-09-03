@@ -7,6 +7,7 @@ import {
   executeTmwdJsWithFallback,
   resolvePreferredBrowserContext,
 } from "../src/tmwd-runtime/index.mjs";
+import { createTmwdWsRuntime } from "../src/tmwd-runtime/ws.mjs";
 
 function waitForServerListening(server) {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -26,10 +27,12 @@ function closeServer(server) {
 
 async function startMockTmwdWs() {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  let connectionCount = 0;
   let closeCount = 0;
   let tabsRequestCount = 0;
   const executionMonitorFlags = [];
   server.on("connection", (socket) => {
+    connectionCount += 1;
     socket.once("close", () => {
       closeCount += 1;
     });
@@ -52,6 +55,7 @@ async function startMockTmwdWs() {
         }));
         return;
       }
+      if (code?.cmd === "silent") return;
       executionMonitorFlags.push(request.monitorNewTabs);
       socket.send(JSON.stringify({
         id: request.id,
@@ -75,6 +79,9 @@ async function startMockTmwdWs() {
     close: () => closeServer(server),
     get close_count() {
       return closeCount;
+    },
+    get connection_count() {
+      return connectionCount;
     },
     get clients_count() {
       return server.clients.size;
@@ -139,6 +146,21 @@ async function run() {
     assert.equal(executed.executed.value?.disposed_contract, true);
     assert.deepEqual(mock.execution_monitor_flags, [false]);
 
+    const isolatedRuntime = createTmwdWsRuntime();
+    const timeoutStartedAt = Date.now();
+    await assert.rejects(
+      () => isolatedRuntime.send(args, {
+        browser_instance_id: "mock-browser-instance",
+        tabId: "mock-tab",
+        code: { cmd: "silent" },
+      }, 250),
+      /tmwd ws request timeout/,
+    );
+    const timeoutElapsedMs = Date.now() - timeoutStartedAt;
+    assert.ok(timeoutElapsedMs >= 200, `timeout returned too early: ${String(timeoutElapsedMs)}ms`);
+    assert.ok(timeoutElapsedMs < 500, `timeout exceeded one end-to-end budget: ${String(timeoutElapsedMs)}ms`);
+    await isolatedRuntime.dispose({ reason: "timeout budget contract", timeout_ms: 500 });
+
     const disposed = await disposeTmwdRuntime({
       reason: "tmwd-runtime-dispose-contract",
       timeout_ms: 1_000,
@@ -150,20 +172,24 @@ async function run() {
     assert.notEqual(disposed.close_status, "timeout");
 
     const startedAt = Date.now();
-    while (mock.close_count === 0 && Date.now() - startedAt < 1_000) {
+    while (mock.clients_count > 0 && Date.now() - startedAt < 1_000) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
     }
-    assert.equal(mock.close_count > 0, true);
+    assert.equal(mock.clients_count, 0);
+    assert.equal(mock.close_count, mock.connection_count);
 
     process.stdout.write(`${JSON.stringify({
       ok: true,
       transport: preferred.transport,
       dispose_close_status: disposed.close_status,
+      server_connection_count: mock.connection_count,
       server_close_count: mock.close_count,
       server_clients_count: mock.clients_count,
       session_cache_push_hit: true,
       tabs_pull_count: mock.tabs_request_count,
       no_monitor_forwarded: mock.execution_monitor_flags[0] === false,
+      ws_timeout_single_budget: true,
+      ws_timeout_elapsed_ms: timeoutElapsedMs,
     })}\n`);
   } finally {
     await disposeTmwdRuntime({

@@ -1,4 +1,5 @@
 import { normalizeTimeoutMs } from "../runtime/config/limits.mjs";
+import { createOperationDeadline } from "../runtime/operation-deadline.mjs";
 import { appendTransportAttempt } from "../runtime/transport-attempts.mjs";
 import {
   classifyBrowserErrorCode,
@@ -39,7 +40,7 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
         code: codePayload,
         monitorNewTabs: args?.no_monitor !== true,
       },
-      Math.max(500, timeoutMs + 2_000),
+      timeoutMs,
     );
     const raw = response.success
       ? { ok: true, data: response.result, newTabs: response.newTabs }
@@ -71,7 +72,8 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
       newTabs: Array.isArray(response.newTabs) ? response.newTabs : [],
     };
   }
-  const timeoutSecs = Number((timeoutMs / 1000).toFixed(2));
+  const remoteExecutionTimeoutMs = Math.max(100, timeoutMs - 250);
+  const timeoutSecs = Number((remoteExecutionTimeoutMs / 1000).toFixed(2));
   const exec = await callTmwdLink(
     {
       ...args,
@@ -85,7 +87,7 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
       timeout: String(timeoutSecs),
       monitorNewTabs: args?.no_monitor !== true,
     },
-    Math.max(500, timeoutMs + 2_000),
+    timeoutMs,
   );
   const raw = exec.value;
   if (raw && typeof raw === "object" && typeof raw.error === "string" && raw.error.length > 0) {
@@ -103,13 +105,14 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
 
 async function executeTmwdJsWithFallback(args, tmwdContext, codePayload, options = {}) {
   const { healthStore } = runtimeServices(options);
+  const deadline = createOperationDeadline(args?.timeout_ms);
   const attempts = [];
   const initialTransport = tmwdContext.tmwd_transport === "ws" ? "ws" : "link";
   const runExecute = async (context, transport, reason) => {
     try {
       const executed = await executeTmwdJs(
         {
-          ...args,
+          ...deadline.argsFor(args, `${transport}_execute`),
           browser_instance_id: context.target.browser_instance_id ?? args?.browser_instance_id,
           session_id: context.target.tab_id ?? context.target.id,
         },
@@ -152,7 +155,7 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload, options
     try {
       fallbackContext = await resolveTmwdContextWithTransport(
         {
-          ...args,
+          ...deadline.argsFor(args, `${fallbackTransport}_resolve_context`),
           browser_instance_id: tmwdContext.target.browser_instance_id ?? args?.browser_instance_id,
         },
         fallbackTransport,

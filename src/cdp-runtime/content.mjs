@@ -113,13 +113,13 @@ function contentResult(target, endpoint, resolved, result) {
 }
 
 async function evaluateContent(args, expression, fallbackError, selectValue, options = {}) {
-  return withTargetClient(args, async (client, target, endpoint, timeoutMs, resolved) => {
-    await client.send("Runtime.enable", {}, Math.min(timeoutMs, 10_000));
+  return withTargetClient(args, async (client, target, endpoint, _timeoutMs, resolved, deadline) => {
+    await client.send("Runtime.enable", {}, Math.min(deadline.remaining("runtime_enable"), 10_000));
     const evalResult = await client.send("Runtime.evaluate", {
       expression,
       awaitPromise: true,
       returnByValue: true,
-    }, timeoutMs);
+    }, deadline.remaining("runtime_evaluate"));
     const error = evaluationError(evalResult, fallbackError);
     if (error) throw error;
     return contentResult(target, endpoint, resolved, selectValue(evalResult));

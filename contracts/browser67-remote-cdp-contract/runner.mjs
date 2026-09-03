@@ -63,7 +63,7 @@ async function callTool(rpc, name, args, timeoutMs) {
   return firstJsonContent(response.result);
 }
 
-async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, registryPath, timeoutMs }) {
+async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, registryPath, runRoot, timeoutMs }) {
   const now = new Date().toISOString();
   const workspaceKey = "remote-cdp-content-contract";
   const taskId = "snapshot-node-ref-diff";
@@ -95,7 +95,9 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
   }, null, 2)}\n`);
 
   const priorRegistryPath = process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
+  const priorRunRoot = process.env.BROWSER_STRUCTURED_RUN_ROOT;
   process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = registryPath;
+  process.env.BROWSER_STRUCTURED_RUN_ROOT = runRoot;
   const rpc = createRpcClient();
   const route = {
     tmwd_mode: "remote_cdp",
@@ -265,6 +267,26 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
     assert.equal(before.marker_policy.lifetime, "until_navigation_or_managed_policy_release");
 
     const operationRoute = { ...route, workspace_key: workspaceKey, task_id: taskId };
+    const responsiveSelector = await callTool(rpc, "browser_screenshot_ops", {
+      ...operationRoute,
+      target: "selector",
+      selector: "#increment",
+      viewport: {
+        width: 390,
+        height: 844,
+        dpr: 2,
+        is_mobile: true,
+      },
+      title: "remote-cdp-responsive-selector",
+      max_pixels: 8_000_000,
+    }, timeoutMs);
+    assert.equal(responsiveSelector.transport, "cdp");
+    assert.equal(responsiveSelector.page?.viewport?.inner_width, 390);
+    assert.equal(responsiveSelector.page?.viewport?.inner_height, 844);
+    assert.equal(responsiveSelector.viewport_override?.cleanup?.cleared, true);
+    assert.equal(responsiveSelector.viewport_override?.verification?.ok, true);
+    assert.equal(responsiveSelector.viewport_override?.verification?.artifact?.ok, true);
+    assert.ok(responsiveSelector.deadline?.elapsed_ms <= responsiveSelector.deadline?.timeout_ms);
     const click = await callTool(rpc, "browser_execute_js", {
       ...operationRoute,
       operation: "click",
@@ -465,6 +487,7 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
       raw_network_observation: true,
       remote_cdp_managed_lifecycle: true,
       remote_cdp_auto_fallback_lifecycle: true,
+      remote_cdp_responsive_screenshot: true,
       network_idle: true,
       resource_quiet: true,
       dom_stable_filters: true,
@@ -474,6 +497,8 @@ async function runContentCoreFixture({ cdpEndpoint, fixtureTarget, fixtureUrl, r
     await rpc.close();
     if (priorRegistryPath === undefined) delete process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH;
     else process.env.BROWSER_STRUCTURED_TAB_REGISTRY_PATH = priorRegistryPath;
+    if (priorRunRoot === undefined) delete process.env.BROWSER_STRUCTURED_RUN_ROOT;
+    else process.env.BROWSER_STRUCTURED_RUN_ROOT = priorRunRoot;
   }
 }
 
@@ -534,6 +559,7 @@ async function runRemoteCdpContract(argv) {
       fixtureTarget: stableFixtureTarget,
       fixtureUrl,
       registryPath,
+      runRoot: resolve(tempRoot, "runs"),
       timeoutMs: cli.timeout_ms,
     });
     const ok = doctor.status === 0

@@ -154,7 +154,10 @@ function createTmwdWsRuntime(options = {}) {
   async function connect(args, connectOptions = {}) {
     assertActive();
     const endpoint = normalizeTmwdWsEndpoint(args?.tmwd_ws_endpoint ?? process.env.BROWSER_STRUCTURED_TMWD_WS_ENDPOINT);
-    const connectTimeoutMs = connectOptions.probe === true ? 1_500 : 5_000;
+    const connectTimeoutMs = Math.min(
+      connectOptions.probe === true ? 1_500 : 5_000,
+      normalizeTimeoutMs(args?.timeout_ms),
+    );
     if (
       state.socket
       && state.status === "open"
@@ -228,7 +231,12 @@ function createTmwdWsRuntime(options = {}) {
   }
 
   async function send(args, payload, timeoutMs) {
-    await connect(args, { probe: false });
+    const startedAtMs = Date.now();
+    const totalTimeoutMs = normalizeTimeoutMs(timeoutMs);
+    await connect({
+      ...(args ?? {}),
+      timeout_ms: totalTimeoutMs,
+    }, { probe: false });
     const socket = state.socket;
     if (!socket || socket.readyState !== WebSocketImpl.OPEN) {
       throw new Error("tmwd ws is not connected");
@@ -237,7 +245,10 @@ function createTmwdWsRuntime(options = {}) {
       throw new Error(`tmwd ws pending request limit reached (${String(maxPending)})`);
     }
     const requestId = randomId("tmwd_ws");
-    const requestTimeoutMs = Math.max(500, timeoutMs);
+    const requestTimeoutMs = Math.floor(totalTimeoutMs - (Date.now() - startedAtMs));
+    if (requestTimeoutMs < 100) {
+      throw new Error(`tmwd ws request timeout before send after ${String(totalTimeoutMs)}ms`);
+    }
     const promise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         state.pending.delete(requestId);
