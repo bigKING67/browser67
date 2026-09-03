@@ -18,6 +18,21 @@ function runtimeServices(options = {}) {
   };
 }
 
+function bridgeCommandPayload(code, bridgeTabId, timeoutMs) {
+  if (typeof code !== "object" || code === null) return String(code ?? "");
+  const commandTimeoutMs = Math.max(25, Math.floor(timeoutMs - Math.min(250, timeoutMs / 2)));
+  const debuggerCommand = code.cmd === "cdp" || code.cmd === "batch";
+  const requestedTimeoutMs = Number(code.timeoutMs);
+  const effectiveTimeoutMs = Number.isFinite(requestedTimeoutMs)
+    ? Math.max(25, Math.min(commandTimeoutMs, Math.floor(requestedTimeoutMs)))
+    : commandTimeoutMs;
+  return {
+    ...code,
+    tabId: code.tabId ?? bridgeTabId,
+    ...(debuggerCommand ? { timeoutMs: effectiveTimeoutMs } : {}),
+  };
+}
+
 async function executeTmwdJs(args, tmwdContext, code, options = {}) {
   const timeoutMs = normalizeTimeoutMs(args?.timeout_ms);
   if (tmwdContext.tmwd_transport === "ws") {
@@ -26,9 +41,7 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
     const bridgeTabId = Number.isFinite(numericTargetTabId)
       ? numericTargetTabId
       : targetTabId;
-    const codePayload = typeof code === "object" && code !== null
-      ? { ...code, tabId: code.tabId ?? bridgeTabId }
-      : String(code ?? "");
+    const codePayload = bridgeCommandPayload(code, bridgeTabId, timeoutMs);
     const response = await runtimeServices(options).wsRuntime.send(
       {
         ...args,
@@ -83,7 +96,11 @@ async function executeTmwdJs(args, tmwdContext, code, options = {}) {
       cmd: "execute_js",
       sessionId: tmwdContext.target.tab_id ?? tmwdContext.target.id,
       browser_instance_id: tmwdContext.target.browser_instance_id,
-      code,
+      code: bridgeCommandPayload(
+        code,
+        tmwdContext.target.tab_id ?? tmwdContext.target.id,
+        remoteExecutionTimeoutMs,
+      ),
       timeout: String(timeoutSecs),
       monitorNewTabs: args?.no_monitor !== true,
     },
@@ -134,7 +151,11 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload, options
       appendTransportAttempt(attempts, transport, "execute", "error", {
         reason,
         message: String(error?.message ?? error),
-        error_code: classifyBrowserErrorCode(String(error?.message ?? error)),
+        error_code: String(
+          error?.errorCode
+          ?? error?.code
+          ?? classifyBrowserErrorCode(String(error?.message ?? error)),
+        ),
       });
       throw error;
     }
@@ -147,7 +168,15 @@ async function executeTmwdJsWithFallback(args, tmwdContext, codePayload, options
       transport_attempts: attempts,
     };
   } catch (primaryError) {
-    if (!shouldFallbackAcrossTmwdTransports(args, primaryError)) {
+    const primaryErrorCode = String(
+      primaryError?.errorCode
+      ?? primaryError?.code
+      ?? classifyBrowserErrorCode(String(primaryError?.message ?? primaryError)),
+    );
+    if (
+      !shouldFallbackAcrossTmwdTransports(args, primaryError)
+      || (primaryErrorCode === "TIMEOUT" && options.tmwdFallbackOnTimeout === false)
+    ) {
       throw withTransportAttempts(primaryError, attempts);
     }
     const fallbackTransport = initialTransport === "ws" ? "link" : "ws";

@@ -11,6 +11,11 @@ import {
   commonArgs,
   parseArgs,
 } from "./browser-captcha-assist-live-smoke/cli.mjs";
+import {
+  disposeTmwdRuntime,
+  executeTmwdJsWithFallback,
+  resolvePreferredBrowserContext,
+} from "../src/tmwd-runtime/index.mjs";
 
 const DEFAULT_SCREENSHOT_TOOL_TIMEOUT_MS = 25_000;
 const SCREENSHOT_RPC_HEADROOM_MS = 5_000;
@@ -224,7 +229,9 @@ async function run() {
       url: `${fixture.origin}/screenshot`,
       workspace_key: workspaceKey,
       fresh: true,
-      active: true,
+      active: false,
+      window_policy: "dedicated",
+      focus_policy: "background_preferred",
       wait_until: "listed",
       wait_timeout_ms: 5_000,
       wait_poll_ms: 100,
@@ -232,7 +239,7 @@ async function run() {
     tabId = String(managed?.managed_tab?.tab_id ?? "");
     assert.ok(tabId, "managed tab id required");
     assert.equal(managed.created, true, "screenshot smoke should create isolated managed tab");
-    assert.equal(managed.ready, true, "screenshot smoke managed tab should become visible");
+    assert.equal(managed.ready, true, "screenshot smoke managed tab should become listed");
 
     const ready = await waitForReady(async () => {
       const payload = await callTool("browser_wait", {
@@ -249,6 +256,94 @@ async function run() {
     }, 10_000);
     assert.equal(ready.ok, true, `screenshot fixture did not settle: ${JSON.stringify(ready)}`);
 
+    const backgroundState = await callTool("browser_execute_js", {
+      ...baseArgs,
+      tab_id: tabId,
+      workspace_key: workspaceKey,
+      no_monitor: true,
+      script: `return {
+        visibility_state: document.visibilityState,
+        inner_width: window.innerWidth,
+        inner_height: window.innerHeight,
+        target_present: Boolean(document.querySelector("#capture-target"))
+      };`,
+    });
+    assert.equal(backgroundState.js_return?.visibility_state, "hidden");
+    assert.equal(backgroundState.js_return?.target_present, true);
+    const originalViewport = {
+      width: backgroundState.js_return?.inner_width,
+      height: backgroundState.js_return?.inner_height,
+    };
+
+    const browserInstanceId = String(managed?.managed_tab?.browser_instance_id ?? "");
+    assert.ok(browserInstanceId, "managed Browser Instance id required");
+    const timeoutProofArgs = {
+      ...baseArgs,
+      tmwd_transport: "ws",
+      browser_instance_id: browserInstanceId,
+      session_id: tabId,
+      timeout_ms: 2_000,
+    };
+    const timeoutProofContext = await resolvePreferredBrowserContext(timeoutProofArgs);
+    const timeoutProofStartedAt = Date.now();
+    const timeoutProof = await executeTmwdJsWithFallback(
+      timeoutProofArgs,
+      timeoutProofContext.context,
+      {
+        cmd: "batch",
+        commands: [
+          {
+            cmd: "cdp",
+            method: "Emulation.setDeviceMetricsOverride",
+            params: {
+              width: 360,
+              height: 640,
+              deviceScaleFactor: 1,
+              mobile: true,
+            },
+          },
+          {
+            cmd: "cdp",
+            method: "Runtime.evaluate",
+            params: {
+              expression: "new Promise(() => {})",
+              awaitPromise: true,
+              returnByValue: true,
+            },
+          },
+        ],
+      },
+      { tmwdFallbackOnTimeout: false },
+    );
+    const timeoutProofElapsedMs = Date.now() - timeoutProofStartedAt;
+    assert.equal(timeoutProof.executed.raw?.ok, false);
+    assert.equal(timeoutProof.executed.raw?.errorCode, "TIMEOUT");
+    assert.equal(timeoutProof.executed.raw?.details?.failed_phase, "debugger_batch_command");
+    assert.equal(
+      timeoutProof.executed.raw?.details?.cleanup?.some((entry) => entry.cleared === true),
+      true,
+      "live debugger timeout must clear its viewport override",
+    );
+    assert.ok(
+      timeoutProofElapsedMs < timeoutProofArgs.timeout_ms,
+      `live debugger timeout exceeded its host budget: ${String(timeoutProofElapsedMs)}ms`,
+    );
+
+    const timeoutRestoredState = await callTool("browser_execute_js", {
+      ...baseArgs,
+      tab_id: tabId,
+      workspace_key: workspaceKey,
+      no_monitor: true,
+      script: `return {
+        visibility_state: document.visibilityState,
+        inner_width: window.innerWidth,
+        inner_height: window.innerHeight
+      };`,
+    });
+    assert.equal(timeoutRestoredState.js_return?.visibility_state, "hidden");
+    assert.equal(timeoutRestoredState.js_return?.inner_width, originalViewport.width);
+    assert.equal(timeoutRestoredState.js_return?.inner_height, originalViewport.height);
+
     const viewport = await callTool("browser_screenshot_ops", {
       ...baseArgs,
       tab_id: tabId,
@@ -260,6 +355,7 @@ async function run() {
     });
     await assertScreenshotArtifact(viewport, "viewport");
     assert.equal(viewport.target, "viewport");
+    assert.equal(viewport.page?.visibility_state, "hidden");
 
     const viewportOverBudget = await callToolError("browser_screenshot_ops", {
       ...baseArgs,
@@ -303,6 +399,7 @@ async function run() {
     });
     await assertScreenshotArtifact(mobileViewport, "mobile_viewport");
     assert.equal(mobileViewport.target, "viewport");
+    assert.equal(mobileViewport.page?.visibility_state, "hidden");
     assert.equal(mobileViewport.viewport_override?.requested?.width, 390);
     assert.equal(mobileViewport.viewport_override?.requested?.height, 844);
     assert.equal(mobileViewport.viewport_override?.cleanup?.cleared, true);
@@ -311,6 +408,10 @@ async function run() {
     assert.equal(mobileViewport.viewport_override?.verification?.ok, true);
     assert.equal(mobileViewport.viewport_override?.verification?.page?.ok, true);
     assert.equal(mobileViewport.viewport_override?.verification?.artifact?.ok, true);
+    assert.equal(
+      mobileViewport.viewport_override?.settle?.settle_basis,
+      "cdp_ack_plus_synchronous_layout_read",
+    );
     assert.equal(mobileViewport.viewport_override?.verification?.artifact?.expected?.width, 780);
     assert.equal(mobileViewport.viewport_override?.verification?.artifact?.expected?.height, 1688);
     assert.equal(mobileViewport.artifact.width, 780);
@@ -338,6 +439,7 @@ async function run() {
     await assertScreenshotArtifact(mobileSelector, "mobile_selector");
     assert.equal(mobileSelector.target, "selector");
     assert.equal(mobileSelector.selector, "#capture-target");
+    assert.equal(mobileSelector.page?.visibility_state, "hidden");
     assert.equal(mobileSelector.viewport_override?.requested?.width, 390);
     assert.equal(mobileSelector.viewport_override?.requested?.height, 844);
     assert.equal(mobileSelector.viewport_override?.cleanup?.cleared, true);
@@ -356,6 +458,23 @@ async function run() {
       mobileSelector.viewport_override?.verification?.artifact?.expected?.height,
     );
 
+    const restoredState = await callTool("browser_execute_js", {
+      ...baseArgs,
+      tab_id: tabId,
+      workspace_key: workspaceKey,
+      no_monitor: true,
+      script: `return {
+        visibility_state: document.visibilityState,
+        inner_width: window.innerWidth,
+        inner_height: window.innerHeight,
+        target_present: Boolean(document.querySelector("#capture-target"))
+      };`,
+    });
+    assert.equal(restoredState.js_return?.visibility_state, "hidden");
+    assert.equal(restoredState.js_return?.inner_width, originalViewport.width);
+    assert.equal(restoredState.js_return?.inner_height, originalViewport.height);
+    assert.equal(restoredState.js_return?.target_present, true);
+
     const selector = await callTool("browser_screenshot_ops", {
       ...baseArgs,
       tab_id: tabId,
@@ -369,6 +488,7 @@ async function run() {
     await assertScreenshotArtifact(selector, "selector");
     assert.equal(selector.target, "selector");
     assert.equal(selector.selector, "#capture-target");
+    assert.equal(selector.page?.visibility_state, "hidden");
     assert.ok(selector.capture.clip.width > 0, "selector clip width");
 
     const selectorFallback = await callTool("browser_screenshot_ops", {
@@ -456,6 +576,11 @@ async function run() {
       full_page_budget_error_code: fullPageOverBudget.error_code,
       tool_timeout_ms: timeouts.tool_timeout_ms,
       rpc_timeout_ms: timeouts.rpc_timeout_ms,
+      background_visibility_state: backgroundState.js_return.visibility_state,
+      debugger_timeout_error_code: timeoutProof.executed.raw.errorCode,
+      debugger_timeout_elapsed_ms: timeoutProofElapsedMs,
+      debugger_timeout_cleanup_verified: true,
+      viewport_restored_after_mobile_capture: true,
       finalized_status: finalized.status,
       run_root: runRoot,
     })}\n`);
@@ -473,6 +598,10 @@ async function run() {
         // Best-effort finalizer. Test assertions above report authoritative cleanup failures.
       }
     }
+    await disposeTmwdRuntime({
+      reason: "browser screenshot live smoke cleanup",
+      timeout_ms: 1_000,
+    });
     await rpc.close();
     await fixture.close();
     if (previousRegistryPath === undefined) {

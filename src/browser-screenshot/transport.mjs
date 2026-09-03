@@ -30,6 +30,24 @@ function unwrapJsValue(value) {
   return value;
 }
 
+function assertTmwdExecutionSucceeded(executed = {}, fallbackMessage) {
+  const raw = executed?.raw;
+  const protocolError = raw?.ok === false && (
+    Object.prototype.hasOwnProperty.call(raw, "error")
+    || Object.prototype.hasOwnProperty.call(raw, "errorCode")
+  );
+  if (!protocolError) return;
+  const errorCode = String(raw.errorCode || "EXECUTION_ERROR");
+  throw createToolError(
+    errorCode,
+    String(raw.error?.message ?? raw.error ?? fallbackMessage),
+    {
+      retryable: errorCode === "TIMEOUT",
+      details: raw.details,
+    },
+  );
+}
+
 function extractScreenshotData(executed = {}) {
   const raw = executed.raw;
   const value = executed.value;
@@ -181,13 +199,7 @@ function batchRuntimeValue(results, index, label) {
 }
 
 function parseTmwdViewportScreenshotBatchResults(executed, plan) {
-  if (executed?.raw?.ok === false) {
-    throw createToolError(
-      "EXECUTION_ERROR",
-      String(executed.raw.error?.message ?? executed.raw.error ?? "TMWD viewport screenshot batch failed"),
-      { retryable: false },
-    );
-  }
+  assertTmwdExecutionSucceeded(executed, "TMWD viewport screenshot batch failed");
   const results = extractTmwdBatchResults(executed);
   const indexes = plan?.result_indexes ?? {};
   const expectedCount = Array.isArray(plan?.command?.commands)
@@ -342,6 +354,7 @@ async function runTmwdViewportScreenshotBatch(
 async function evaluatePageScript(args, preferred, script, runtimeOptions = {}) {
   if (isTmwdTransport(preferred)) {
     const tmwd = await executeTmwdJsWithFallback(args ?? {}, preferred.context, script, runtimeOptions);
+    assertTmwdExecutionSucceeded(tmwd.executed, "TMWD page script failed");
     return {
       value: unwrapJsValue(tmwd.executed.value),
       preferred: {
@@ -370,6 +383,7 @@ async function runCdpScreenshot(args, preferred, params, runtimeOptions = {}) {
       method: "Page.captureScreenshot",
       params,
     }, runtimeOptions);
+    assertTmwdExecutionSucceeded(tmwd.executed, "TMWD screenshot command failed");
     return {
       base64: extractScreenshotData(tmwd.executed),
       preferred: {
@@ -398,6 +412,7 @@ async function runCdpBrowserCommand(args, preferred, method, params = {}, runtim
       method,
       params,
     }, runtimeOptions);
+    assertTmwdExecutionSucceeded(tmwd.executed, `TMWD ${method} command failed`);
     return {
       value: tmwd.executed.value,
       preferred: {

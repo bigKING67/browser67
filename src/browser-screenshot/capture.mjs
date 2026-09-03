@@ -507,7 +507,7 @@ async function clearViewportOverride(args, request, state) {
   let cleanup;
   try {
     const cleared = absorbTransportResult(state, await runCdpBrowserCommand(
-      args,
+      state.deadline.argsFor(args, "viewport_cleanup"),
       state.preferred,
       "Emulation.clearDeviceMetricsOverride",
       {},
@@ -543,7 +543,7 @@ async function captureBrowserScreenshot(args = {}, runtimeOptions = {}) {
   const state = {
     deadline,
     phase,
-    runtimeOptions,
+    runtimeOptions: { ...runtimeOptions, tmwdFallbackOnTimeout: false },
     preferred,
     transportAttempts: Array.isArray(preferred.transport_attempts)
       ? preferred.transport_attempts

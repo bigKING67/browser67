@@ -8,6 +8,67 @@
     return Math.max(min, Math.min(max, Math.floor(value)));
   }
 
+  function createDebuggerDeadline(rawTimeoutMs) {
+    const timeoutMs = boundedInteger(rawTimeoutMs, 20_000, 25, 120_000);
+    const startedAtMs = Date.now();
+    const deadlineAtMs = startedAtMs + timeoutMs;
+    const cleanupReserveMs = Math.min(1_500, Math.max(25, Math.floor(timeoutMs / 4)));
+    const detachReserveMs = Math.min(250, Math.max(6, Math.floor(cleanupReserveMs / 4)));
+
+    function snapshot(phase, extra = {}) {
+      return {
+        timeout_ms: timeoutMs,
+        elapsed_ms: Math.max(0, Date.now() - startedAtMs),
+        remaining_ms: Math.max(0, deadlineAtMs - Date.now()),
+        deadline_at: new Date(deadlineAtMs).toISOString(),
+        failed_phase: phase,
+        ...extra,
+      };
+    }
+
+    function timeoutError(phase, extra = {}) {
+      return Object.assign(new Error(`debugger operation timed out during ${phase}`), {
+        code: "TIMEOUT",
+        details: {
+          timeout_kind: "extension_debugger_deadline",
+          ...snapshot(phase, extra),
+        },
+      });
+    }
+
+    function remaining(phase, reserveMs = 0, extra = {}) {
+      const value = Math.floor(deadlineAtMs - Date.now() - Math.max(0, reserveMs));
+      if (value < 1) throw timeoutError(phase, extra);
+      return value;
+    }
+
+    async function run(operation, phase, options = {}) {
+      const waitMs = remaining(phase, options.reserve_ms, options.details);
+      let timer = null;
+      try {
+        return await Promise.race([
+          Promise.resolve().then(operation),
+          new Promise((_, reject) => {
+            timer = setTimeout(
+              () => reject(timeoutError(phase, options.details)),
+              waitMs,
+            );
+          }),
+        ]);
+      } finally {
+        if (timer !== null) clearTimeout(timer);
+      }
+    }
+
+    return {
+      cleanup_reserve_ms: cleanupReserveMs,
+      detach_reserve_ms: detachReserveMs,
+      run,
+      snapshot,
+      timeout_ms: timeoutMs,
+    };
+  }
+
   function clipConsoleText(raw, maxChars) {
     const value = String(raw ?? "");
     if (value.length <= maxChars) return value;
@@ -145,14 +206,33 @@
     return wrapped;
   }
 
-  async function acquireDebuggerQueue(tabId, operation) {
+  async function acquireDebuggerQueue(tabId, operation, deadline = null) {
     const previous = debuggerQueues.get(tabId) || Promise.resolve();
     let releaseGate;
     const gate = new Promise((resolve) => { releaseGate = resolve; });
     const tail = previous.catch(() => {}).then(() => gate);
     debuggerQueues.set(tabId, tail);
     const queuedAt = Date.now();
-    await previous.catch(() => {});
+    try {
+      if (deadline) {
+        await deadline.run(
+          () => previous.catch(() => {}),
+          "debugger_queue_wait",
+          {
+            reserve_ms: deadline.cleanup_reserve_ms,
+            details: { operation, tab_id: tabId },
+          },
+        );
+      } else {
+        await previous.catch(() => {});
+      }
+    } catch (error) {
+      releaseGate();
+      tail.finally(() => {
+        if (debuggerQueues.get(tabId) === tail) debuggerQueues.delete(tabId);
+      });
+      throw error;
+    }
     const acquiredAt = Date.now();
     const leaseId = `debugger-${String(++leaseSequence)}`;
     let released = false;
@@ -173,12 +253,16 @@
     };
   }
 
-  async function withDebuggerQueues(tabIds, operation, callback) {
+  async function withDebuggerQueues(tabIds, operation, deadline, callback) {
+    if (typeof deadline === "function") {
+      callback = deadline;
+      deadline = null;
+    }
     const normalized = [...new Set(tabIds)].sort((left, right) => left - right);
     const leases = [];
     try {
       for (const tabId of normalized) {
-        leases.push(await acquireDebuggerQueue(tabId, operation));
+        leases.push(await acquireDebuggerQueue(tabId, operation, deadline));
       }
       return await callback(leases.map((lease) => lease.receipt));
     } finally {
@@ -186,18 +270,35 @@
     }
   }
 
-  async function attachDebugger(tabId, operation) {
+  async function attachDebugger(tabId, operation, deadline = null, reserveMs = 0) {
     try {
-      await chrome.debugger.attach({ tabId }, "1.3");
+      const attach = () => chrome.debugger.attach({ tabId }, "1.3");
+      if (deadline) {
+        await deadline.run(attach, "debugger_attach", {
+          reserve_ms: reserveMs,
+          details: { operation, tab_id: tabId },
+        });
+      } else {
+        await attach();
+      }
     } catch (error) {
+      if (error?.code === "TIMEOUT") throw error;
       throw debuggerError(error, tabId, operation);
     }
   }
 
-  async function detachDebugger(tabId) {
+  async function detachDebugger(tabId, deadline = null, reserveMs = 0) {
     if (tabId === null) return { detached: false, reason: "not_attached" };
     try {
-      await chrome.debugger.detach({ tabId });
+      const detach = () => chrome.debugger.detach({ tabId });
+      if (deadline) {
+        await deadline.run(detach, "debugger_detach", {
+          reserve_ms: reserveMs,
+          details: { tab_id: tabId },
+        });
+      } else {
+        await detach();
+      }
       return { detached: true, reason: "released" };
     } catch (error) {
       // A closed tab or service-worker detach is already a terminal release.
@@ -240,27 +341,48 @@
         results: [],
       };
     }
-    return withDebuggerQueues(tabIds, "batch", async (leaseReceipts) => {
+    const deadline = createDebuggerDeadline(message.timeoutMs ?? message.timeout_ms);
+    return withDebuggerQueues(tabIds, "batch", deadline, async (leaseReceipts) => {
       const results = [];
       const metricsOverrides = new Set();
       const cleanup = [];
       let attachedTabId = null;
+      let debuggerDetach = { detached: false, reason: "not_attached" };
+      let debuggerReleaseVerified = true;
       let outcome;
+      let timedOut = false;
 
-      async function switchDebugger(tabId) {
+      async function switchDebugger(tabId, cleanupMode = false) {
         if (attachedTabId === tabId) return;
-        await detachDebugger(attachedTabId);
+        const switchedDetach = await detachDebugger(
+          attachedTabId,
+          deadline,
+          cleanupMode ? deadline.detach_reserve_ms : deadline.cleanup_reserve_ms,
+        );
+        if (
+          attachedTabId !== null
+          && switchedDetach.detached !== true
+          && switchedDetach.reason !== "not_attached"
+        ) {
+          debuggerReleaseVerified = false;
+        }
         attachedTabId = null;
-        await attachDebugger(tabId, "batch");
+        await attachDebugger(
+          tabId,
+          "batch",
+          deadline,
+          cleanupMode ? deadline.detach_reserve_ms : deadline.cleanup_reserve_ms,
+        );
         attachedTabId = tabId;
       }
 
       try {
         for (const rawCommand of message.commands) {
+          const commandIndex = results.length;
           const command = globalThis.browser67ResolveBatchReferences(
             rawCommand,
             results,
-            { command_index: results.length },
+            { command_index: commandIndex },
           );
           if (command.tabId === undefined && message.tabId !== undefined) command.tabId = message.tabId;
           if (command.cmd === "cookies") {
@@ -279,11 +401,22 @@
           if (tabId === null) {
             throw Object.assign(new Error("invalid or missing numeric tabId"), { code: "INVALID_ARGUMENT" });
           }
-          await switchDebugger(tabId);
-          const response = await chrome.debugger.sendCommand(
-            { tabId },
-            command.method,
-            command.params || {},
+          await switchDebugger(tabId, false);
+          const response = await deadline.run(
+            () => chrome.debugger.sendCommand(
+              { tabId },
+              command.method,
+              command.params || {},
+            ),
+            "debugger_batch_command",
+            {
+              reserve_ms: deadline.cleanup_reserve_ms,
+              details: {
+                command_index: commandIndex,
+                method: String(command.method || ""),
+                tab_id: tabId,
+              },
+            },
           );
           results.push(response);
           if (command.method === "Emulation.setDeviceMetricsOverride") metricsOverrides.add(tabId);
@@ -292,6 +425,7 @@
         outcome = { ok: true, results };
       } catch (error) {
         const normalized = error?.code ? error : debuggerError(error, attachedTabId, "batch");
+        timedOut = normalized?.code === "TIMEOUT";
         outcome = {
           ok: false,
           error: String(normalized.message || normalized),
@@ -300,19 +434,47 @@
           results,
         };
       } finally {
-        for (const tabId of [...metricsOverrides]) {
+        const cleanupTabIds = [
+          ...(attachedTabId !== null && metricsOverrides.has(attachedTabId) ? [attachedTabId] : []),
+          ...[...metricsOverrides].filter((tabId) => tabId !== attachedTabId),
+        ];
+        for (const tabId of cleanupTabIds) {
           try {
-            await switchDebugger(tabId);
-            await chrome.debugger.sendCommand({ tabId }, "Emulation.clearDeviceMetricsOverride", {});
+            await switchDebugger(tabId, true);
+            await deadline.run(
+              () => chrome.debugger.sendCommand(
+                { tabId },
+                "Emulation.clearDeviceMetricsOverride",
+                {},
+              ),
+              "viewport_override_cleanup",
+              {
+                reserve_ms: deadline.detach_reserve_ms,
+                details: { method: "Emulation.clearDeviceMetricsOverride", tab_id: tabId },
+              },
+            );
             cleanup.push({ tab_id: tabId, cleared: true });
           } catch (error) {
             cleanup.push({ tab_id: tabId, cleared: false, error: String(error?.message || error) });
           }
         }
-        await detachDebugger(attachedTabId);
+        if (attachedTabId !== null) {
+          debuggerDetach = await detachDebugger(attachedTabId, deadline);
+          if (debuggerDetach.detached !== true) debuggerReleaseVerified = false;
+          if (timedOut) {
+            cleanup.push({
+              tab_id: attachedTabId,
+              cancelled_inflight: debuggerDetach.detached === true,
+              detach: debuggerDetach,
+            });
+          }
+          attachedTabId = null;
+        }
       }
 
-      const cleanupFailed = cleanup.some((entry) => entry.cleared !== true);
+      const cleanupFailed = cleanup.some((entry) => (
+        Object.prototype.hasOwnProperty.call(entry, "cleared") && entry.cleared !== true
+      ));
       if (cleanupFailed && outcome.ok === true) {
         outcome = {
           ok: false,
@@ -321,10 +483,27 @@
           errorDetails: { cleanup },
           results,
         };
+      } else if (!debuggerReleaseVerified && outcome.ok === true) {
+        outcome = {
+          ok: false,
+          error: "debugger batch completed but debugger release is unverified",
+          errorCode: "DEBUGGER_RELEASE_UNVERIFIED",
+          errorDetails: { cleanup, debugger_detach: debuggerDetach },
+          results,
+        };
       } else if (cleanup.length > 0) {
         outcome.errorDetails = { ...(outcome.errorDetails || {}), cleanup };
       }
-      outcome.debuggerLease = { serialized: true, leases: leaseReceipts };
+      outcome.debuggerLease = {
+        serialized: true,
+        leases: leaseReceipts,
+        timeout: deadline.snapshot(outcome.ok === true ? "completed" : "failed"),
+      };
+      outcome.debuggerCleanup = {
+        debugger_detach: debuggerDetach,
+        debugger_released: debuggerReleaseVerified,
+        viewport_overrides: cleanup,
+      };
       return outcome;
     });
   }
@@ -335,20 +514,31 @@
     if (tabId === null) {
       return { ok: false, error: "invalid or missing numeric tabId", errorCode: "INVALID_ARGUMENT" };
     }
-    return withDebuggerQueues([tabId], String(message.method || "cdp"), async (leaseReceipts) => {
+    const operation = String(message.method || "cdp");
+    const deadline = createDebuggerDeadline(message.timeoutMs ?? message.timeout_ms);
+    return withDebuggerQueues([tabId], operation, deadline, async (leaseReceipts) => {
       let attached = false;
+      let detached = { detached: false, reason: "not_attached" };
+      let outcome;
       try {
-        await attachDebugger(tabId, String(message.method || "cdp"));
+        await attachDebugger(tabId, operation, deadline, deadline.cleanup_reserve_ms);
         attached = true;
-        const result = await chrome.debugger.sendCommand({ tabId }, message.method, message.params || {});
-        return {
+        const result = await deadline.run(
+          () => chrome.debugger.sendCommand({ tabId }, message.method, message.params || {}),
+          "debugger_command",
+          {
+            reserve_ms: deadline.cleanup_reserve_ms,
+            details: { method: operation, tab_id: tabId },
+          },
+        );
+        outcome = {
           ok: true,
           data: result,
           debuggerLease: { serialized: true, leases: leaseReceipts },
         };
       } catch (error) {
         const normalized = error?.code ? error : debuggerError(error, tabId, String(message.method || "cdp"));
-        return {
+        outcome = {
           ok: false,
           error: String(normalized.message || normalized),
           errorCode: String(normalized.code || "DEBUGGER_OPERATION_FAILED"),
@@ -356,8 +546,23 @@
           debuggerLease: { serialized: true, leases: leaseReceipts },
         };
       } finally {
-        if (attached) await detachDebugger(tabId);
+        if (attached) detached = await detachDebugger(tabId, deadline);
       }
+      const debuggerReleased = detached.detached === true || detached.reason === "not_attached";
+      if (outcome.ok === true && !debuggerReleased) {
+        outcome = {
+          ok: false,
+          error: "debugger command completed but debugger release is unverified",
+          errorCode: "DEBUGGER_RELEASE_UNVERIFIED",
+          errorDetails: { debugger_detach: detached },
+          debuggerLease: outcome.debuggerLease,
+        };
+      }
+      outcome.debuggerCleanup = {
+        debugger_detach: detached,
+        debugger_released: debuggerReleased,
+      };
+      return outcome;
     });
   }
 

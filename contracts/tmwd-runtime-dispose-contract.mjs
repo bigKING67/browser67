@@ -31,6 +31,7 @@ async function startMockTmwdWs() {
   let closeCount = 0;
   let tabsRequestCount = 0;
   const executionMonitorFlags = [];
+  const executionCodePayloads = [];
   server.on("connection", (socket) => {
     connectionCount += 1;
     socket.once("close", () => {
@@ -55,6 +56,7 @@ async function startMockTmwdWs() {
         }));
         return;
       }
+      executionCodePayloads.push(code);
       if (code?.cmd === "silent") return;
       executionMonitorFlags.push(request.monitorNewTabs);
       socket.send(JSON.stringify({
@@ -91,6 +93,9 @@ async function startMockTmwdWs() {
     },
     get execution_monitor_flags() {
       return [...executionMonitorFlags];
+    },
+    get execution_code_payloads() {
+      return [...executionCodePayloads];
     },
     push_tabs(tabs) {
       for (const client of server.clients) {
@@ -159,6 +164,45 @@ async function run() {
     const timeoutElapsedMs = Date.now() - timeoutStartedAt;
     assert.ok(timeoutElapsedMs >= 200, `timeout returned too early: ${String(timeoutElapsedMs)}ms`);
     assert.ok(timeoutElapsedMs < 500, `timeout exceeded one end-to-end budget: ${String(timeoutElapsedMs)}ms`);
+
+    const noFallbackStartedAt = Date.now();
+    let noFallbackError;
+    try {
+      await executeTmwdJsWithFallback(
+        { ...args, timeout_ms: 250 },
+        preferred.context,
+        { cmd: "silent" },
+        {
+          tmwdFallbackOnTimeout: false,
+          runtime: { tmwdWsRuntime: isolatedRuntime },
+        },
+      );
+    } catch (error) {
+      noFallbackError = error;
+    }
+    const noFallbackElapsedMs = Date.now() - noFallbackStartedAt;
+    assert.match(String(noFallbackError?.message ?? ""), /tmwd ws request timeout/);
+    assert.equal(noFallbackError?.transportAttempts?.length, 1);
+    assert.equal(noFallbackError?.transportAttempts?.[0]?.transport, "tmwd_ws");
+    assert.equal(noFallbackError?.transportAttempts?.[0]?.error_code, "TIMEOUT");
+    assert.ok(noFallbackElapsedMs < 500, `timeout fallback exceeded one budget: ${String(noFallbackElapsedMs)}ms`);
+    const forwardedSilent = mock.execution_code_payloads.find((payload) => payload?.cmd === "silent");
+    assert.equal(typeof forwardedSilent?.timeoutMs, "undefined");
+
+    let boundedCdpError;
+    try {
+      await executeTmwdJsWithFallback(
+        { ...args, timeout_ms: 250 },
+        preferred.context,
+        { cmd: "cdp", method: "Runtime.evaluate", params: { expression: "1" } },
+        { runtime: { tmwdWsRuntime: isolatedRuntime } },
+      );
+    } catch (error) {
+      boundedCdpError = error;
+    }
+    assert.equal(boundedCdpError, undefined);
+    const forwardedCdp = mock.execution_code_payloads.find((payload) => payload?.cmd === "cdp");
+    assert.ok(forwardedCdp?.timeoutMs >= 25 && forwardedCdp.timeoutMs < 250);
     await isolatedRuntime.dispose({ reason: "timeout budget contract", timeout_ms: 500 });
 
     const disposed = await disposeTmwdRuntime({
@@ -190,6 +234,8 @@ async function run() {
       no_monitor_forwarded: mock.execution_monitor_flags[0] === false,
       ws_timeout_single_budget: true,
       ws_timeout_elapsed_ms: timeoutElapsedMs,
+      page_timeout_no_transport_fallback: true,
+      debugger_timeout_forwarded: true,
     })}\n`);
   } finally {
     await disposeTmwdRuntime({

@@ -128,6 +128,65 @@ async function assertBatchFailureClearsViewport() {
   assert.equal(result.errorDetails.cleanup[0].cleared, true);
 }
 
+async function assertBatchTimeoutCancelsAndReleases() {
+  const methods = [];
+  let attachCount = 0;
+  let detachCount = 0;
+  const runtime = createRuntime({
+    async attach() { attachCount += 1; },
+    async sendCommand(_target, method) {
+      methods.push(method);
+      if (method === "Runtime.evaluate") {
+        return new Promise(() => {});
+      }
+      return {};
+    },
+    async detach() { detachCount += 1; },
+  });
+  const startedAt = Date.now();
+  const result = await runtime.browser67HandleDebuggerBatch({
+    tabId: 15,
+    timeoutMs: 200,
+    commands: [
+      { cmd: "cdp", method: "Emulation.setDeviceMetricsOverride", params: { width: 390, height: 844 } },
+      { cmd: "cdp", method: "Runtime.evaluate", params: { expression: "new Promise(() => {})", awaitPromise: true } },
+      { cmd: "cdp", method: "Emulation.clearDeviceMetricsOverride", params: {} },
+    ],
+  }, {}, {
+    normalizeNumericTabId: (value) => Number(value),
+    handleCookies: async () => ({ ok: true, data: [] }),
+    handleTabs: async () => ({ ok: true, data: [] }),
+  });
+  const elapsedMs = Date.now() - startedAt;
+  assert.equal(result.ok, false);
+  assert.equal(result.errorCode, "TIMEOUT");
+  assert.equal(result.errorDetails?.timeout_kind, "extension_debugger_deadline");
+  assert.equal(result.errorDetails?.failed_phase, "debugger_batch_command");
+  assert.equal(result.errorDetails?.command_index, 1);
+  assert.equal(result.errorDetails?.method, "Runtime.evaluate");
+  assert.ok(elapsedMs >= 100, `batch timeout returned too early: ${String(elapsedMs)}ms`);
+  assert.ok(elapsedMs < 500, `batch timeout exceeded its bounded envelope: ${String(elapsedMs)}ms`);
+  assert.deepEqual(methods, [
+    "Emulation.setDeviceMetricsOverride",
+    "Runtime.evaluate",
+    "Emulation.clearDeviceMetricsOverride",
+  ]);
+  assert.equal(attachCount, 1, "timed-out debugger should preserve the cleanup attachment");
+  assert.equal(detachCount, 1, "timed-out debugger should detach after same-session cleanup");
+  assert.equal(
+    result.errorDetails.cleanup.some((entry) => entry.cleared === true),
+    true,
+    "timed-out viewport batch must clear its emulation override",
+  );
+  assert.equal(
+    result.errorDetails.cleanup.some((entry) => entry.cancelled_inflight === true),
+    true,
+    "timed-out debugger command must be cancelled by the final detach",
+  );
+  assert.equal(result.debuggerCleanup.debugger_released, true);
+  assert.equal(runtime.browser67DebuggerStatus().queued_tab_count, 0);
+}
+
 async function assertConsoleObservationIsBoundedAndReleased() {
   const onEvent = createEventHook();
   const onDetach = createEventHook();
@@ -314,6 +373,7 @@ async function run() {
   await assertSameTabSerialization();
   await assertExternalOwnerFailsWithoutDetach();
   await assertBatchFailureClearsViewport();
+  await assertBatchTimeoutCancelsAndReleases();
   await assertConsoleObservationIsBoundedAndReleased();
   await assertConsoleObservationCharacterBudget();
   await assertConsoleLogDomainObservation();
@@ -325,6 +385,7 @@ async function run() {
     serialized: true,
     external_owner_fail_closed: true,
     viewport_cleanup_on_error: true,
+    batch_timeout_cancelled_and_released: true,
     console_observation_bounded: true,
     console_character_budget: true,
     console_log_domain: true,

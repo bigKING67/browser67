@@ -18,6 +18,10 @@ import {
   buildTmwdViewportScreenshotBatch,
   parseTmwdViewportScreenshotBatchResults,
 } from "../../src/browser-screenshot/transport.mjs";
+import {
+  selectorClipScript,
+  viewportOverrideSettleScript,
+} from "../../src/browser-screenshot/page-scripts.mjs";
 
 async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
   const assertBitmapBudgetError = (error) => {
@@ -29,6 +33,13 @@ async function assertScreenshotOpsContract({ rpc, timeoutMs }) {
     assert.equal(error?.details?.max_pixels, 10_000);
     return true;
   };
+
+  const backgroundViewportProbe = viewportOverrideSettleScript({ width: 390, height: 844, dpr: 2 });
+  const backgroundSelectorProbe = selectorClipScript("#capture-target");
+  assert.doesNotMatch(backgroundViewportProbe, /requestAnimationFrame|setTimeout/);
+  assert.doesNotMatch(backgroundSelectorProbe, /requestAnimationFrame|setTimeout/);
+  assert.match(backgroundViewportProbe, /cdp_ack_plus_synchronous_layout_read/);
+  assert.match(backgroundSelectorProbe, /synchronous_layout_flush/);
 
   assert.throws(
     () => normalizeClip({ x: 0, y: 0, width: 100, height: 100, scale: 1 }, {

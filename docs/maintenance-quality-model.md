@@ -143,7 +143,10 @@ The screenshot live gate gives screenshot operations a 25-second deadline and
 keeps a separate 30-second RPC envelope so viewport cleanup and structured
 timeout errors can reach the caller. `--timeout-ms` overrides the operation
 deadline; the RPC envelope remains five seconds larger instead of racing the
-same deadline.
+same deadline. The gate creates its fixture with `active:false` in the dedicated
+Agent window, requires `document.visibilityState="hidden"`, covers viewport and
+selector mobile emulation, checks PNG dimensions and viewport restoration, and
+then proves a later debugger-backed capture still succeeds before finalization.
 
 The TMWD performance live gate complements the deterministic performance smoke
 with cold and warm p50/p95/p99 measurements for extension transport, managed

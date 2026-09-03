@@ -50,13 +50,12 @@ const PAGE_METADATA_SCRIPT = `return (() => {
 })();`;
 
 function viewportOverrideSettleScript(requested) {
-  return `return await new Promise((resolve) => {
+  return `return (() => {
   const expected = ${JSON.stringify({
     width: Number(requested?.width ?? 0),
     height: Number(requested?.height ?? 0),
     dpr: Number(requested?.dpr ?? 1),
   })};
-  let attempts = 0;
   const sample = () => ({
     inner_width: Number(window.innerWidth || 0),
     inner_height: Number(window.innerHeight || 0),
@@ -67,29 +66,21 @@ function viewportOverrideSettleScript(requested) {
     && Math.abs(value.inner_height - expected.height) <= 1
     && Math.abs(value.device_pixel_ratio - expected.dpr) <= 0.01
   );
-  const tick = () => {
-    attempts += 1;
-    const value = sample();
-    if (matches(value) || attempts >= 8) {
-      resolve({
-        ok: matches(value),
-        attempts,
-        expected,
-        actual: value
-      });
-      return;
-    }
-    requestAnimationFrame(tick);
+  const actual = sample();
+  return {
+    ok: matches(actual),
+    attempts: 1,
+    settle_basis: "cdp_ack_plus_synchronous_layout_read",
+    visibility_state: String(document.visibilityState || "unknown"),
+    expected,
+    actual
   };
-  requestAnimationFrame(tick);
-});`;
+})();`;
 }
 
 function selectorClipScript(selector) {
-  return `return await (async () => {
+  return `return (() => {
   const selector = ${JSON.stringify(selector)};
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
   const rectSnapshot = (rect) => ({
     x: rect.x,
     y: rect.y,
@@ -106,47 +97,25 @@ function selectorClipScript(selector) {
     Math.abs(Number(first.width || 0) - Number(second.width || 0)),
     Math.abs(Number(first.height || 0) - Number(second.height || 0))
   );
-  let lastReason = "selector_not_found";
-  let attempts = 0;
-  let node = null;
-  let rect = null;
-  let computed = null;
-  let stable = true;
-  for (attempts = 1; attempts <= 6; attempts += 1) {
-    node = document.querySelector(selector);
-    if (!node) {
-      lastReason = "selector_not_found";
-      await wait(80);
-      continue;
-    }
-    try {
-      node.scrollIntoView({ block: "center", inline: "center" });
-    } catch {
-      // Some nodes cannot scroll; keep going and report the measured box.
-    }
-    await nextFrame();
-    await nextFrame();
-    if (!node.isConnected) {
-      lastReason = "selector_detached_after_scroll";
-      await wait(80);
-      continue;
-    }
-    const firstRect = rectSnapshot(node.getBoundingClientRect());
-    await nextFrame();
-    if (!node.isConnected) {
-      lastReason = "selector_detached_after_measure";
-      await wait(80);
-      continue;
-    }
-    const secondRect = rectSnapshot(node.getBoundingClientRect());
-    rect = secondRect;
-    stable = rectDelta(firstRect, secondRect) <= 0.5;
-    computed = window.getComputedStyle(node);
-    break;
+  const node = document.querySelector(selector);
+  if (!node) {
+    return { ok: false, reason: "selector_not_found", selector, attempts: 1 };
   }
-  if (!node || !rect) {
-    return { ok: false, reason: lastReason, selector, attempts };
+  try {
+    node.scrollIntoView({ block: "center", inline: "center" });
+  } catch {
+    // Some nodes cannot scroll; keep going and report the measured box.
   }
+  if (!node.isConnected) {
+    return { ok: false, reason: "selector_detached_after_scroll", selector, attempts: 1 };
+  }
+  const firstRect = rectSnapshot(node.getBoundingClientRect());
+  if (!node.isConnected) {
+    return { ok: false, reason: "selector_detached_after_measure", selector, attempts: 1 };
+  }
+  const rect = rectSnapshot(node.getBoundingClientRect());
+  const stable = rectDelta(firstRect, rect) <= 0.5;
+  const computed = window.getComputedStyle(node);
   const page = (() => {
     const doc = document.documentElement || {};
     const body = document.body || {};
@@ -186,8 +155,9 @@ function selectorClipScript(selector) {
   return {
     ok: true,
     selector,
-    attempts,
+    attempts: 1,
     stable,
+    stability_basis: "synchronous_layout_flush",
     rect,
     computed: computed ? {
       display: computed.display,

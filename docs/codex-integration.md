@@ -292,6 +292,13 @@ transport drift.
   sequence stays on one debugger attachment. Selector/full-page target
   resolution uses a separate atomic preflight transaction when required, so
   every viewport probe and the final PNG observe the requested `innerWidth`.
+  The viewport and selector probes use synchronous layout reads instead of
+  `requestAnimationFrame`, so an `active:false` hidden managed tab remains a
+  supported capture target. TMWD debugger commands carry a shorter extension
+  deadline than the host request, reserve teardown time, cancel the attachment
+  on expiry, clear temporary viewport emulation, and release the per-tab queue.
+  A page/debugger timeout remains attributed to the current transport instead
+  of being retried as a WS-to-Link transport outage.
   A responsive capture with stale desktop-sized artifact dimensions
   returns a verification error instead of success. Pass
   `layout_selectors` to return compact selector rect/computed-style metrics for
