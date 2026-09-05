@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,8 @@ const COMMANDS = new Map([
 function usage() {
   return [
     "Usage: browser67 <command> [...args]",
+    "",
+    "  --version, -v          Show installed package version",
     "",
     "Commands:",
     "  server                 Run browser67 tmwd_browser MCP server over stdio",
@@ -53,6 +56,11 @@ function main(argv) {
   const command = String(argv[0] ?? "").trim();
   if (!command || command === "--help" || command === "-h") {
     process.stdout.write(`${usage()}\n`);
+    return;
+  }
+  if (command === "--version" || command === "-v" || command === "version") {
+    const pkg = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
+    process.stdout.write(`browser67 ${pkg.version}\n`);
     return;
   }
   if (command === "hub") {

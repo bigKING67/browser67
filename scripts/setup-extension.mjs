@@ -209,6 +209,10 @@ function run() {
     return 0;
   }
   process.stdout.write(`Extension prepared: ${payload.extension_dir}\n`);
+  const identity = payload.extension_build.extension_identity;
+  process.stdout.write(`Extension version: ${identity.extension_version}\n`);
+  process.stdout.write(`Build revision: ${identity.build_revision} (${identity.build_revision_source}${identity.build_inputs_dirty ? ", dirty development build" : ""})\n`);
+  process.stdout.write("Live extension: UNVERIFIED until reload and doctor; remote latest version: NOT CHECKED\n");
   process.stdout.write(`Active home: ${payload.active_home} (${payload.active_home_source})\n`);
   process.stdout.write(`Config: ${payload.config_path}${payload.config_created ? " (created)" : " (kept)"}\n`);
   process.stdout.write(`MCP registry: ${payload.mcp_registry_path}${payload.mcp_registry_changed ? " (updated)" : " (unchanged)"}\n`);

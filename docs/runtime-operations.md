@@ -36,6 +36,58 @@ generated extension configuration.
 
 ## Install the extension
 
+### Release updates
+
+For normal local updates, install an explicitly selected release tag, after its
+version commit has passed CI. Do not install an untagged checkout under an
+unchanged release version. Package and lockfile versions must be bumped before
+tagging; the extension build derives its manifest version from the package.
+
+Use a clean detached worktree at the verified annotated tag and pack there:
+
+```bash
+(
+set -e
+git fetch origin --tags
+release_tag=v0.11.3
+test "$(git cat-file -t "$release_tag")" = tag
+release_sha=$(git rev-parse "$release_tag^{commit}")
+test "$(git rev-parse HEAD)" = "$release_sha"
+test -z "$(git status --porcelain)"
+release_dir=$(mktemp -d)
+git worktree add --detach "$release_dir/source" "$release_tag"
+(cd "$release_dir/source" && npm pack --pack-destination "$release_dir")
+npm install -g "$release_dir/browser67-${release_tag#v}.tgz"
+browser67 --version
+BROWSER67_EXTENSION_BUILD_REVISION="$release_sha" browser67 setup
+)
+```
+
+These checks require the canonical checkout to be clean and at the selected
+release commit, so its MCP entrypoints and doctor use the same release source.
+If either check fails, stop and preserve the existing worktree; do not reset or
+overwrite development work to satisfy it. Use a separately configured release
+checkout for the Agent entrypoints and verification instead.
+Retain the tarball and its SHA-256 for installation parity.
+Then reload the connected extension using `npm run extension:reload-live` from
+the canonical checkout, and run `npm run doctor:agent -- --check --json` there.
+Restart the managed hub when its code changed; reload MCP servers through their
+owning Agent hosts rather than killing unrelated sessions. Refresh only the
+task's authorized target tabs when content scripts changed.
+
+The final receipt must distinguish the selected tag, installed CLI version,
+installed extension version, live extension version/revision, active Skills,
+and Agent processes still awaiting reload. Setup prints the disk build identity;
+it deliberately labels live state unverified until reload and doctor succeed.
+`browser67 --version` reports the local package version, not whether it is the
+latest remote release. Check remote tags/Release separately before making that
+claim. Commit-based development installs must be reported with their commit SHA
+and development status rather than presented as a newly published release.
+
+### Development checkout installation
+
+The following installs the current checkout, rather than selecting a release.
+Do not run it after the release procedure from a different development checkout.
 Prepare the canonical active-home install:
 
 ```bash

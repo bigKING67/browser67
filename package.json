@@ -1,6 +1,6 @@
 {
   "name": "browser67",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "browser67 real-browser agent runtime for Chrome/Edge automation, browser67-backed JS reverse workflows, evidence capture, native fallback, and long-term agent tooling.",
   "type": "module",
   "keywords": [

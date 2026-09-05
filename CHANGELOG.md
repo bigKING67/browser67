@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.11.3 - 2026-09-05
+
+- Show CLI version and extension setup build identity, and document tag-pinned
+  installation with separate installed and running version verification.
+
 - Apply workspace, task, and Browser Instance filters before managed-tab list
   liveness checks, summaries, groups, and session pointers, including history
   queries, so scoped inspection cannot return another task's managed metadata.
