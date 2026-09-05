@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertListManagedScopeContract } from "./list-managed-scope.mjs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import {
   DEFAULT_MANAGED_TAB_SCOPE_LIMIT,
@@ -897,6 +898,7 @@ export async function assertTabLifecycleOpsContract({ registryPath, rpc, timeout
     "expanded list_managed must never return unmanaged ordinary user sessions",
   );
 
+  await assertListManagedScopeContract({ registryPath, rpc, timeoutMs });
   await assertExternalRegistryRefresh({ registryPath, rpc, timeoutMs });
 
   const tabPruneStaleCall = await rpc.call(

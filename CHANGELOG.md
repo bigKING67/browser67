@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Apply workspace, task, and Browser Instance filters before managed-tab list
+  liveness checks, summaries, groups, and session pointers, including history
+  queries, so scoped inspection cannot return another task's managed metadata.
 - Preserve background focus when creating or reusing a macOS Agent window:
   defer native Full Screen transitions that activate Chrome until an explicitly
   requested foreground entry, and document that screenshot retries must not

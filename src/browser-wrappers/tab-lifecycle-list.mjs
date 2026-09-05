@@ -52,7 +52,12 @@ async function listManagedTabs(args = {}, options = {}) {
   const pruneStale = args?.prune_stale === true
     ? await options.pruneStaleManagedTabs({ ...args, dry_run: args?.dry_run === true }, options)
     : undefined;
-  const registryRecords = await listManagedTabRecords({ include_closed: includeDisconnected });
+  const registryRecords = await listManagedTabRecords({
+    include_closed: includeDisconnected,
+    workspace_key: String(args.workspace_key ?? args.workspaceKey ?? "").trim(),
+    task_id: String(args.task_id ?? args.taskId ?? "").trim(),
+    browser_instance_id: String(args.browser_instance_id ?? args.browserInstanceId ?? "").trim(),
+  });
   let managedRecords = registryRecords;
   let liveFilter;
   if (!includeDisconnected) {
@@ -168,6 +173,7 @@ async function listManagedTabs(args = {}, options = {}) {
   });
   const groupLimit = limitedList(groupPayloads, maxItems, summaryOnly);
   const limitedLiveFilter = limitLiveFilterPayload(liveFilter, maxStaleItems, summaryOnly);
+  const sessionPointers = ownedSessionPointers(sessionStore, ownedSessionKeys);
   return {
     status: "success",
     action: "list_managed",
@@ -200,8 +206,8 @@ async function listManagedTabs(args = {}, options = {}) {
     live_sessions: summaryOnly ? [] : ownedLiveSessions,
     disconnected_sessions: summaryOnly ? [] : ownedDisconnectedSessions,
     sessions: summaryOnly ? [] : ownedSessions,
-    prune_stale: pruneStale,
-    ...ownedSessionPointers(sessionStore, ownedSessionKeys),
+    prune_stale: pruneStale ? { ...pruneStale, ...sessionPointers } : undefined,
+    ...sessionPointers,
   };
 }
 
