@@ -1,6 +1,7 @@
 (() => {
   const debuggerQueues = new Map();
   let leaseSequence = 0;
+  const pendingAttaches = new Map();
 
   function boundedInteger(raw, fallback, min, max) {
     const value = Number(raw);
@@ -266,13 +267,27 @@
       }
       return await callback(leases.map((lease) => lease.receipt));
     } finally {
-      for (const lease of leases.reverse()) lease.release();
+      for (const lease of leases.reverse()) {
+        const pending = pendingAttaches.get(lease.receipt.tab_id);
+        if (pending) pending.then(() => lease.release());
+        else lease.release();
+      }
     }
   }
 
   async function attachDebugger(tabId, operation, deadline = null, reserveMs = 0) {
+    if (pendingAttaches.has(tabId)) {
+      throw Object.assign(new Error("prior debugger attachment is still unresolved"), {
+        code: "DEBUGGER_RELEASE_UNVERIFIED",
+        details: { tab_id: tabId, operation },
+      });
+    }
+    // A deadline stops waiting, not Chrome's attach operation. Keep its queue
+    // lease until a late attachment is released or an attach rejection proves
+    // that this operation never owned the debugger.
+    const attaching = Promise.resolve().then(() => chrome.debugger.attach({ tabId }, "1.3"));
     try {
-      const attach = () => chrome.debugger.attach({ tabId }, "1.3");
+      const attach = () => attaching;
       if (deadline) {
         await deadline.run(attach, "debugger_attach", {
           reserve_ms: reserveMs,
@@ -282,7 +297,22 @@
         await attach();
       }
     } catch (error) {
-      if (error?.code === "TIMEOUT") throw error;
+      if (error?.code === "TIMEOUT") {
+        let release;
+        const recovered = new Promise((resolve) => { release = resolve; });
+        pendingAttaches.set(tabId, recovered);
+        const finishRecovery = () => {
+          pendingAttaches.delete(tabId);
+          release();
+        };
+        attaching.then(async () => {
+          const detached = await detachDebugger(tabId, createDebuggerDeadline(1_500));
+          // A failed/unconfirmed detach quarantines the tab until extension
+          // restart; never let a successor race an unresolved cleanup.
+          if (detached.detached) finishRecovery();
+        }, finishRecovery);
+        throw error;
+      }
       throw debuggerError(error, tabId, operation);
     }
   }
@@ -472,6 +502,7 @@
         }
       }
 
+      if (tabIds.some((tabId) => pendingAttaches.has(tabId))) debuggerReleaseVerified = false;
       const cleanupFailed = cleanup.some((entry) => (
         Object.prototype.hasOwnProperty.call(entry, "cleared") && entry.cleared !== true
       ));
@@ -548,7 +579,8 @@
       } finally {
         if (attached) detached = await detachDebugger(tabId, deadline);
       }
-      const debuggerReleased = detached.detached === true || detached.reason === "not_attached";
+      const debuggerReleased = !pendingAttaches.has(tabId)
+        && (detached.detached === true || detached.reason === "not_attached");
       if (outcome.ok === true && !debuggerReleased) {
         outcome = {
           ok: false,
@@ -769,6 +801,7 @@
     return {
       serialized: true,
       queued_tab_count: debuggerQueues.size,
+      pending_attach_count: pendingAttaches.size,
       queued_tab_ids: [...debuggerQueues.keys()],
       ui_scope: "browser_profile",
       same_profile_user_window_indicator_possible: true,

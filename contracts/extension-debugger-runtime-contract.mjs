@@ -369,7 +369,112 @@ async function assertConsoleUnverifiedReleaseFailsClosed() {
   assert.equal(onDetach.listenerCount(), 0);
 }
 
+async function assertLateAttachRecovery() {
+  for (const mode of ["command", "batch"]) {
+    for (const outcome of ["success", "external_owner", "delayed_detach", "detach_failure"]) {
+      let settleAttach;
+      let rejectAttach;
+      let attached = false;
+      let attachCount = 0;
+      let detachCount = 0;
+      let completeDetach;
+      const pendingDetach = new Promise((resolve) => { completeDetach = resolve; });
+      const pendingAttach = new Promise((resolve, reject) => {
+        settleAttach = resolve;
+        rejectAttach = reject;
+      });
+      const runtime = createRuntime({
+        async attach() {
+          attachCount += 1;
+          if (attached) throw new Error("Another debugger is already attached");
+          if (attachCount === 1) await pendingAttach;
+          attached = true;
+        },
+        async sendCommand() { return {}; },
+        async detach() {
+          detachCount += 1;
+          if (outcome === "detach_failure") throw new Error("detach failed");
+          if (outcome === "delayed_detach") await pendingDetach;
+          attached = false;
+        },
+      });
+      const invoke = () => mode === "command"
+        ? runtime.browser67HandleDebuggerCommand({ tabId: 7, timeoutMs: 100, method: "Runtime.evaluate" }, {}, { normalizeNumericTabId: Number })
+        : runtime.browser67HandleDebuggerBatch({ tabId: 7, timeoutMs: 100, commands: [{ cmd: "cdp", method: "Runtime.evaluate" }] }, {}, { normalizeNumericTabId: Number });
+      const timedOut = await invoke();
+      assert.equal(timedOut.errorCode, "TIMEOUT");
+      assert.equal(timedOut.debuggerCleanup.debugger_released, false, `${mode}: unresolved attach must not claim release`);
+      assert.equal(runtime.browser67DebuggerStatus().queued_tab_count, 1);
+      await assert.rejects(invoke(), (error) => error.code === "TIMEOUT");
+      assert.equal(attachCount, 1, "queued successor must not attach before recovery");
+      if (outcome === "external_owner") rejectAttach(new Error("Another debugger is already attached"));
+      else settleAttach();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (outcome === "delayed_detach") {
+        assert.equal(attached, true);
+        await assert.rejects(invoke(), (error) => error.code === "TIMEOUT");
+        assert.equal(attachCount, 1, "successor must wait for detach acknowledgement");
+        completeDetach();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (outcome === "detach_failure") {
+        assert.equal(attached, true);
+        assert.equal(runtime.browser67DebuggerStatus().queued_tab_count, 1);
+        await assert.rejects(invoke(), (error) => error.code === "TIMEOUT");
+        assert.equal(attachCount, 1);
+      } else {
+        assert.equal(attached, false);
+        assert.equal(detachCount, outcome === "external_owner" ? 0 : 1);
+        assert.equal(runtime.browser67DebuggerStatus().queued_tab_count, 0);
+        assert.equal((await invoke()).ok, true, "same-tab command must recover after cleanup");
+      }
+    }
+  }
+}
+
+async function assertBatchCleanupDoesNotReenterPendingAttach() {
+  let finishAttach;
+  let attachCount = 0;
+  let detachCount = 0;
+  const pendingAttach = new Promise((resolve) => { finishAttach = resolve; });
+  const runtime = createRuntime({
+    async attach() {
+      attachCount += 1;
+      if (attachCount === 3) await pendingAttach;
+    },
+    async detach() { detachCount += 1; },
+    async sendCommand() { return {}; },
+  });
+  const result = await runtime.browser67HandleDebuggerBatch({
+    tabId: 7,
+    timeoutMs: 200,
+    commands: [
+      { cmd: "cdp", tabId: 7, method: "Emulation.setDeviceMetricsOverride" },
+      { cmd: "cdp", tabId: 8, method: "Runtime.evaluate" },
+      { cmd: "cdp", tabId: 7, method: "Runtime.evaluate" },
+    ],
+  }, {}, { normalizeNumericTabId: Number });
+  assert.equal(result.errorCode, "TIMEOUT");
+  assert.equal(result.debuggerCleanup.debugger_released, false);
+  assert.equal(attachCount, 3, "viewport cleanup must not reenter a pending attach");
+  assert.equal(runtime.browser67DebuggerStatus().pending_attach_count, 1);
+  await assert.rejects(runtime.browser67HandleDebuggerCommand({
+    tabId: 7, timeoutMs: 100, method: "Runtime.evaluate",
+  }, {}, { normalizeNumericTabId: Number }), (error) => error.code === "TIMEOUT");
+  assert.equal(attachCount, 3);
+  finishAttach();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(detachCount, 3);
+  assert.equal(runtime.browser67DebuggerStatus().queued_tab_count, 0);
+  assert.equal(runtime.browser67DebuggerStatus().pending_attach_count, 0);
+  assert.equal((await runtime.browser67HandleDebuggerCommand({
+    tabId: 7, timeoutMs: 100, method: "Runtime.evaluate",
+  }, {}, { normalizeNumericTabId: Number })).ok, true);
+}
+
 async function run() {
+  await assertLateAttachRecovery();
+  await assertBatchCleanupDoesNotReenterPendingAttach();
   await assertSameTabSerialization();
   await assertExternalOwnerFailsWithoutDetach();
   await assertBatchFailureClearsViewport();
@@ -386,6 +491,7 @@ async function run() {
     external_owner_fail_closed: true,
     viewport_cleanup_on_error: true,
     batch_timeout_cancelled_and_released: true,
+    late_attach_recovery_and_queue_isolation: true,
     console_observation_bounded: true,
     console_character_budget: true,
     console_log_domain: true,

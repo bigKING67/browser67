@@ -352,8 +352,11 @@ transport drift.
   `focus_policy:"background_preferred"`, and `active:false`. The extension
   creates/reuses one browser67 Agent window per Browser Profile with
   `focused:false`; the window shares that Profile's approved cookies/session but
-  is not the user's working window. On macOS that exact Agent window uses a
-  native Full Screen Space (Chrome tabs/address/bookmarks remain available); on
+  is not the user's working window. On macOS an existing native Full Screen
+  Space is preserved (Chrome tabs/address/bookmarks remain available). If entry
+  into Full Screen would require native activation, background entry defers it
+  and keeps the dedicated window in its current state; only an explicitly
+  confirmed foreground entry performs the native transition. On
   Windows it uses ordinary maximized state. It does not use Chrome's immersive
   `fullscreen` window state. `window_policy:"current"` fails closed for
   agent-created work; exact user-window operation requires
@@ -366,6 +369,9 @@ transport drift.
   success alone is not accepted as document visibility proof. The legacy
   `active:true` flag only activates a
   tab inside its selected window and should not be used as a focus contract.
+  Screenshots must not escalate to `foreground`, `activate_window`, or a focus
+  lease merely to obtain a successful image. A hidden-page capture failure or
+  stale rendering is an evidence gap, not authorization to interrupt the user.
   Before reusing a dedicated managed tab, browser67 checks its live window. If
   the user moved it into another window, browser67 quarantines that registry
   record and creates or reuses a different dedicated tab; it never moves the

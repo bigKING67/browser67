@@ -28,7 +28,10 @@ async function ensureAgentWindow(presentation, runCommand, options = {}) {
     ?? ensureNativeAgentWindowPresentation;
   const actualPresentation = await ensurePresentation(
     agentWindow,
-    options.agent_window_presentation,
+    {
+      ...options.agent_window_presentation,
+      foreground_requested: presentation.foreground_requested === true,
+    },
   );
   if (actualPresentation?.verification_required === true) {
     const verifiedWindow = agentWindowMetadata(await runCommand({

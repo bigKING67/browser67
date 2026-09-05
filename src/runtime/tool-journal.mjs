@@ -62,8 +62,9 @@ function numericField(value) {
   return Number.isFinite(number) && number >= 0 ? number : undefined;
 }
 
-function safeScreenshotSummary(args = {}, result = {}, errorDetails = {}) {
-  const isScreenshot = String(result?.tool ?? "") === "browser_screenshot_ops"
+function safeScreenshotSummary(args = {}, result = {}, errorDetails = {}, tool = "") {
+  const isScreenshot = tool === "browser_screenshot_ops"
+    || String(result?.tool ?? "") === "browser_screenshot_ops"
     || String(args?.action ?? "") === "capture"
     || args?.viewport !== undefined;
   if (!isScreenshot) return undefined;
@@ -79,6 +80,7 @@ function safeScreenshotSummary(args = {}, result = {}, errorDetails = {}) {
     artifact_written: Boolean(artifact?.width && artifact?.height && artifact?.bytes),
   };
   for (const [key, value] of [
+    ["requested_timeout_ms", args.timeout_ms],
     ["requested_width", requested.width],
     ["requested_height", requested.height],
     ["requested_dpr", requested.dpr ?? requested.device_scale_factor],
@@ -95,7 +97,7 @@ function safeScreenshotSummary(args = {}, result = {}, errorDetails = {}) {
   return summary;
 }
 
-function safeResultSummary(result = {}, args = {}, errorDetails = {}) {
+function safeResultSummary(result = {}, args = {}, errorDetails = {}, tool = "") {
   const summary = {};
   const candidates = [
     result,
@@ -118,7 +120,7 @@ function safeResultSummary(result = {}, args = {}, errorDetails = {}) {
   if (transport) summary.transport = transport;
   const runTerminalized = result?.run?.terminalized ?? result?.run_terminalized;
   if (typeof runTerminalized === "boolean") summary.run_terminalized = runTerminalized;
-  const screenshot = safeScreenshotSummary(args, result, errorDetails);
+  const screenshot = safeScreenshotSummary(args, result, errorDetails, tool);
   if (screenshot) summary.screenshot = screenshot;
   return summary;
 }
@@ -152,7 +154,7 @@ function normalizedToolEvent(entry = {}, clock = () => new Date()) {
     ...safeIdentity(args),
     ...(focusPolicy ? { focus_policy: focusPolicy } : {}),
     ...(windowPolicy ? { window_policy: windowPolicy } : {}),
-    result: safeResultSummary(result, args, errorDetails),
+    result: safeResultSummary(result, args, errorDetails, entry.tool),
   };
 }
 

@@ -46,6 +46,15 @@ async function ensureNativeAgentWindowPresentation(agentWindow, options = {}) {
     }
     return requested;
   }
+  if (options.foreground_requested !== true) {
+    return {
+      ...requested,
+      status: "deferred",
+      reason: "background_focus_preserved",
+      verification_required: false,
+      native_action_required: true,
+    };
+  }
   const hostPlatform = String(options.host_platform ?? process.platform);
   if (hostPlatform !== "darwin") {
     return presentationFailure(

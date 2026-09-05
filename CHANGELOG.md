@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Preserve background focus when creating or reusing a macOS Agent window:
+  defer native Full Screen transitions that activate Chrome until an explicitly
+  requested foreground entry, and document that screenshot retries must not
+  activate windows without user authorization.
+- Keep timed-out debugger attachments isolated until late completion is cleaned
+  up, prevent batch cleanup from reentering a pending attach, and report release
+  as unverified while recovery is pending. Failed late detach keeps the tab
+  quarantined until extension restart; external-owner rejection never detaches
+  another debugger. Cover both command and batch recovery with regression tests.
+
 ## 0.11.2 - 2026-09-03
 
 - Make mobile viewport and selector screenshots reliable in background hidden

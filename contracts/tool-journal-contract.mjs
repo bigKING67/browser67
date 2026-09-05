@@ -102,6 +102,14 @@ try {
       run: { terminalized: true },
     },
   });
+  await journal.record({
+    tool: "browser_screenshot_ops",
+    request_id: "default-screenshot-error",
+    status: "error",
+    error_code: "TIMEOUT",
+    args: { timeout_ms: 20000 },
+    error_details: { failed_phase: "resolve_context" },
+  });
   await journal.dispose();
   const raw = await readFile(journalPath, "utf8");
   if (posixModeSupported) {
@@ -126,6 +134,11 @@ try {
   assert.equal(failedScreenshotEvent.result.screenshot.requested_width, 390);
   assert.equal(failedScreenshotEvent.result.screenshot.actual_width, 1512);
   assert.equal(failedScreenshotEvent.result.screenshot.artifact_written, false);
+  const defaultScreenshot = events.find((entry) => entry.request_id === "default-screenshot-error");
+  assert.equal(defaultScreenshot.failed_phase, "resolve_context");
+  assert.equal(defaultScreenshot.result.screenshot.target, "viewport");
+  assert.equal(defaultScreenshot.result.screenshot.requested_timeout_ms, 20000);
+  assert.equal(defaultScreenshot.result.screenshot.artifact_written, false);
   const successfulScreenshotEvent = events.find((entry) => entry.request_id === "request-screenshot-success");
   assert.equal(successfulScreenshotEvent.result.screenshot.actual_width, 390);
   assert.equal(successfulScreenshotEvent.result.screenshot.artifact_width, 780);

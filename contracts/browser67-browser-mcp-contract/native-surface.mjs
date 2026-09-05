@@ -75,6 +75,7 @@ async function assertAgentWindowPresentationContract() {
     },
   }, {
     host_platform: "darwin",
+    foreground_requested: true,
     macos_presenter: async (options) => {
       presenterCalls.push(options);
       return parsed;
@@ -85,6 +86,33 @@ async function assertAgentWindowPresentationContract() {
   assert.equal(presenterCalls[0].restoreTabId, 42);
   assert.equal(presented.status, "verification_required");
   assert.equal(presented.native_action_required, true);
+
+  for (const focusPolicy of [undefined, "background_preferred", "background_only"]) {
+    let nativeCalls = 0;
+    const background = await ensureAgentWindow(
+      { window_policy: "dedicated", focus_policy: focusPolicy, foreground_requested: false },
+      async () => ({ data: {
+        window_id: 3,
+        anchor_tab_id: 67,
+        browser_family: "chrome",
+        presentation: {
+          mode: "macos_native_fullscreen_space",
+          status: "native_required",
+          native_action_required: true,
+          window_state: "normal",
+        },
+      } }),
+      { agent_window_presentation: {
+        host_platform: "darwin",
+        foreground_requested: true,
+        macos_presenter: async () => { nativeCalls += 1; return parsed; },
+      } },
+    );
+    assert.equal(nativeCalls, 0, "background lifecycle must not activate the native presenter");
+    assert.equal(background.presentation.status, "deferred");
+    assert.equal(background.presentation.reason, "background_focus_preserved");
+    assert.equal(background.presentation.window_state, "normal");
+  }
 
   let bridgeCalls = 0;
   const wrapped = await ensureAgentWindow(
