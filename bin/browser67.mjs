@@ -11,6 +11,7 @@ const repoRoot = resolve(__dirname, "..");
 const COMMANDS = new Map([
   ["server", ["src/mcp/browser/server.mjs"]],
   ["setup", ["scripts/setup-extension.mjs"]],
+  ["update", ["scripts/update-release.mjs"]],
   ["migrate-home", ["scripts/migrate-home.mjs"]],
   ["doctor", ["contracts/browser67-live-gate.mjs", "--doctor-only", "--tmwd-mode", "tmwd"]],
   ["live-gate", ["contracts/browser67-live-gate.mjs", "--tmwd-mode", "tmwd"]],
@@ -27,6 +28,8 @@ function usage() {
     "Commands:",
     "  server                 Run browser67 tmwd_browser MCP server over stdio",
     "  setup                  Copy unpacked extension to the active browser67 home",
+    "  update --check         Compare with the latest stable GitHub Release",
+    "  update --tag vX.Y.Z     Install a verified release and reload its extension",
     "  migrate-home           Copy legacy ~/.tmwd-browser-mcp runtime state to ~/.browser67",
     "  doctor                 Run machine-readable readiness doctor",
     "  live-gate              Run live browser gate",

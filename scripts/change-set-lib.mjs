@@ -292,6 +292,8 @@ const GROUPS = [
       /^docs\/schemas\/browser-doctor\.schema\.json$/,
       /^extension\/config\.example\.js$/,
       /^scripts\/(?:install-launchd|setup-extension|extension-install-doctor|uninstall-launchd|migrate-home|release-readiness)\.mjs$/,
+      /^scripts\/update-release(?:\.mjs|\/)/,
+      /^contracts\/update-release-contract\.mjs$/,
       /^skills\/browser67\//,
       /^src\/mcp\//,
       /^src\/identity\//,

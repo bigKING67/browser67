@@ -38,6 +38,60 @@ generated extension configuration.
 
 ### Release updates
 
+The updater can inspect the latest published stable GitHub Release without
+installing anything or starting the hub:
+
+```bash
+browser67 update --check
+browser67 update --check --tag v0.11.3 --json
+```
+
+To install, always select a version explicitly:
+
+```bash
+browser67 update --tag v0.11.3
+```
+
+The command only accepts stable `vX.Y.Z` releases from
+`bigKING67/browser67`. It resolves the annotated tag and peeled commit, fetches
+that tag into a private preparation directory, checks package/lock versions,
+and verifies the remote tag again before installation. It packs and installs
+with npm lifecycle scripts disabled, compares installed files with the prepared
+release, prepares the extension without changing the MCP registry, synchronizes
+the selected active Skills, reloads the selected connected extension, and
+requires its version, commit and content identity to match before success.
+No connected WS extension means installation stops at preflight; `--check` can
+also observe Link-only connections, but the existing reload helper needs WS. With multiple
+connected profiles, select `--browser-instance-id <id>` explicitly. Other
+profiles are not reloaded; they may share the updated extension disk directory
+and need their own reload before use.
+
+`--skills-root <directory>` selects the active skill root (default
+`~/.agents/skills`); only browser67 and js-reverse are synchronized, without
+pruning unrelated files. Before installing, the updater saves the old package,
+extension and existing selected Skills under
+`<browser67-home>/runtime/updates/update-*/`. Exclusive locks on the canonical
+global npm package root and the selected browser67 home prevent overlapping
+updates even when callers use different homes. A failed installation exits nonzero and retains
+`receipt.json`, its failed phase, and recovery paths; it does not automatically
+roll back or delete evidence. Restore the previous package and recorded
+extension/skill backups deliberately, then reload and verify. If a process is
+terminated before releasing its lock, confirm that no updater is running before
+manually removing its exact home `install.lock` and global npm root
+`.browser67-update.lock` files. Global package symlinks and overlapping
+package/backup destinations are rejected rather than overwritten.
+
+The updater does not reset a source checkout, rewrite Agent/launchd settings,
+restart the hub, or kill MCP processes. Its receipt reports package/extension
+installation success separately from the required host reload. Source-backed
+MCP configurations continue to use their checkout; synchronize that checkout
+through its own reviewed Git workflow or deliberately change the host entrypoint
+before calling it updated. An unchanged version string is not proof of byte or
+process freshness. The `--check` output explicitly makes this distinction.
+
+For versions predating the updater, or an independently reviewed manual install,
+use the following procedure.
+
 For normal local updates, install an explicitly selected release tag, after its
 version commit has passed CI. Do not install an untagged checkout under an
 unchanged release version. Package and lockfile versions must be bumped before

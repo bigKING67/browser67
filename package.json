@@ -1,6 +1,6 @@
 {
   "name": "browser67",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "description": "browser67 real-browser agent runtime for Chrome/Edge automation, browser67-backed JS reverse workflows, evidence capture, native fallback, and long-term agent tooling.",
   "type": "module",
   "keywords": [
@@ -176,7 +176,8 @@
     "verify:all": "node scripts/run-verification.mjs --tier all",
     "verify:manifest": "node scripts/verification-manifest.mjs --json",
     "verify": "node scripts/verify.mjs",
-    "list:files": "find . -path ./node_modules -prune -o -type f -print | sort"
+    "list:files": "find . -path ./node_modules -prune -o -type f -print | sort",
+    "check:update-release": "node contracts/update-release-contract.mjs"
   },
   "dependencies": {
     "ajv": "^8.20.0",

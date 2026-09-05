@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.11.4 - 2026-09-05
+
+- Add explicit release updates: read-only latest-release checks, annotated-tag
+  pinning, package parity, extension reload verification, scoped Skill sync,
+  concurrent-install protection, and retained recovery receipts/backups.
+
 - Label JS reverse live assertion failures by phase and field, and emit bounded
   cleanup results on failure without exposing page or session payloads.
 

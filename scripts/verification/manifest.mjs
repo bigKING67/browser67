@@ -35,6 +35,7 @@ function commandEntry(id, command, options = {}) {
 }
 
 const entries = [
+  npmEntry("update-release-contract", "check:update-release"),
   npmEntry("lint", "lint"),
   npmEntry("type-check", "type-check"),
   npmEntry("dependency-boundaries", "check:dependency-boundaries"),
@@ -178,7 +179,7 @@ const tiers = {
       "extension-reload-live-contract", "agent-integration-doctor",
       "runtime-cleanup", "task-templates", "regression-matrix", "verification-manifest", "verification-runner", "upstream-audit-contract", "upstream-lock-contract", "extension-upstream-sync-contract", "upstream-review-contract",
       "upstream-review-refresh-contract", "tmwd-runtime-dispose", "tmwd-transport-health", "extension-bridge",
-      "release-readiness-contract",
+      "release-readiness-contract", "update-release-contract",
     ],
   },
   ci: {
