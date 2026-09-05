@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Refresh the release reference-review ledger after inspecting moved external
+  JS reverse references; retain reference-only boundaries and no direct imports.
+
 ## 0.11.3 - 2026-09-05
 
 - Show CLI version and extension setup build identity, and document tag-pinned
