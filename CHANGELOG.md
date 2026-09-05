@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Label JS reverse live assertion failures by phase and field, and emit bounded
+  cleanup results on failure without exposing page or session payloads.
+
 - Align the managed-tab live gate with deferred macOS fullscreen in background
   mode; retain strict fullscreen assertions for explicit foreground acceptance.
 - Refresh the release reference-review ledger after inspecting moved external
