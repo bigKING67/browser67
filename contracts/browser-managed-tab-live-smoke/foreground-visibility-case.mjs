@@ -30,6 +30,11 @@ async function runForegroundVisibilityCase(context) {
   assert.equal(result.presentation?.focus_policy, "foreground");
   assert.equal(result.presentation?.window_policy, "dedicated");
   if (process.platform === "darwin") {
+    assert.equal(result.agent_window?.presentation?.status, "ready");
+    assert.equal(result.agent_window?.presentation?.mode, "macos_native_fullscreen_space");
+    assert.equal(result.agent_window?.presentation?.native_fullscreen, true);
+    assert.equal(result.agent_window?.presentation?.window_state, "fullscreen");
+    assert.equal(result.agent_window?.presentation?.native_action_required, false);
     assert.equal(result.focus_transition?.native_foreground?.status, "foregrounded");
     assert.equal(
       result.focus_transition?.native_foreground?.space_activation,

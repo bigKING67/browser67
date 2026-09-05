@@ -22,21 +22,34 @@ async function runManagedLifecycleCase(context) {
   assert.ok(managedTabId, "managed lifecycle create did not return tab id");
   context.openedTabIds.add(managedTabId);
   assert.equal(firstManaged.created, true, "first select_or_create should create a managed tab");
-  assert.equal(firstManaged.ready, true, "managed tab should become visible before timeout");
+  assert.equal(firstManaged.ready, true, "managed tab should become routable before timeout");
   assert.equal(firstManaged.presentation?.focus_policy, "background_preferred");
   assert.equal(firstManaged.presentation?.window_policy, "dedicated");
   assert.equal(firstManaged.presentation?.active, false);
   assert.equal(firstManaged.agent_window?.ownership, "browser67_agent");
-  assert.equal(firstManaged.agent_window?.presentation?.status, "ready");
   assert.equal(firstManaged.agent_window?.presentation?.toolbar_preserved, true);
   if (process.platform === "darwin") {
-    assert.equal(firstManaged.agent_window?.presentation?.mode, "macos_native_fullscreen_space");
-    assert.equal(firstManaged.agent_window?.presentation?.native_fullscreen, true);
-    assert.equal(firstManaged.agent_window?.presentation?.window_state, "fullscreen");
+    const presentation = firstManaged.agent_window?.presentation;
+    assert.equal(presentation?.mode, "macos_native_fullscreen_space");
+    if (presentation.window_state === "fullscreen") {
+      assert.equal(presentation.status, "ready");
+      assert.equal(presentation.native_fullscreen, true);
+      assert.equal(presentation.native_action_required, false);
+    } else {
+      assert.equal(presentation.status, "deferred");
+      assert.equal(presentation.reason, "background_focus_preserved");
+      assert.equal(presentation.native_action_required, true);
+      assert.equal(presentation.verification_required, false);
+      assert.notEqual(presentation.native_fullscreen, true);
+    }
   } else if (process.platform === "win32") {
+    assert.equal(firstManaged.agent_window?.presentation?.status, "ready");
     assert.equal(firstManaged.agent_window?.presentation?.mode, "windows_maximized");
     assert.equal(firstManaged.agent_window?.presentation?.maximized, true);
     assert.equal(firstManaged.agent_window?.presentation?.window_state, "maximized");
+  } else {
+    assert.equal(firstManaged.agent_window?.presentation?.mode, "normal");
+    assert.equal(firstManaged.agent_window?.presentation?.status, "not_applicable");
   }
   assert.equal(firstManaged.managed_tab?.window_ownership, "browser67_agent");
   assert.equal(firstManaged.managed_tab?.window_id, firstManaged.agent_window?.window_id);

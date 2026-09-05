@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Align the managed-tab live gate with deferred macOS fullscreen in background
+  mode; retain strict fullscreen assertions for explicit foreground acceptance.
 - Refresh the release reference-review ledger after inspecting moved external
   JS reverse references; retain reference-only boundaries and no direct imports.
 
