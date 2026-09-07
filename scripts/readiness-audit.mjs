@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 import {
   GROUPS,
@@ -14,6 +15,24 @@ import { getLjqCtrlPhysicalInputProviderCapabilities } from "../src/physical-inp
 import { resolveTier } from "./verification/manifest.mjs";
 
 const DEFAULT_FAIL_BELOW = 99.0;
+const BROWSER67_SKILL_PATH = "skills/browser67/SKILL.md";
+const BROWSER67_SECURITY_REFERENCE_PATHS = [
+  "references/auth-and-native-input.md",
+  "references/setup-and-maintenance.md",
+];
+const BROWSER67_CAPTCHA_BOUNDARY_NEEDLES = [
+  "plan_captcha_assist",
+  "assist_captcha",
+  "check:native-pointer",
+  "check:native-live",
+  "check:captcha-assist-physical-live",
+  "check:captcha-router",
+  "check:captcha-provider-jfbym",
+  "check:captcha-provider-jfbym-setup",
+  "check:captcha-provider-jfbym-coordinate",
+  "check:ljqctrl",
+  "Do not keep trying selectors",
+];
 
 function parseArgs(argv) {
   const parsed = {
@@ -62,6 +81,28 @@ function hasScript(packageJson, name) {
 
 function textIncludesAll(text, needles) {
   return needles.every((needle) => text.includes(needle));
+}
+
+function hasMarkdownLinkTo(text, destination) {
+  const escaped = destination.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\]\\(${escaped}(?:\\s+[^)]*)?\\)`, "u").test(text);
+}
+
+export async function collectBrowser67SkillCaptchaDocumentation({ skill, read = readText } = {}) {
+  const entry = skill ?? await read(BROWSER67_SKILL_PATH);
+  const declared_reference_paths = BROWSER67_SECURITY_REFERENCE_PATHS
+    .filter((referencePath) => hasMarkdownLinkTo(entry, referencePath));
+  const referenceTexts = await Promise.all(
+    declared_reference_paths.map((referencePath) => read(`skills/browser67/${referencePath}`)),
+  );
+  return {
+    text: [entry, ...referenceTexts].join("\n"),
+    declared_reference_paths,
+  };
+}
+
+export function browser67SkillDocumentsCaptchaBoundaries(documentation) {
+  return textIncludesAll(documentation.text, BROWSER67_CAPTCHA_BOUNDARY_NEEDLES);
 }
 
 function createCheck(id, ok, evidence, required = true) {
@@ -430,7 +471,7 @@ function buildJfbymProviderGap(config = {}) {
   );
 }
 
-function buildRequiredChecks({ packageJson, readme, qualityDoc, skill, report }) {
+function buildRequiredChecks({ packageJson, readme, qualityDoc, skillDocumentation, report }) {
   const scriptNames = [
     "check:syntax",
     "check:readme",
@@ -617,20 +658,8 @@ function buildRequiredChecks({ packageJson, readme, qualityDoc, skill, report })
     ),
     createCheck(
       "skill_documents_captcha_boundaries",
-      textIncludesAll(skill, [
-        "plan_captcha_assist",
-        "assist_captcha",
-        "check:native-pointer",
-        "check:native-live",
-        "check:captcha-assist-physical-live",
-        "check:captcha-router",
-        "check:captcha-provider-jfbym",
-        "check:captcha-provider-jfbym-setup",
-        "check:captcha-provider-jfbym-coordinate",
-        "check:ljqctrl",
-        "Do not keep trying selectors",
-      ]),
-      "browser67 skill preserves CAPTCHA planning, local/target-OS physical gates, ljqctrl, and handoff boundaries",
+      browser67SkillDocumentsCaptchaBoundaries(skillDocumentation),
+      `browser67 skill preserves CAPTCHA planning, local/target-OS physical gates, ljqctrl, and handoff boundaries through entry plus declared references=${skillDocumentation.declared_reference_paths.join(",") || "none"}`,
     ),
   ];
 }
@@ -760,12 +789,12 @@ async function buildAudit(args) {
     packageJson,
     readme,
     qualityDoc,
-    skill,
+    skillDocumentation,
   ] = await Promise.all([
     readPackageJson(),
     readText("README.md"),
     readText("docs/maintenance-quality-model.md"),
-    readText("skills/browser67/SKILL.md"),
+    collectBrowser67SkillCaptchaDocumentation(),
   ]);
   const report = buildChangeSetReport(undefined, {
     include_empty_groups: true,
@@ -775,7 +804,7 @@ async function buildAudit(args) {
     packageJson,
     readme,
     qualityDoc,
-    skill,
+    skillDocumentation,
     report,
   });
   const optional_gaps = await buildOptionalGaps({ report });
@@ -842,9 +871,11 @@ async function run() {
   process.exitCode = audit.ok ? 0 : 1;
 }
 
-try {
-  await run();
-} catch (error) {
-  process.stderr.write(`readiness-audit failed: ${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  try {
+    await run();
+  } catch (error) {
+    process.stderr.write(`readiness-audit failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  }
 }

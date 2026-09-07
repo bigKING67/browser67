@@ -8,6 +8,10 @@ import {
   PHYSICAL_INPUT_SOURCE_SCOPE,
   buildOptionalProofSourceIdentity,
 } from "../../scripts/optional-live-proof-source-identity.mjs";
+import {
+  browser67SkillDocumentsCaptchaBoundaries,
+  collectBrowser67SkillCaptchaDocumentation,
+} from "../../scripts/readiness-audit.mjs";
 
 async function writeFakePythonProbe(dir, name, payload) {
   const file = path.join(dir, name);
@@ -119,6 +123,51 @@ function findGap(audit, id) {
   return audit.optional_gaps.find((gap) => gap.id === id);
 }
 
+async function assertSkillReferenceContract() {
+  const entryPath = "skills/browser67/SKILL.md";
+  const authReferencePath = "skills/browser67/references/auth-and-native-input.md";
+  const setupReferencePath = "skills/browser67/references/setup-and-maintenance.md";
+  const entry = await fs.readFile(entryPath, "utf8");
+  const references = new Map([
+    [authReferencePath, await fs.readFile(authReferencePath, "utf8")],
+    [setupReferencePath, await fs.readFile(setupReferencePath, "utf8")],
+  ]);
+  const requested = [];
+  const read = async (file) => {
+    requested.push(file);
+    const text = references.get(file);
+    assert.notEqual(text, undefined, `unexpected or unlinked skill reference read: ${file}`);
+    return text;
+  };
+
+  const documented = await collectBrowser67SkillCaptchaDocumentation({ skill: entry, read });
+  assert.deepEqual(documented.declared_reference_paths, [
+    "references/auth-and-native-input.md",
+    "references/setup-and-maintenance.md",
+  ]);
+  assert.deepEqual(requested, [authReferencePath, setupReferencePath]);
+  assert.equal(browser67SkillDocumentsCaptchaBoundaries(documented), true);
+
+  const withoutAuthLink = entry.replace(
+    "[references/auth-and-native-input.md](references/auth-and-native-input.md)",
+    "the auth and native-input reference",
+  );
+  requested.length = 0;
+  const missingLinkedReference = await collectBrowser67SkillCaptchaDocumentation({
+    skill: withoutAuthLink,
+    read,
+  });
+  assert.deepEqual(missingLinkedReference.declared_reference_paths, [
+    "references/setup-and-maintenance.md",
+  ]);
+  assert.deepEqual(requested, [setupReferencePath]);
+  assert.equal(browser67SkillDocumentsCaptchaBoundaries(missingLinkedReference), false);
+
+  references.set(authReferencePath, "# Auth reference\n");
+  const missingSafetyContent = await collectBrowser67SkillCaptchaDocumentation({ skill: entry, read });
+  assert.equal(browser67SkillDocumentsCaptchaBoundaries(missingSafetyContent), false);
+}
+
 function assertPermissionRecoveryPlan(plan) {
   assert.equal(plan?.status, "permission_required");
   assert.equal(plan?.blocker, "macos_accessibility_for_current_terminal");
@@ -155,6 +204,7 @@ async function assertReadinessLjqCtrlProbeContract() {
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tmwd-readiness-ljqctrl-"));
   try {
+    await assertSkillReferenceContract();
     const defaultProofDir = path.join(tmpDir, "default-empty-proofs");
     const defaultAudit = runReadinessAudit({
       TMWD_LJQCTRL_PYTHON: "",

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Split browser67 Skill setup/maintenance and auth/native-input guidance into
+  linked references; keep readiness verification bound to only the references
+  explicitly linked from the Skill entry, and reject missing links or missing
+  CAPTCHA/native safety guidance.
+
 ## 0.11.4 - 2026-09-05
 
 - Add explicit release updates: read-only latest-release checks, annotated-tag
