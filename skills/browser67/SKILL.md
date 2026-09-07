@@ -82,10 +82,10 @@ routes do not authorize installation, external writes, or physical actions.
      `browser_instance_id`. If a workspace/task spans multiple instances,
      omission must fail with `AMBIGUOUS_TARGET`; deliberate cross-instance
      cleanup requires `confirm_all_browser_instances:true`.
-   - If the user already opened and logged into a tab, use
-     `inspect_adoption -> adopt_existing` on that exact tab. Do not reopen the
-     page or repeat login. Finalization releases adopted tabs without closing
-     them.
+   - If the user already opened and logged into a tab, keep read-only requests
+     read-only. Only when the user explicitly requests operating that exact tab,
+     use `inspect_adoption -> adopt_existing`. Do not reopen the page or repeat
+     login. Finalization releases adopted tabs without closing them.
    - Agent navigation on an adopted tab uses a short-lived one-shot
      authorization. User/out-of-band navigation or a connection/lease change
      suspends the tab; run a fresh `inspect_adoption -> adopt_existing` before
