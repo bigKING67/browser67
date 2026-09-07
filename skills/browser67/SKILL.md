@@ -1,10 +1,6 @@
 ---
 name: browser67
-description: >-
-  Use for browser67 real-browser agent runtime work: tmwd_browser MCP setup and
-  operation, Chrome/Edge profile automation, managed tabs, auth lifecycle,
-  screenshots/evidence, downloads/uploads, native fallback planning, runtime
-  home migration, project governance, and the paired js-reverse MCP surface.
+description: Operate real Chrome/Edge pages through browser67, including managed tabs and login-state workflows. Also use for browser67 setup or maintenance.
 ---
 
 # browser67
@@ -27,27 +23,23 @@ two paired MCP surfaces:
   only for MCP setup, exact schemas/fields, implementation changes, specialized
   auth/CAPTCHA/native-input behavior, or release/readiness maintenance.
 
-## Naming
+## Choose the task
 
-- Use `browser67` for the project, package, CLI, docs, and runtime umbrella.
-- Keep `tmwd_browser` and `js-reverse` as MCP config keys.
-- Do not install or route through the retired `tmwd-browser-mcp` Skill.
-- Runtime home is resolved through `BROWSER67_HOME`, legacy
-  `TMWD_BROWSER_MCP_HOME`, existing `~/.browser67`, existing
-  `~/.tmwd-browser-mcp`, then fresh default `~/.browser67`.
+For ordinary page work, use the workflow below. Read
+[references/setup-and-maintenance.md](references/setup-and-maintenance.md) only
+for installation, runtime-home migration, naming/tool changes, permissions, or
+host/release acceptance. Read
+[references/auth-and-native-input.md](references/auth-and-native-input.md)
+before SSO/auth handoffs, CAPTCHA assistance, or physical/native input. These
+routes do not authorize installation, external writes, or physical actions.
 
 ## Core workflow
 
-1. Check readiness with `browser67 doctor` or `npm run doctor`.
-2. For setup, use `browser67 setup`; it writes under the active browser67 home.
-   When an existing bridge is connected, use `npm run extension:reload-live`
-   after setup and confirm readiness with `npm run check:live:doctor`.
-   A verified TMWD route requires `tmwd_ws_runtime` or `tmwd_link_runtime` to
-   report `extension_identity_ok`; this compares the live `ext_ready` build
-   identity with the deterministic current source identity and reports matching
-   installed roots instead of trusting disk files alone.
-3. For legacy runtime migration, run `browser67 migrate-home --dry-run` before
-   `browser67 migrate-home --write`.
+1. Reuse current successful runtime evidence for ordinary page work. When
+   readiness is unknown or a call reports a transport/identity failure, run a
+   bounded doctor/health check; setup and release identity proof use the
+   maintenance reference. Do not reinstall or run host acceptance for a normal
+   page read.
    - Each Chrome/Edge Browser Profile must load/enable the extension separately.
      browser67 identifies its bridge with the Profile-local opaque
      `browser67.browser_instance_id.v1` UUID; the target identity is
@@ -56,7 +48,7 @@ two paired MCP surfaces:
      and pass `browser_instance_id`, or set an explicit default. Treat
      `AMBIGUOUS_TARGET` and `BROWSER_INSTANCE_UNAVAILABLE` as fail-closed routing
      states; never choose the first/latest surviving Profile.
-4. For real browser work, select/create browser67-owned managed tabs and finalize
+2. For real browser work, select/create browser67-owned managed tabs and finalize
    the current `workspace_key`/`task_id` before handoff; report the returned
    `delivery_summary` so tab cleanup state is visible.
    - Default new work to `window_policy:"dedicated"`,
@@ -119,26 +111,9 @@ two paired MCP surfaces:
      and 300,000 serialized console-entry characters), shares the per-tab debugger
      queue, fails closed on external debugger ownership, and must report listener
      removal plus debugger-lease release before success.
-5. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
+3. For JS reverse work, use the `js-reverse` MCP and finalize pages opened by
    `js-reverse new_page`.
-6. Windows GUI portability proof remains in the default external acceptance
-   set. Linux GUI proof is on demand only; headless/SSH Linux servers do not
-   require it. On an in-scope interactive GUI host, run
-   `npm run check:native-live` first. Run `proof:native-live` only with the
-   explicit physical/confirm environment flags and `--write`; never fabricate a
-   target-OS proof on another platform. Select Linux explicitly with
-   `--id native-live-linux` or `--include-on-demand`.
-7. For explicitly confirmed physical CAPTCHA assist on macOS, require the
-   exact managed Chrome/Edge tab id before `cliclick`, with its redacted URL only
-   as a fallback. Use logical screen-point window bounds, prefer a detected
-   slider track over the handle-only rect, and keep CAPTCHA screenshots
-   region-bounded.
-8. Treat provider `[role="button"]` controls and same-tab existing-account,
-   authorize, or consent pages as SSO handoffs. Require explicit popup evidence
-   before using `manual_context.kind:"oauth_popup"`. For JS clicks that may open
-   a delayed provider window, rely on the bounded default new-target poll or set
-   `new_tab_wait_ms`; `no_monitor:true` intentionally disables that poll.
-9. Treat MCP output as `browser67.tool-outcome.v3`: inspect `ok/status`, then
+4. Treat MCP output as `browser67.tool-outcome.v3`: inspect `ok/status`, then
    read success data from `data` or failure details from `error`. Read the
    top-level `page` for the confirmed tab id/title/URL/managed state; `page:null`
    means the wrapper did not resolve one unique top-level page summary. For
@@ -150,46 +125,12 @@ two paired MCP surfaces:
      compact for routine work and full for transport/session/target diagnosis.
      Output mode only changes repeated diagnostics; content scope remains under
      each tool's scan/extract/execute/screenshot limit parameters.
-10. Use `script`, not the removed `code` alias, for `browser_execute_js` and
+5. Use `script`, not the removed `code` alias, for `browser_execute_js` and
     `browser_job_ops.start`. Bridge commands must be strict JSON.
-11. For a script or NodeRef action whose network completion matters, pass
+6. For a script or NodeRef action whose network completion matters, pass
     bounded `network_observation` options and inspect its idle/final summary.
     Snapshot `limitations` and `marker_policy` are authoritative for opaque
     cross-origin frames, closed shadow roots, document lifetime, and retention.
-
-## CAPTCHA and physical input
-
-- Treat `manual_required_captcha`, `manual_required_mfa`, and
-  `manual_required_sso` as handoff states. Start CAPTCHA assistance with
-  `browser_auth_ops.plan_captcha_assist`; it is a dry-run planner and must keep
-  screenshots region-bounded, redact provider data, and degrade inaccessible
-  cross-origin challenges to manual handoff.
-- Call `browser_auth_ops.assist_captcha` only on a browser67-owned managed tab
-  with the matching explicit coordinate-source confirmation and
-  `confirm_physical_input:true`. Never use token/cookie extraction, JS/CDP
-  clicks, or fullscreen screenshots to solve a challenge.
-- CAPTCHA/native input uses the managed-tab focus lease, not an unscoped
-  `tabs.switch`. Keep the default guarded restore unless the user explicitly
-  requests `focus_policy:"foreground"`.
-- Configure JFBYM/Yunma only through the repo-external setup path, then run
-  `npm run check:captcha-router`, `npm run check:captcha-provider-jfbym`,
-  `npm run check:captcha-provider-jfbym-setup`, and
-  `npm run check:captcha-provider-jfbym-coordinate` after router/provider
-  changes. Protocol solving remains default-off and separately confirmed.
-- Run `npm run check:native-pointer` before physical click/drag work. The
-  optional GUI gate is `npm run check:captcha-assist-physical-live` and requires
-  the explicit physical/confirm environment flags; skipped or blocked runs are
-  not proof. Accept CAPTCHA/native proof only when its
-  `browser67.optional-proof-source.v1` identity is source-equivalent to the
-  current `physical-input-v1` behavior digest; an unexpired historical proof
-  cannot prove newer focus/native code. Use `npm run check:ljqctrl` only as a
-  diagnostic unless the guarded execution bridge is explicitly enabled.
-- Treat macOS native `scroll` as unsupported until a verified wheel-event
-  driver exists; `cliclick w:` is wait, not scroll. Use managed-page DOM/CDP
-  scrolling only when it preserves the intended interaction semantics.
-- Wait at least five seconds after a failed physical attempt and hand off for
-  multi-round image/puzzle challenges. Do not keep trying selectors, unrelated
-  profiles, cross-origin IdP actions, or repeated submits.
 
 ## Quality bar
 
@@ -204,6 +145,8 @@ two paired MCP surfaces:
   bundles as repo-external artifacts with path/hash/count metadata. Prefer
   selector/clip screenshots and inspect the returned path only when needed;
   never inline screenshot base64 into tool context.
+- Keep runtime directories owner-only (`0700`) and runtime files and evidence
+  artifacts owner-only (`0600`), including ordinary page-work exports.
 - Do not silently fallback from browser67 login-state tasks to remote CDP.
   `tmwd_mode=auto` CDP fallback is not the explicit remote-CDP exception.
 - Treat locked/disconnected Windows sessions as insufficient for the default
@@ -216,13 +159,3 @@ two paired MCP surfaces:
   browser67 Tool routing and must not be inferred from private Profile data.
 - Ordinary tabs must retain native CSP/dialog behavior and receive no
   browser67 badge, marker, content bridge, or network observer.
-- Run `npm run check:mcp`, `npm run check:js-reverse-mcp`,
-  `npm run check:browser67-naming`, `npm run check:runtime-home`, and
-  `npm run skills:check` after naming/runtime/tooling changes.
-- Keep runtime directories owner-only (`0700`) and runtime files/artifacts
-  owner-only (`0600`); new MCP server processes set umask `077`, and the
-  managed-tab registry is written atomically as `0600` under its private default
-  directory. Audit existing runtime and managed-tab registry state before applying with
-  `npm run runtime:permissions:dry-run -- --json`; stale run terminalization and
-  empty-group pruning have separate dry-run/explicit-write commands and must not
-  be conflated with retention deletion.
